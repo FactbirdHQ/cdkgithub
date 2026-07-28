@@ -8,12 +8,12 @@ import { apply } from "./reconcile/applier.ts";
 import { plan } from "./reconcile/planner.ts";
 import { renderPlan } from "./reconcile/render.ts";
 
-const USAGE = `github-org — define GitHub org team structure as code
+const USAGE = `cdkgithub — define GitHub org team structure as code
 
 Usage:
-  github-org synth <config.ts>      Run a definition and write github.out/manifest.json
-  github-org plan  [options]        Diff the manifest against the live org (read-only)
-  github-org apply [options]        Reconcile the live org to match the manifest
+  cdkgithub synth <config.ts>      Run a definition and write github.out/manifest.json
+  cdkgithub plan  [options]        Diff the manifest against the live org (read-only)
+  cdkgithub apply [options]        Reconcile the live org to match the manifest
 
 Options:
   --manifest <path>   Manifest to read for plan/apply (default: github.out/manifest.json)
@@ -47,7 +47,7 @@ export async function main(argv: string[]): Promise<number> {
 
 async function synthCommand(configPath: string | undefined): Promise<number> {
   if (!configPath) {
-    console.error("synth requires a config file, e.g. `github-org synth orgs/factbird.ts`");
+    console.error("synth requires a config file, e.g. `cdkgithub synth orgs/factbird.ts`");
     return 1;
   }
   // The config module constructs an App and calls app.synth() on load.
@@ -98,7 +98,7 @@ function readManifest(path: string): DesiredState {
   try {
     return JSON.parse(readFileSync(path, "utf8")) as DesiredState;
   } catch {
-    throw new Error(`Could not read manifest at "${path}". Run \`github-org synth\` first.`);
+    throw new Error(`Could not read manifest at "${path}". Run \`cdkgithub synth\` first.`);
   }
 }
 

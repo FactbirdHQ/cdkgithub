@@ -1,5 +1,5 @@
 /**
- * github-org-iac — define GitHub organization team structure as Infrastructure
+ * cdkgithub — define GitHub organization team structure as Infrastructure
  * as Code, built on the `constructs` programming model (inspired by AWS CDK).
  *
  * Public authoring API. Import these in your org definition (see `orgs/`).
