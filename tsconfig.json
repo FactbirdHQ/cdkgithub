@@ -18,5 +18,5 @@
 
     "types": ["bun"]
   },
-  "include": ["src", "bin", "orgs", "test"]
+  "include": ["src", "bin", "examples", "test"]
 }

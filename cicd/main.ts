@@ -53,7 +53,7 @@ new Job(ci, "verify", {
     // Unit tests cover the plan/apply surface with an in-memory GitHub fake.
     { name: "Test", run: "bun test" },
     // Synthesize the desired-state manifest from the org definition.
-    { name: "Synth manifest", run: "bun bin/cdkgithub.ts synth orgs/factbird.ts" },
+    { name: "Synth manifest", run: "bun bin/cdkgithub.ts synth examples/factbird.ts" },
     {
       name: "Workflows in sync",
       run: "bun run synth:workflows && git diff --exit-code .github/workflows",

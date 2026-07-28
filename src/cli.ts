@@ -47,7 +47,7 @@ export async function main(argv: string[]): Promise<number> {
 
 async function synthCommand(configPath: string | undefined): Promise<number> {
   if (!configPath) {
-    console.error("synth requires a config file, e.g. `cdkgithub synth orgs/factbird.ts`");
+    console.error("synth requires a config file, e.g. `cdkgithub synth examples/factbird.ts`");
     return 1;
   }
   // The config module constructs an App and calls app.synth() on load.

@@ -1,7 +1,7 @@
 /**
  * Example organization definition — the human-authored source of truth for the
- * `factbird` org's team structure. Edit this, run `github-org synth orgs/factbird.ts`,
- * then `github-org plan` to preview and `github-org apply --yes` to reconcile.
+ * `factbird` org's team structure. Edit this, run `cdkgithub synth examples/factbird.ts`,
+ * then `cdkgithub plan` to preview and `cdkgithub apply --yes` to reconcile.
  */
 import { App, Organization, Team } from "../src/index.ts";
 
