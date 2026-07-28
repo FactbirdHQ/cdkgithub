@@ -136,7 +136,7 @@ test/                  bun tests for synthesizer, planner, applier
 
 ## CI/CD
 
-The GitHub Actions workflows are themselves defined as code with
+The GitHub Actions workflow is itself defined as code with
 [`@factbird/cdkactions`](https://github.com/FactbirdHQ/cdkactions) in
 [`cicd/main.ts`](cicd/main.ts) and synthesized to `.github/workflows/`:
 
@@ -144,16 +144,26 @@ The GitHub Actions workflows are themselves defined as code with
 bun run synth:workflows   # regenerate .github/workflows/*.yaml
 ```
 
-- **CI** (`cdkactions_ci.yaml`) — on PRs to `main` and pushes to `main`: typecheck,
-  test, synth the org definition, verify the workflow YAML is in sync with
-  `cicd/main.ts`, then run `plan` (read-only).
-- **Apply** (`cdkactions_apply.yaml`) — on push to `main` and manual dispatch:
-  reconcile the live org. Gated behind the `production` environment for approval;
-  `workflow_dispatch` exposes `allowDelete` / `enableScim` toggles.
+**CI** (`cdkactions_ci.yaml`) — on PRs to `main` and pushes to `main` —
+**only synthesizes the structure**: typecheck, run the unit tests, build the
+desired-state manifest from the org definition, and verify the workflow YAML is
+in sync with `cicd/main.ts`. It needs no secrets and never touches the live org.
 
-Both jobs authenticate with an **`ORG_ADMIN_TOKEN`** secret (PAT or GitHub App
-token with org-admin scope) — the default `GITHUB_TOKEN` cannot manage teams. The
-generated YAML is committed; editing it by hand is overwritten on the next synth.
+The generated YAML is committed; editing it by hand is overwritten on the next
+synth.
+
+### Why no `plan`/`apply` in CI
+
+- **`apply` is not automated.** Running it on every push would impose this repo's
+  structure onto the real organization. Reconciliation towards the org is a
+  deliberate act, run manually (`bun run apply`) by an operator with an org-admin
+  token, not a side effect of merging.
+- **The apply/plan *surface* is still tested** — `bun test` exercises the planner
+  and applier against an in-memory GitHub fake (no network, no token).
+- **End-to-end apply wants a sandbox.** Once a throwaway sandbox org exists, add a
+  manual `workflow_dispatch` job that mints a short-lived token with
+  cdkactions' `createGithubAppTokenV3` (`actions/create-github-app-token`) and
+  runs `plan`/`apply` against the sandbox only.
 
 ## Out of scope for v1
 
