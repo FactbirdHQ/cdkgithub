@@ -1,0 +1,25 @@
+{
+  "name": "github-org-iac",
+  "version": "0.1.0",
+  "description": "Define GitHub organization team structure as Infrastructure-as-Code, built on the constructs programming model (inspired by AWS CDK).",
+  "type": "module",
+  "module": "src/index.ts",
+  "bin": {
+    "github-org": "bin/github-org.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "test": "bun test",
+    "synth": "bun bin/github-org.ts synth orgs/factbird.ts",
+    "plan": "bun bin/github-org.ts plan",
+    "apply": "bun bin/github-org.ts apply"
+  },
+  "dependencies": {
+    "@octokit/rest": "^21.1.1",
+    "constructs": "^10.4.2"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "typescript": "^5.7.0"
+  }
+}
