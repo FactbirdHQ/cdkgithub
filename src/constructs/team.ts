@@ -1,9 +1,6 @@
-import { Construct } from "constructs";
-import type {
-  RepositoryAccess,
-  TeamPrivacy,
-} from "../synth/manifest.ts";
-import type { ExternalGroupProps } from "./external-group.ts";
+import { Construct } from 'constructs';
+import type { RepositoryAccess, TeamPrivacy } from '../synth/manifest.ts';
+import type { ExternalGroupProps } from './external-group.ts';
 
 export interface TeamProps {
   /**
@@ -64,7 +61,7 @@ export class Team extends Construct {
   static slugify(name: string): string {
     return name
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "");
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
   }
 }

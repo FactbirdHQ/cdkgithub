@@ -1,5 +1,5 @@
-import { Octokit } from "@octokit/rest";
-import type { RepoPermission, TeamPrivacy } from "../synth/manifest.ts";
+import { Octokit } from '@octokit/rest';
+import type { RepoPermission, TeamPrivacy } from '../synth/manifest.ts';
 
 /** Live representation of a team as read back from GitHub. */
 export interface LiveTeam {
@@ -46,13 +46,17 @@ export interface UpdateTeamParams {
 export interface GitHubClient {
   listTeams(org: string): Promise<LiveTeam[]>;
   createTeam(org: string, params: CreateTeamParams): Promise<LiveTeam>;
-  updateTeam(org: string, slug: string, params: UpdateTeamParams): Promise<void>;
+  updateTeam(
+    org: string,
+    slug: string,
+    params: UpdateTeamParams,
+  ): Promise<void>;
   deleteTeam(org: string, slug: string): Promise<void>;
   setMembership(
     org: string,
     slug: string,
     username: string,
-    role: "member" | "maintainer",
+    role: 'member' | 'maintainer',
   ): Promise<void>;
   setRepoPermission(
     org: string,
@@ -82,7 +86,7 @@ export class OctokitGitHubClient implements GitHubClient {
       slug: t.slug,
       name: t.name,
       description: t.description ?? null,
-      privacy: (t.privacy as TeamPrivacy) ?? "closed",
+      privacy: (t.privacy as TeamPrivacy) ?? 'closed',
       parentSlug: t.parent?.slug ?? null,
     }));
   }
@@ -100,7 +104,7 @@ export class OctokitGitHubClient implements GitHubClient {
       slug: data.slug,
       name: data.name,
       description: data.description ?? null,
-      privacy: (data.privacy as TeamPrivacy) ?? "closed",
+      privacy: (data.privacy as TeamPrivacy) ?? 'closed',
       parentSlug: data.parent?.slug ?? null,
     };
   }
@@ -128,7 +132,7 @@ export class OctokitGitHubClient implements GitHubClient {
     org: string,
     slug: string,
     username: string,
-    role: "member" | "maintainer",
+    role: 'member' | 'maintainer',
   ): Promise<void> {
     await this.octokit.rest.teams.addOrUpdateMembershipForUserInOrg({
       org,
@@ -159,7 +163,7 @@ export class OctokitGitHubClient implements GitHubClient {
 
   async listExternalGroups(org: string): Promise<ExternalIdpGroup[]> {
     const { data } = await this.octokit.request(
-      "GET /orgs/{org}/external-groups",
+      'GET /orgs/{org}/external-groups',
       { org },
     );
     const groups = (data as ExternalGroupsResponse).groups ?? [];
@@ -172,7 +176,7 @@ export class OctokitGitHubClient implements GitHubClient {
     groupId: number,
   ): Promise<void> {
     await this.octokit.request(
-      "PATCH /orgs/{org}/teams/{team_slug}/external-groups",
+      'PATCH /orgs/{org}/teams/{team_slug}/external-groups',
       { org, team_slug: slug, group_id: groupId },
     );
   }

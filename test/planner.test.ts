@@ -1,98 +1,103 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from 'bun:test';
 import type {
   CreateTeamParams,
   ExternalIdpGroup,
   GitHubClient,
   LiveTeam,
   UpdateTeamParams,
-} from "../src/github/client.ts";
-import type { DesiredState } from "../src/synth/manifest.ts";
-import { apply } from "../src/reconcile/applier.ts";
-import { plan } from "../src/reconcile/planner.ts";
-import type { RepoPermission } from "../src/synth/manifest.ts";
+} from '../src/github/client.ts';
+import { apply } from '../src/reconcile/applier.ts';
+import { plan } from '../src/reconcile/planner.ts';
+import type { DesiredState, RepoPermission } from '../src/synth/manifest.ts';
 
-function team(overrides: Partial<LiveTeam> & Pick<LiveTeam, "slug">): LiveTeam {
+function team(overrides: Partial<LiveTeam> & Pick<LiveTeam, 'slug'>): LiveTeam {
   return {
     id: Math.abs(hash(overrides.slug)),
     name: overrides.slug,
     description: null,
-    privacy: "closed",
+    privacy: 'closed',
     parentSlug: null,
     ...overrides,
   };
 }
 
-function desired(teams: DesiredState["teams"]): DesiredState {
-  return { org: "acme", teams };
+function desired(teams: DesiredState['teams']): DesiredState {
+  return { org: 'acme', teams };
 }
 
 const baseTeam = {
-  name: "Engineering",
+  name: 'Engineering',
   description: undefined,
-  privacy: "closed" as const,
+  privacy: 'closed' as const,
   maintainers: [],
   members: [],
   repositories: {},
 };
 
-describe("plan", () => {
-  test("creates a team that does not exist", () => {
+describe('plan', () => {
+  test('creates a team that does not exist', () => {
     const changes = plan(
-      desired([{ ...baseTeam, slug: "engineering", name: "engineering" }]),
+      desired([{ ...baseTeam, slug: 'engineering', name: 'engineering' }]),
       [],
     );
     expect(changes).toHaveLength(1);
-    expect(changes[0]!.kind).toBe("create");
+    expect(changes[0]!.kind).toBe('create');
   });
 
-  test("updates only changed fields", () => {
-    const changes = plan(
-      desired([{ ...baseTeam, slug: "engineering", name: "engineering", privacy: "secret" }]),
-      [team({ slug: "engineering", name: "engineering", privacy: "closed" })],
-    );
-    expect(changes).toHaveLength(1);
-    const change = changes[0]!;
-    expect(change.kind).toBe("update");
-    if (change.kind === "update") {
-      expect(change.fields).toEqual([
-        { field: "privacy", from: "closed", to: "secret" },
-      ]);
-    }
-  });
-
-  test("no change when live matches desired", () => {
-    const changes = plan(
-      desired([{ ...baseTeam, slug: "engineering", name: "engineering" }]),
-      [team({ slug: "engineering", name: "engineering" })],
-    );
-    expect(changes).toHaveLength(0);
-  });
-
-  test("proposes deletes children-first for unmanaged teams", () => {
-    const changes = plan(desired([]), [
-      team({ slug: "parent" }),
-      team({ slug: "child", parentSlug: "parent" }),
-    ]);
-    const deletes = changes.filter((c) => c.kind === "delete");
-    expect(deletes.map((d) => (d.kind === "delete" ? d.live.slug : ""))).toEqual([
-      "child",
-      "parent",
-    ]);
-  });
-
-  test("emits a link-group change for IdP-bound teams", () => {
+  test('updates only changed fields', () => {
     const changes = plan(
       desired([
         {
           ...baseTeam,
-          slug: "engineering",
-          name: "engineering",
-          externalGroup: { name: "GH-Engineering" },
+          slug: 'engineering',
+          name: 'engineering',
+          privacy: 'secret',
         },
       ]),
-      [team({ slug: "engineering", name: "engineering" })],
+      [team({ slug: 'engineering', name: 'engineering', privacy: 'closed' })],
     );
-    expect(changes.some((c) => c.kind === "link-group")).toBe(true);
+    expect(changes).toHaveLength(1);
+    const change = changes[0]!;
+    expect(change.kind).toBe('update');
+    if (change.kind === 'update') {
+      expect(change.fields).toEqual([
+        { field: 'privacy', from: 'closed', to: 'secret' },
+      ]);
+    }
+  });
+
+  test('no change when live matches desired', () => {
+    const changes = plan(
+      desired([{ ...baseTeam, slug: 'engineering', name: 'engineering' }]),
+      [team({ slug: 'engineering', name: 'engineering' })],
+    );
+    expect(changes).toHaveLength(0);
+  });
+
+  test('proposes deletes children-first for unmanaged teams', () => {
+    const changes = plan(desired([]), [
+      team({ slug: 'parent' }),
+      team({ slug: 'child', parentSlug: 'parent' }),
+    ]);
+    const deletes = changes.filter((c) => c.kind === 'delete');
+    expect(
+      deletes.map((d) => (d.kind === 'delete' ? d.live.slug : '')),
+    ).toEqual(['child', 'parent']);
+  });
+
+  test('emits a link-group change for IdP-bound teams', () => {
+    const changes = plan(
+      desired([
+        {
+          ...baseTeam,
+          slug: 'engineering',
+          name: 'engineering',
+          externalGroup: { name: 'GH-Engineering' },
+        },
+      ]),
+      [team({ slug: 'engineering', name: 'engineering' })],
+    );
+    expect(changes.some((c) => c.kind === 'link-group')).toBe(true);
   });
 });
 
@@ -117,7 +122,7 @@ class FakeClient implements GitHubClient {
       this.teams.find((t) => t.id === params.parentTeamId)?.slug ?? null;
     const created: LiveTeam = {
       id: this.nextId++,
-      slug: params.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+      slug: params.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
       name: params.name,
       description: params.description ?? null,
       privacy: params.privacy,
@@ -126,7 +131,11 @@ class FakeClient implements GitHubClient {
     this.teams.push(created);
     return created;
   }
-  async updateTeam(_o: string, _s: string, _p: UpdateTeamParams): Promise<void> {}
+  async updateTeam(
+    _o: string,
+    _s: string,
+    _p: UpdateTeamParams,
+  ): Promise<void> {}
   async deleteTeam(_org: string, slug: string): Promise<void> {
     this.teams = this.teams.filter((t) => t.slug !== slug);
   }
@@ -134,7 +143,7 @@ class FakeClient implements GitHubClient {
     _org: string,
     slug: string,
     username: string,
-    role: "member" | "maintainer",
+    role: 'member' | 'maintainer',
   ): Promise<void> {
     this.memberships.push({ slug, username, role });
   }
@@ -147,70 +156,85 @@ class FakeClient implements GitHubClient {
   async listExternalGroups(): Promise<ExternalIdpGroup[]> {
     return this.externalGroups;
   }
-  async linkExternalGroup(_o: string, slug: string, groupId: number): Promise<void> {
+  async linkExternalGroup(
+    _o: string,
+    slug: string,
+    groupId: number,
+  ): Promise<void> {
     this.links.push({ slug, groupId });
   }
 }
 
-describe("apply", () => {
-  test("creates parent then child, resolving the parent id", async () => {
-    const parent = { ...baseTeam, slug: "parent", name: "parent" };
-    const child = { ...baseTeam, slug: "child", name: "child", parentSlug: "parent" };
+describe('apply', () => {
+  test('creates parent then child, resolving the parent id', async () => {
+    const parent = { ...baseTeam, slug: 'parent', name: 'parent' };
+    const child = {
+      ...baseTeam,
+      slug: 'child',
+      name: 'child',
+      parentSlug: 'parent',
+    };
     const client = new FakeClient();
     const changes = plan(desired([parent, child]), []);
 
-    const result = await apply(client, "acme", changes, [], {});
+    const result = await apply(client, 'acme', changes, [], {});
 
     expect(result.created).toBe(2);
-    const createdChild = client.teams.find((t) => t.slug === "child");
-    expect(createdChild!.parentSlug).toBe("parent");
+    const createdChild = client.teams.find((t) => t.slug === 'child');
+    expect(createdChild!.parentSlug).toBe('parent');
   });
 
-  test("skips deletes and links unless explicitly enabled", async () => {
+  test('skips deletes and links unless explicitly enabled', async () => {
     const client = new FakeClient(
-      [team({ slug: "old", name: "old" })],
-      [{ id: 42, name: "GH-Engineering" }],
+      [team({ slug: 'old', name: 'old' })],
+      [{ id: 42, name: 'GH-Engineering' }],
     );
     const changes = plan(
       desired([
         {
           ...baseTeam,
-          slug: "engineering",
-          name: "engineering",
-          externalGroup: { name: "GH-Engineering" },
+          slug: 'engineering',
+          name: 'engineering',
+          externalGroup: { name: 'GH-Engineering' },
         },
       ]),
       client.teams.slice(),
     );
 
-    const result = await apply(client, "acme", changes, client.teams.slice(), {});
+    const result = await apply(
+      client,
+      'acme',
+      changes,
+      client.teams.slice(),
+      {},
+    );
     expect(result.deleted).toBe(0);
     expect(result.linked).toBe(0);
     expect(result.skipped).toHaveLength(2); // one delete + one link skipped
   });
 
-  test("links to the resolved Entra group id when SCIM is enabled", async () => {
+  test('links to the resolved Entra group id when SCIM is enabled', async () => {
     const client = new FakeClient(
-      [team({ slug: "engineering", name: "engineering" })],
-      [{ id: 42, name: "GH-Engineering" }],
+      [team({ slug: 'engineering', name: 'engineering' })],
+      [{ id: 42, name: 'GH-Engineering' }],
     );
     const changes = plan(
       desired([
         {
           ...baseTeam,
-          slug: "engineering",
-          name: "engineering",
-          externalGroup: { name: "GH-Engineering" },
+          slug: 'engineering',
+          name: 'engineering',
+          externalGroup: { name: 'GH-Engineering' },
         },
       ]),
       client.teams.slice(),
     );
 
-    const result = await apply(client, "acme", changes, client.teams.slice(), {
+    const result = await apply(client, 'acme', changes, client.teams.slice(), {
       enableScim: true,
     });
     expect(result.linked).toBe(1);
-    expect(client.links).toEqual([{ slug: "engineering", groupId: 42 }]);
+    expect(client.links).toEqual([{ slug: 'engineering', groupId: 42 }]);
   });
 });
 
