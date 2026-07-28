@@ -7,10 +7,10 @@
  */
 
 /** GitHub team visibility. `closed` = visible to all org members; `secret` = hidden. */
-export type TeamPrivacy = "closed" | "secret";
+export type TeamPrivacy = 'closed' | 'secret';
 
 /** Repository access level granted to a team. Mirrors GitHub's permission values. */
-export type RepoPermission = "pull" | "triage" | "push" | "maintain" | "admin";
+export type RepoPermission = 'pull' | 'triage' | 'push' | 'maintain' | 'admin';
 
 /**
  * A reference to an external identity-provider group (Entra ID security group)

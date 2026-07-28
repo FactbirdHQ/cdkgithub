@@ -19,44 +19,51 @@
  */
 import {
   App,
+  checkoutV4,
   Job,
   RunnerLabel,
   Stack,
   Workflow,
-  checkoutV4,
-} from "@factbird/cdkactions";
+} from '@factbird/cdkactions';
 
 const app = new App({
-  outdir: ".github/workflows",
+  outdir: '.github/workflows',
   // The built-in validate workflow assumes a `.github/cdk` + yarn layout; our
   // definition lives in `cicd/` and the `verify` job already checks for drift.
   createValidateWorkflow: false,
 });
-const stack = new Stack(app, "cdkgithub");
+const stack = new Stack(app, 'cdkgithub');
 
-const ci = new Workflow(stack, "ci", {
-  name: "CI",
+const ci = new Workflow(stack, 'ci', {
+  name: 'CI',
   on: {
-    pullRequest: { branches: ["main"] },
-    push: { branches: ["main"] },
+    pullRequest: { branches: ['main'] },
+    push: { branches: ['main'] },
   },
-  permissions: { contents: "read" },
+  permissions: { contents: 'read' },
 });
 
-new Job(ci, "verify", {
+new Job(ci, 'verify', {
   runsOn: RunnerLabel.UBUNTU_LATEST,
   steps: [
     checkoutV4(),
-    { name: "Setup Bun", uses: "oven-sh/setup-bun@v2", with: { "bun-version": "latest" } },
-    { name: "Install", run: "bun install --frozen-lockfile" },
-    { name: "Typecheck", run: "bun run build" },
-    // Unit tests cover the plan/apply surface with an in-memory GitHub fake.
-    { name: "Test", run: "bun test" },
-    // Synthesize the desired-state manifest from the org definition.
-    { name: "Synth manifest", run: "bun bin/cdkgithub.ts synth examples/factbird.ts" },
     {
-      name: "Workflows in sync",
-      run: "bun run synth:workflows && git diff --exit-code .github/workflows",
+      name: 'Setup Bun',
+      uses: 'oven-sh/setup-bun@v2',
+      with: { 'bun-version': 'latest' },
+    },
+    { name: 'Install', run: 'bun install --frozen-lockfile' },
+    { name: 'Typecheck', run: 'bun run build' },
+    // Unit tests cover the plan/apply surface with an in-memory GitHub fake.
+    { name: 'Test', run: 'bun test' },
+    // Synthesize the desired-state manifest from the org definition.
+    {
+      name: 'Synth manifest',
+      run: 'bun bin/cdkgithub.ts synth examples/factbird.ts',
+    },
+    {
+      name: 'Workflows in sync',
+      run: 'bun run synth:workflows && git diff --exit-code .github/workflows',
     },
   ],
 });

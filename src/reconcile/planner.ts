@@ -1,6 +1,6 @@
-import type { LiveTeam } from "../github/client.ts";
-import type { DesiredState, TeamManifest } from "../synth/manifest.ts";
-import type { Change, FieldChange } from "./changes.ts";
+import type { LiveTeam } from '../github/client.ts';
+import type { DesiredState, TeamManifest } from '../synth/manifest.ts';
+import type { Change, FieldChange } from './changes.ts';
 
 /**
  * Diff desired state against the live org and produce an ordered list of changes.
@@ -25,17 +25,21 @@ export function plan(desired: DesiredState, live: LiveTeam[]): Change[] {
   for (const team of desired.teams) {
     const current = liveBySlug.get(team.slug);
     if (!current) {
-      creates.push({ kind: "create", team });
+      creates.push({ kind: 'create', team });
     } else {
       const fields = diffTeam(team, current);
       if (fields.length > 0) {
-        updates.push({ kind: "update", slug: team.slug, team, fields });
+        updates.push({ kind: 'update', slug: team.slug, team, fields });
       }
     }
 
     // Linking is idempotent, so we always ensure it for IdP-bound teams.
     if (team.externalGroup) {
-      links.push({ kind: "link-group", slug: team.slug, group: team.externalGroup });
+      links.push({
+        kind: 'link-group',
+        slug: team.slug,
+        group: team.externalGroup,
+      });
     }
   }
 
@@ -43,7 +47,7 @@ export function plan(desired: DesiredState, live: LiveTeam[]): Change[] {
   const deletes = live
     .filter((t) => !desiredSlugs.has(t.slug))
     .sort((a, b) => deleteDepth(b, live) - deleteDepth(a, live))
-    .map<Change>((t) => ({ kind: "delete", live: t }));
+    .map<Change>((t) => ({ kind: 'delete', live: t }));
 
   return [...creates, ...updates, ...links, ...deletes];
 }
@@ -51,20 +55,20 @@ export function plan(desired: DesiredState, live: LiveTeam[]): Change[] {
 function diffTeam(desired: TeamManifest, live: LiveTeam): FieldChange[] {
   const fields: FieldChange[] = [];
 
-  const desiredDesc = desired.description ?? "";
-  const liveDesc = live.description ?? "";
+  const desiredDesc = desired.description ?? '';
+  const liveDesc = live.description ?? '';
   if (desiredDesc !== liveDesc) {
-    fields.push({ field: "description", from: liveDesc, to: desiredDesc });
+    fields.push({ field: 'description', from: liveDesc, to: desiredDesc });
   }
 
   if (desired.privacy !== live.privacy) {
-    fields.push({ field: "privacy", from: live.privacy, to: desired.privacy });
+    fields.push({ field: 'privacy', from: live.privacy, to: desired.privacy });
   }
 
   const desiredParent = desired.parentSlug ?? null;
   const liveParent = live.parentSlug ?? null;
   if (desiredParent !== liveParent) {
-    fields.push({ field: "parent", from: liveParent, to: desiredParent });
+    fields.push({ field: 'parent', from: liveParent, to: desiredParent });
   }
 
   return fields;

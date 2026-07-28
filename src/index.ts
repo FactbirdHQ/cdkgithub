@@ -4,13 +4,13 @@
  *
  * Public authoring API. Import these in your org definition (see `examples/`).
  */
-export { App, type AppProps } from "./constructs/app.ts";
+export { App, type AppProps } from './constructs/app.ts';
+export type { ExternalGroupProps } from './constructs/external-group.ts';
 export {
   Organization,
   type OrganizationProps,
-} from "./constructs/organization.ts";
-export { Team, type TeamProps } from "./constructs/team.ts";
-export type { ExternalGroupProps } from "./constructs/external-group.ts";
+} from './constructs/organization.ts';
+export { Team, type TeamProps } from './constructs/team.ts';
 export type {
   DesiredState,
   ExternalGroupBinding,
@@ -18,4 +18,4 @@ export type {
   RepositoryAccess,
   TeamManifest,
   TeamPrivacy,
-} from "./synth/manifest.ts";
+} from './synth/manifest.ts';
