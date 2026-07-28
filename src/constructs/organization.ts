@@ -1,4 +1,4 @@
-import { Construct } from "constructs";
+import { Construct } from 'constructs';
 
 export interface OrganizationProps {
   /** The GitHub organization login (e.g. `factbird`). */

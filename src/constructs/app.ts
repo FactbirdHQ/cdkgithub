@@ -1,8 +1,8 @@
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { Construct } from "constructs";
-import type { DesiredState } from "../synth/manifest.ts";
-import { synthesize } from "../synth/synthesizer.ts";
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { Construct } from 'constructs';
+import type { DesiredState } from '../synth/manifest.ts';
+import { synthesize } from '../synth/synthesizer.ts';
 
 export interface AppProps {
   /**
@@ -23,13 +23,13 @@ export class App extends Construct {
 
   constructor(props: AppProps = {}) {
     // A root construct has no scope. This mirrors cdk8s/cdktf App roots.
-    super(undefined as unknown as Construct, "");
-    this.outdir = props.outdir ?? "github.out";
+    super(undefined as unknown as Construct, '');
+    this.outdir = props.outdir ?? 'github.out';
   }
 
   /** Path the manifest is (or would be) written to. */
   get manifestPath(): string {
-    return join(this.outdir, "manifest.json");
+    return join(this.outdir, 'manifest.json');
   }
 
   /**
@@ -40,7 +40,7 @@ export class App extends Construct {
     const state = synthesize(this);
     const path = this.manifestPath;
     mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+    writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
     return state;
   }
 }
