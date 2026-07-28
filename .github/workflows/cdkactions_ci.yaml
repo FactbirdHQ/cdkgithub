@@ -11,22 +11,6 @@ on:
 permissions:
   contents: read
 jobs:
-  plan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - name: Install
-        run: bun install --frozen-lockfile
-      - name: Synth manifest
-        run: bun bin/cdkgithub.ts synth orgs/factbird.ts
-      - env:
-          GITHUB_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
-        name: Plan (read-only)
-        run: bun bin/cdkgithub.ts plan
   verify:
     runs-on: ubuntu-latest
     steps:
