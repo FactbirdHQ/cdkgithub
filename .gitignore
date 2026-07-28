@@ -1,0 +1,5 @@
+node_modules/
+dist/
+github.out/
+*.log
+.DS_Store
