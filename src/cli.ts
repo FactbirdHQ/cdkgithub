@@ -1,12 +1,12 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
-import { OctokitGitHubClient } from "./github/client.ts";
-import { resolveToken } from "./github/token.ts";
-import type { DesiredState } from "./synth/manifest.ts";
-import { apply } from "./reconcile/applier.ts";
-import { plan } from "./reconcile/planner.ts";
-import { renderPlan } from "./reconcile/render.ts";
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { OctokitGitHubClient } from './github/client.ts';
+import { resolveToken } from './github/token.ts';
+import { apply } from './reconcile/applier.ts';
+import { plan } from './reconcile/planner.ts';
+import { renderPlan } from './reconcile/render.ts';
+import type { DesiredState } from './synth/manifest.ts';
 
 const USAGE = `cdkgithub — define GitHub org team structure as code
 
@@ -28,14 +28,14 @@ export async function main(argv: string[]): Promise<number> {
   const flags = parseFlags(rest);
 
   switch (command) {
-    case "synth":
+    case 'synth':
       return synthCommand(rest[0]);
-    case "plan":
+    case 'plan':
       return planCommand(flags);
-    case "apply":
+    case 'apply':
       return applyCommand(flags);
-    case "-h":
-    case "--help":
+    case '-h':
+    case '--help':
     case undefined:
       console.log(USAGE);
       return 0;
@@ -47,7 +47,9 @@ export async function main(argv: string[]): Promise<number> {
 
 async function synthCommand(configPath: string | undefined): Promise<number> {
   if (!configPath) {
-    console.error("synth requires a config file, e.g. `cdkgithub synth examples/factbird.ts`");
+    console.error(
+      'synth requires a config file, e.g. `cdkgithub synth examples/factbird.ts`',
+    );
     return 1;
   }
   // The config module constructs an App and calls app.synth() on load.
@@ -73,10 +75,10 @@ async function applyCommand(flags: Flags): Promise<number> {
 
   console.log(`Plan for organization "${desired.org}":\n`);
   console.log(renderPlan(changes));
-  console.log("");
+  console.log('');
 
   if (!flags.yes) {
-    console.log("Dry run. Re-run with --yes to apply these changes.");
+    console.log('Dry run. Re-run with --yes to apply these changes.');
     return 0;
   }
 
@@ -96,9 +98,11 @@ async function applyCommand(flags: Flags): Promise<number> {
 
 function readManifest(path: string): DesiredState {
   try {
-    return JSON.parse(readFileSync(path, "utf8")) as DesiredState;
+    return JSON.parse(readFileSync(path, 'utf8')) as DesiredState;
   } catch {
-    throw new Error(`Could not read manifest at "${path}". Run \`cdkgithub synth\` first.`);
+    throw new Error(
+      `Could not read manifest at "${path}". Run \`cdkgithub synth\` first.`,
+    );
   }
 }
 
@@ -111,7 +115,7 @@ interface Flags {
 
 function parseFlags(args: string[]): Flags {
   const flags: Flags = {
-    manifest: "github.out/manifest.json",
+    manifest: 'github.out/manifest.json',
     yes: false,
     allowDelete: false,
     enableScim: false,
@@ -119,16 +123,16 @@ function parseFlags(args: string[]): Flags {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     switch (arg) {
-      case "--manifest":
+      case '--manifest':
         flags.manifest = args[++i] ?? flags.manifest;
         break;
-      case "--yes":
+      case '--yes':
         flags.yes = true;
         break;
-      case "--allow-delete":
+      case '--allow-delete':
         flags.allowDelete = true;
         break;
-      case "--enable-scim":
+      case '--enable-scim':
         flags.enableScim = true;
         break;
     }

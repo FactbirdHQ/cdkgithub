@@ -1,11 +1,11 @@
-import type { IConstruct } from "constructs";
-import { Organization } from "../constructs/organization.ts";
-import { Team } from "../constructs/team.ts";
+import type { IConstruct } from 'constructs';
+import { Organization } from '../constructs/organization.ts';
+import { Team } from '../constructs/team.ts';
 import type {
   DesiredState,
   ExternalGroupBinding,
   TeamManifest,
-} from "./manifest.ts";
+} from './manifest.ts';
 
 /**
  * Walk a construct tree and produce the desired-state manifest for the single
@@ -21,14 +21,14 @@ export function synthesize(root: IConstruct): DesiredState {
   const orgs = root.node.findAll().filter(isOrganization);
   if (orgs.length === 0) {
     throw new Error(
-      "No Organization found in the construct tree. Define one with `new Organization(app, id, { login })`.",
+      'No Organization found in the construct tree. Define one with `new Organization(app, id, { login })`.',
     );
   }
   if (orgs.length > 1) {
     throw new Error(
       `Expected exactly one Organization, found ${orgs.length}: ${orgs
         .map((o) => o.login)
-        .join(", ")}. Synthesize one organization per app.`,
+        .join(', ')}. Synthesize one organization per app.`,
     );
   }
   const org = orgs[0]!;
@@ -54,7 +54,7 @@ function toManifest(team: Team): TeamManifest {
     slug: team.slug,
     name: team.teamName,
     description: team.props.description,
-    privacy: team.props.privacy ?? "closed",
+    privacy: team.props.privacy ?? 'closed',
     parentSlug: parent?.slug,
     maintainers: team.props.maintainers ?? [],
     members: team.props.members ?? [],

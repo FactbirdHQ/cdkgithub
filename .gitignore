@@ -4,6 +4,10 @@ github.out/
 *.log
 .DS_Store
 
+# Live-org dumps from `scripts/import-org.ts` (real team/member/repo data) — keep
+# local, don't publish. `examples/factbird.ts` is the sample and stays tracked.
+examples/factbirdhq.ts
+
 # Nix / devenv / direnv
 .devenv/
 .direnv/
