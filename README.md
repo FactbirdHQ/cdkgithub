@@ -20,7 +20,7 @@ Here it lives in git: teams are code, changes go through pull requests, and
 ## How it works
 
 ```
-define   orgs/<org>.ts       new App / Organization / Team (+ externalGroup)
+define   examples/<org>.ts   new App / Organization / Team (+ externalGroup)
    │
 synth    App.synth()         walk the construct tree → github.out/manifest.json
    │
@@ -39,7 +39,8 @@ apply    reconcile           create / update / (link) / delete to match desired
 
 ## Requirements
 
-- [Bun](https://bun.sh) (package manager + runtime + test runner)
+- [Bun](https://bun.sh) (package manager + runtime + test runner) — or use the
+  [devenv](https://devenv.sh) shell, which provides it (see [Development](#development)).
 - A GitHub token: `GITHUB_TOKEN`/`GH_TOKEN`, or just be logged in with
   `gh auth login` (the CLI falls back to `gh auth token`). Needs org-admin scope
   to manage teams.
@@ -50,10 +51,10 @@ apply    reconcile           create / update / (link) / delete to match desired
 bun install
 
 # 1. Edit your org definition
-$EDITOR orgs/factbird.ts
+$EDITOR examples/factbird.ts
 
 # 2. Synthesize the desired-state manifest
-bun bin/cdkgithub.ts synth orgs/factbird.ts     # → github.out/manifest.json
+bun bin/cdkgithub.ts synth examples/factbird.ts     # → github.out/manifest.json
 
 # 3. Preview the diff against the live org (read-only)
 bun bin/cdkgithub.ts plan
@@ -70,7 +71,7 @@ Scripts are also wired in `package.json`: `bun run synth | plan | apply`,
 ## Defining teams
 
 ```ts
-// orgs/factbird.ts
+// examples/factbird.ts
 import { App, Organization, Team } from "../src/index.ts";
 
 const app = new App();
@@ -128,7 +129,7 @@ src/
   reconcile/    changes model, planner (diff), render, applier
   cli.ts        synth | plan | apply
 bin/cdkgithub.ts
-orgs/factbird.ts       example org definition
+examples/factbird.ts   example org definition
 cicd/main.ts           CI/CD workflows (defined with @factbird/cdkactions)
 .github/workflows/     generated — do not edit by hand
 test/                  bun tests for synthesizer, planner, applier
@@ -174,6 +175,17 @@ synth.
 - Multi-language publishing via jsii/projen (TypeScript only for now).
 
 ## Development
+
+A [devenv](https://devenv.sh) shell pins the toolchain (Bun + `gh`) so everyone
+and CI use the same versions:
+
+```bash
+devenv shell       # or `direnv allow` to enter it automatically
+                   # `bun install` runs on entry
+devenv test        # typecheck + unit tests (same gate as CI)
+```
+
+Without devenv, install Bun yourself and run the scripts directly:
 
 ```bash
 bun test           # unit tests (no network — uses an in-memory GitHub fake)

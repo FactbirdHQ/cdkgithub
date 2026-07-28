@@ -26,6 +26,6 @@ jobs:
       - name: Test
         run: bun test
       - name: Synth manifest
-        run: bun bin/cdkgithub.ts synth orgs/factbird.ts
+        run: bun bin/cdkgithub.ts synth examples/factbird.ts
       - name: Workflows in sync
         run: bun run synth:workflows && git diff --exit-code .github/workflows

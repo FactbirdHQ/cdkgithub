@@ -3,3 +3,9 @@ dist/
 github.out/
 *.log
 .DS_Store
+
+# Nix / devenv / direnv
+.devenv/
+.direnv/
+.devenv.flake.nix
+devenv.local.nix

@@ -2,7 +2,7 @@
  * cdkgithub — define GitHub organization team structure as Infrastructure
  * as Code, built on the `constructs` programming model (inspired by AWS CDK).
  *
- * Public authoring API. Import these in your org definition (see `orgs/`).
+ * Public authoring API. Import these in your org definition (see `examples/`).
  */
 export { App, type AppProps } from "./constructs/app.ts";
 export {
