@@ -10,7 +10,7 @@
   "scripts": {
     "build": "tsc --noEmit",
     "test": "bun test",
-    "synth": "bun bin/cdkgithub.ts synth orgs/factbird.ts",
+    "synth": "bun bin/cdkgithub.ts synth examples/factbird.ts",
     "plan": "bun bin/cdkgithub.ts plan",
     "apply": "bun bin/cdkgithub.ts apply",
     "synth:workflows": "bun cicd/main.ts"
