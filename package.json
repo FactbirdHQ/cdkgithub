@@ -1,20 +1,22 @@
 {
-  "name": "github-org-iac",
+  "name": "cdkgithub",
   "version": "0.1.0",
-  "description": "Define GitHub organization team structure as Infrastructure-as-Code, built on the constructs programming model (inspired by AWS CDK).",
+  "description": "Define GitHub organization structure (teams, hierarchy, Entra ID/SCIM links) as Infrastructure-as-Code, built on the constructs programming model (inspired by AWS CDK).",
   "type": "module",
   "module": "src/index.ts",
   "bin": {
-    "github-org": "bin/github-org.ts"
+    "cdkgithub": "bin/cdkgithub.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",
     "test": "bun test",
-    "synth": "bun bin/github-org.ts synth orgs/factbird.ts",
-    "plan": "bun bin/github-org.ts plan",
-    "apply": "bun bin/github-org.ts apply"
+    "synth": "bun bin/cdkgithub.ts synth orgs/factbird.ts",
+    "plan": "bun bin/cdkgithub.ts plan",
+    "apply": "bun bin/cdkgithub.ts apply",
+    "synth:workflows": "bun cicd/main.ts"
   },
   "dependencies": {
+    "@factbird/cdkactions": "^2.1.2",
     "@octokit/rest": "^21.1.1",
     "constructs": "^10.4.2"
   },
