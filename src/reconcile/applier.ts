@@ -1,5 +1,5 @@
-import type { GitHubClient, LiveTeam } from "../github/client.ts";
-import type { Change } from "./changes.ts";
+import type { GitHubClient, LiveTeam } from '../github/client.ts';
+import type { Change } from './changes.ts';
 
 export interface ApplyOptions {
   /** Actually delete teams present on GitHub but absent from the desired state. */
@@ -45,10 +45,12 @@ export async function apply(
 
   for (const change of changes) {
     switch (change.kind) {
-      case "create": {
+      case 'create': {
         const t = change.team;
         log(`Creating team ${t.slug}`);
-        const parentTeamId = t.parentSlug ? idBySlug.get(t.parentSlug) : undefined;
+        const parentTeamId = t.parentSlug
+          ? idBySlug.get(t.parentSlug)
+          : undefined;
         const team = await client.createTeam(org, {
           name: t.name,
           description: t.description,
@@ -59,10 +61,10 @@ export async function apply(
 
         // Best-effort membership & repo grants on creation (see planner notes).
         for (const username of t.maintainers) {
-          await client.setMembership(org, team.slug, username, "maintainer");
+          await client.setMembership(org, team.slug, username, 'maintainer');
         }
         for (const username of t.members) {
-          await client.setMembership(org, team.slug, username, "member");
+          await client.setMembership(org, team.slug, username, 'member');
         }
         for (const [repo, permission] of Object.entries(t.repositories)) {
           await client.setRepoPermission(org, team.slug, repo, permission);
@@ -71,12 +73,12 @@ export async function apply(
         break;
       }
 
-      case "update": {
+      case 'update': {
         log(`Updating team ${change.slug}`);
         const parentSlug = change.team.parentSlug;
         await client.updateTeam(org, change.slug, {
           name: change.team.name,
-          description: change.team.description ?? "",
+          description: change.team.description ?? '',
           privacy: change.team.privacy,
           parentTeamId: parentSlug ? (idBySlug.get(parentSlug) ?? null) : null,
         });
@@ -84,10 +86,12 @@ export async function apply(
         break;
       }
 
-      case "link-group": {
+      case 'link-group': {
         if (!options.enableScim) {
           const ref = change.group.id ?? change.group.name;
-          skipped.push(`link ${change.slug} → Entra group ${ref} (use --enable-scim)`);
+          skipped.push(
+            `link ${change.slug} → Entra group ${ref} (use --enable-scim)`,
+          );
           break;
         }
         log(`Linking team ${change.slug} to Entra group`);
@@ -97,7 +101,7 @@ export async function apply(
         break;
       }
 
-      case "delete": {
+      case 'delete': {
         if (!options.allowDelete) {
           skipped.push(`delete ${change.live.slug} (use --allow-delete)`);
           break;
@@ -116,7 +120,7 @@ export async function apply(
 async function resolveGroupId(
   client: GitHubClient,
   org: string,
-  change: Extract<Change, { kind: "link-group" }>,
+  change: Extract<Change, { kind: 'link-group' }>,
 ): Promise<number> {
   if (change.group.id !== undefined) return change.group.id;
 
