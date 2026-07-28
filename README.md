@@ -1,4 +1,4 @@
-# github-org-iac
+# cdkgithub
 
 Define your **GitHub organization's team structure as Infrastructure-as-Code**,
 in the spirit of [AWS CDK](https://aws.amazon.com/cdk/). Teams, their hierarchy,
@@ -53,15 +53,15 @@ bun install
 $EDITOR orgs/factbird.ts
 
 # 2. Synthesize the desired-state manifest
-bun bin/github-org.ts synth orgs/factbird.ts     # → github.out/manifest.json
+bun bin/cdkgithub.ts synth orgs/factbird.ts     # → github.out/manifest.json
 
 # 3. Preview the diff against the live org (read-only)
-bun bin/github-org.ts plan
+bun bin/cdkgithub.ts plan
 
 # 4. Apply. Without --yes this is a dry run.
-bun bin/github-org.ts apply --yes
-bun bin/github-org.ts apply --yes --allow-delete  # also remove unmanaged teams
-bun bin/github-org.ts apply --yes --enable-scim   # also link Entra groups (see below)
+bun bin/cdkgithub.ts apply --yes
+bun bin/cdkgithub.ts apply --yes --allow-delete  # also remove unmanaged teams
+bun bin/cdkgithub.ts apply --yes --enable-scim   # also link Entra groups (see below)
 ```
 
 Scripts are also wired in `package.json`: `bun run synth | plan | apply`,
@@ -127,10 +127,33 @@ src/
   github/       Octokit client wrapper + token resolution
   reconcile/    changes model, planner (diff), render, applier
   cli.ts        synth | plan | apply
-bin/github-org.ts
-orgs/factbird.ts   example definition
-test/              bun tests for synthesizer, planner, applier
+bin/cdkgithub.ts
+orgs/factbird.ts       example org definition
+cicd/main.ts           CI/CD workflows (defined with @factbird/cdkactions)
+.github/workflows/     generated — do not edit by hand
+test/                  bun tests for synthesizer, planner, applier
 ```
+
+## CI/CD
+
+The GitHub Actions workflows are themselves defined as code with
+[`@factbird/cdkactions`](https://github.com/FactbirdHQ/cdkactions) in
+[`cicd/main.ts`](cicd/main.ts) and synthesized to `.github/workflows/`:
+
+```bash
+bun run synth:workflows   # regenerate .github/workflows/*.yaml
+```
+
+- **CI** (`cdkactions_ci.yaml`) — on PRs to `main` and pushes to `main`: typecheck,
+  test, synth the org definition, verify the workflow YAML is in sync with
+  `cicd/main.ts`, then run `plan` (read-only).
+- **Apply** (`cdkactions_apply.yaml`) — on push to `main` and manual dispatch:
+  reconcile the live org. Gated behind the `production` environment for approval;
+  `workflow_dispatch` exposes `allowDelete` / `enableScim` toggles.
+
+Both jobs authenticate with an **`ORG_ADMIN_TOKEN`** secret (PAT or GitHub App
+token with org-admin scope) — the default `GITHUB_TOKEN` cannot manage teams. The
+generated YAML is committed; editing it by hand is overwritten on the next synth.
 
 ## Out of scope for v1
 
@@ -139,7 +162,6 @@ test/              bun tests for synthesizer, planner, applier
 - Team renames, org-level settings, repository creation, member invitations.
 - Ongoing membership reconciliation for existing teams (IdP-owned by design).
 - Multi-language publishing via jsii/projen (TypeScript only for now).
-```
 
 ## Development
 
