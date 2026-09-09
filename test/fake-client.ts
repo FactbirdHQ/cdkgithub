@@ -3,6 +3,7 @@ import type {
   ExternalIdpGroup,
   GitHubClient,
   LiveActionsPolicy,
+  LiveAppInstallation,
   LiveBranchProtection,
   LiveCodeSecurityConfiguration,
   LiveCustomProperty,
@@ -24,7 +25,7 @@ import type {
   EnabledRepositories,
   OrgSettingsManifest,
   RepoPermission,
-  RulesetManifest,
+  ResolvedRuleset,
   SecurityAttachScope,
   SecurityDefaultScope,
 } from '../src/synth/manifest.ts';
@@ -33,6 +34,7 @@ export interface FakeClientState {
   teams?: LiveTeam[];
   externalGroups?: ExternalIdpGroup[];
   repositories?: LiveRepository[];
+  appInstallations?: LiveAppInstallation[];
   settings?: LiveOrgSettings;
   actions?: LiveActionsPolicy;
   rulesets?: LiveRuleset[];
@@ -54,6 +56,7 @@ export class FakeClient implements GitHubClient {
   teams: LiveTeam[];
   externalGroups: ExternalIdpGroup[];
   repositories: LiveRepository[];
+  appInstallations: LiveAppInstallation[];
   settings: LiveOrgSettings;
   actions: LiveActionsPolicy;
   rulesets: LiveRuleset[];
@@ -73,6 +76,7 @@ export class FakeClient implements GitHubClient {
     this.teams = state.teams ?? [];
     this.externalGroups = state.externalGroups ?? [];
     this.repositories = state.repositories ?? [];
+    this.appInstallations = state.appInstallations ?? [];
     this.settings = state.settings ?? {};
     this.actions = state.actions ?? {
       enabledRepositories: 'all',
@@ -167,6 +171,10 @@ export class FakeClient implements GitHubClient {
     return this.repositories;
   }
 
+  async listAppInstallations(): Promise<LiveAppInstallation[]> {
+    return this.appInstallations;
+  }
+
   // ---- organization settings ----------------------------------------------
 
   async getOrgSettings(): Promise<LiveOrgSettings> {
@@ -227,14 +235,14 @@ export class FakeClient implements GitHubClient {
     return this.rulesets;
   }
 
-  async createRuleset(_org: string, ruleset: RulesetManifest): Promise<void> {
+  async createRuleset(_org: string, ruleset: ResolvedRuleset): Promise<void> {
     this.record('createRuleset', ruleset);
   }
 
   async updateRuleset(
     _org: string,
     id: number,
-    ruleset: RulesetManifest,
+    ruleset: ResolvedRuleset,
   ): Promise<void> {
     this.record('updateRuleset', { id, ruleset });
   }

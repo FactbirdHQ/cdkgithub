@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { toCamelCaseKeys, toSnakeCaseKeys } from '../src/github/casing.ts';
-import type { LiveRuleset } from '../src/github/client.ts';
+import type { LiveRuleset, LiveTeam } from '../src/github/client.ts';
 import { apply } from '../src/reconcile/applier.ts';
 import type { LiveState } from '../src/reconcile/live.ts';
 import { plan } from '../src/reconcile/planner.ts';
@@ -563,5 +563,111 @@ describe('ruleset rule coverage', () => {
     expect(toCamelCaseKeys<RulesetManifest['rules']>(payload)).toEqual(
       everyRule,
     );
+  });
+});
+
+describe('ruleset bypass actors', () => {
+  // The definition owns the team it names, so the diff sees no stray team to
+  // prune and the assertions below are about bypass actors alone.
+  const platform = {
+    slug: 'platform',
+    name: 'platform',
+    privacy: 'closed' as const,
+    maintainers: [],
+    members: [],
+    repositories: {},
+  };
+  const livePlatform: LiveTeam = {
+    id: 42,
+    slug: 'platform',
+    name: 'platform',
+    description: null,
+    privacy: 'closed',
+    parentSlug: null,
+  };
+
+  const withActors = (
+    bypassActors: RulesetManifest['bypassActors'],
+  ): DesiredState =>
+    desired({
+      teams: [platform],
+      rulesets: [{ ...protectMain, bypassActors }],
+    });
+
+  test('resolves a team slug and an app slug to the ids GitHub stores', () => {
+    const changes = plan(
+      withActors([
+        { actorType: 'OrganizationAdmin' },
+        { actorType: 'Team', team: 'platform', bypassMode: 'pull_request' },
+        { actorType: 'Integration', app: 'renovate' },
+        { actorType: 'DeployKey' },
+        { actorType: 'RepositoryRole', roleId: 5 },
+      ]),
+      live({
+        teams: [livePlatform],
+        appInstallations: [{ appId: 777, slug: 'renovate' }],
+        rulesets: [],
+      }),
+    );
+
+    expect(changes).toHaveLength(1);
+    const change = changes[0]!;
+    if (change.kind !== 'create-ruleset') throw new Error('expected a create');
+    expect(change.ruleset.bypassActors).toEqual([
+      { actorType: 'OrganizationAdmin', actorId: 1, bypassMode: undefined },
+      { actorType: 'Team', actorId: 42, bypassMode: 'pull_request' },
+      { actorType: 'Integration', actorId: 777, bypassMode: undefined },
+      { actorType: 'DeployKey', actorId: null, bypassMode: undefined },
+      { actorType: 'RepositoryRole', actorId: 5, bypassMode: undefined },
+    ]);
+  });
+
+  test('a named actor does not report drift against the ids GitHub returns', () => {
+    // The whole reason resolution happens while planning rather than while
+    // applying: the live ruleset only ever carries ids.
+    const changes = plan(
+      withActors([{ actorType: 'Team', team: 'platform' }]),
+      live({
+        teams: [livePlatform],
+        rulesets: [
+          liveProtectMain({
+            bypassActors: [
+              { actorType: 'Team', actorId: 42, bypassMode: 'always' },
+            ],
+          }),
+        ],
+      }),
+    );
+    expect(changes).toEqual([]);
+  });
+
+  test('an unknown team fails while planning, before anything is written', () => {
+    expect(() =>
+      plan(
+        withActors([{ actorType: 'Team', team: 'ghosts' }]),
+        live({ teams: [livePlatform], rulesets: [] }),
+      ),
+    ).toThrow(/team "ghosts" bypass it, but the organization has no such team/);
+  });
+
+  test('an unknown app slug fails the same way', () => {
+    expect(() =>
+      plan(
+        withActors([{ actorType: 'Integration', app: 'nope' }]),
+        live({ teams: [livePlatform], appInstallations: [], rulesets: [] }),
+      ),
+    ).toThrow(/no app with that slug is installed/);
+  });
+
+  test('a numeric id skips the lookup entirely', () => {
+    const changes = plan(
+      withActors([{ actorType: 'Team', team: 99 }]),
+      live({ teams: [livePlatform], rulesets: [] }),
+    );
+    if (changes[0]?.kind !== 'create-ruleset')
+      throw new Error('expected a create');
+    expect(changes[0].ruleset.bypassActors).toEqual([
+      { actorType: 'Team', actorId: 99, bypassMode: undefined },
+    ]);
   });
 });
