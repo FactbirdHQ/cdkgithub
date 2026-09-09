@@ -1,6 +1,7 @@
 import type {
   GitHubClient,
   LiveActionsPolicy,
+  LiveAppInstallation,
   LiveBranchProtection,
   LiveCodeSecurityConfiguration,
   LiveCustomProperty,
@@ -31,6 +32,8 @@ export interface LiveState {
   readonly repositoryProperties?: LiveRepositoryProperties[];
   /** One entry per declared repository and branch, protected or not. */
   readonly branchProtection?: LiveBranchProtection[];
+  /** Only read when a ruleset names a GitHub App as a bypass actor. */
+  readonly appInstallations?: LiveAppInstallation[];
 }
 
 /** Read the live state for the surfaces `desired` declares, and nothing more. */
@@ -41,6 +44,13 @@ export async function readLiveState(
   const owner = desired.owner;
   const declaresPropertyValues = (desired.customProperties ?? []).some(
     (p) => p.values !== undefined,
+  );
+  // Resolving a bypass actor by app slug is the only thing that needs the org's
+  // installations, so the call is skipped unless one is named.
+  const namesAnApp = (desired.rulesets ?? []).some((r) =>
+    (r.bypassActors ?? []).some(
+      (a) => a.actorType === 'Integration' && typeof a.app === 'string',
+    ),
   );
 
   const [
@@ -53,6 +63,7 @@ export async function readLiveState(
     customProperties,
     repositoryProperties,
     branchProtection,
+    appInstallations,
   ] = await Promise.all([
     // A personal account has no teams, and asking for them 404s.
     desired.ownerType === 'organization' ? client.listTeams(owner) : [],
@@ -68,6 +79,7 @@ export async function readLiveState(
     desired.customProperties ? client.listCustomProperties(owner) : undefined,
     declaresPropertyValues ? client.listRepositoryProperties(owner) : undefined,
     readBranchProtection(client, owner, desired),
+    namesAnApp ? client.listAppInstallations(owner) : undefined,
   ]);
 
   return {
@@ -80,6 +92,7 @@ export async function readLiveState(
     customProperties,
     repositoryProperties,
     branchProtection,
+    appInstallations,
   };
 }
 

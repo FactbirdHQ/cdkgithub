@@ -10,7 +10,8 @@ import type {
   EnabledRepositories,
   OrgSettingsManifest,
   RepoPermission,
-  RulesetBypassActor,
+  ResolvedBypassActor,
+  ResolvedRuleset,
   RulesetConditions,
   RulesetManifest,
   RulesetRule,
@@ -97,7 +98,7 @@ export interface LiveRuleset {
   readonly enforcement: RulesetManifest['enforcement'];
   readonly conditions?: RulesetConditions;
   readonly rules: RulesetRule[];
-  readonly bypassActors: RulesetBypassActor[];
+  readonly bypassActors: ResolvedBypassActor[];
   /** Where the ruleset is defined. Only `Organization` ones are managed here. */
   readonly sourceType: string;
 }
@@ -119,6 +120,13 @@ export interface LiveDefaultSecurityConfiguration {
   readonly defaultForNewRepos: SecurityDefaultScope;
   readonly configurationId?: number;
   readonly configurationName?: string;
+}
+
+/** A GitHub App installed on the org, as needed to resolve a bypass actor by slug. */
+export interface LiveAppInstallation {
+  /** The app id, which is what a ruleset bypass actor stores. */
+  readonly appId: number;
+  readonly slug: string;
 }
 
 /** A custom property in the org's schema, in the manifest's casing. */
@@ -175,6 +183,9 @@ export interface GitHubClient {
   /** Repositories in the org, used to resolve names to ids. */
   listRepositories(org: string): Promise<LiveRepository[]>;
 
+  /** Apps installed on the org, used to resolve a ruleset bypass actor by slug. */
+  listAppInstallations(org: string): Promise<LiveAppInstallation[]>;
+
   // Organization settings — PATCH /orgs/{org}
   getOrgSettings(org: string): Promise<LiveOrgSettings>;
   updateOrgSettings(org: string, settings: OrgSettingsManifest): Promise<void>;
@@ -203,11 +214,11 @@ export interface GitHubClient {
 
   // Rulesets — /orgs/{org}/rulesets
   listRulesets(org: string): Promise<LiveRuleset[]>;
-  createRuleset(org: string, ruleset: RulesetManifest): Promise<void>;
+  createRuleset(org: string, ruleset: ResolvedRuleset): Promise<void>;
   updateRuleset(
     org: string,
     id: number,
-    ruleset: RulesetManifest,
+    ruleset: ResolvedRuleset,
   ): Promise<void>;
   deleteRuleset(org: string, id: number): Promise<void>;
 
@@ -409,6 +420,14 @@ export class OctokitGitHubClient implements GitHubClient {
     return repos.map((r) => ({ id: r.id, name: r.name }));
   }
 
+  async listAppInstallations(org: string): Promise<LiveAppInstallation[]> {
+    const installations = await this.octokit.paginate(
+      this.octokit.rest.orgs.listAppInstallations,
+      { org, per_page: 100 },
+    );
+    return installations.map((i) => ({ appId: i.app_id, slug: i.app_slug }));
+  }
+
   // ---- Organization settings ---------------------------------------------
 
   async getOrgSettings(org: string): Promise<LiveOrgSettings> {
@@ -589,7 +608,7 @@ export class OctokitGitHubClient implements GitHubClient {
           ? toCamelCaseKeys<RulesetConditions>(data.conditions)
           : undefined,
         rules: toCamelCaseKeys<RulesetRule[]>(data.rules ?? []),
-        bypassActors: toCamelCaseKeys<RulesetBypassActor[]>(
+        bypassActors: toCamelCaseKeys<ResolvedBypassActor[]>(
           data.bypass_actors ?? [],
         ),
         sourceType: data.source_type ?? 'Organization',
@@ -598,7 +617,7 @@ export class OctokitGitHubClient implements GitHubClient {
     return rulesets;
   }
 
-  async createRuleset(org: string, ruleset: RulesetManifest): Promise<void> {
+  async createRuleset(org: string, ruleset: ResolvedRuleset): Promise<void> {
     await this.octokit.rest.repos.createOrgRuleset({
       org,
       ...rulesetPayload(ruleset),
@@ -608,7 +627,7 @@ export class OctokitGitHubClient implements GitHubClient {
   async updateRuleset(
     org: string,
     id: number,
-    ruleset: RulesetManifest,
+    ruleset: ResolvedRuleset,
   ): Promise<void> {
     await this.octokit.rest.repos.updateOrgRuleset({
       org,
@@ -979,7 +998,7 @@ function isNotFound(error: unknown): boolean {
 }
 
 /** The write payload for a ruleset: the manifest, minus its name-as-identity, in GitHub's casing. */
-function rulesetPayload(ruleset: RulesetManifest): Record<string, unknown> {
+function rulesetPayload(ruleset: ResolvedRuleset): Record<string, unknown> {
   return {
     name: ruleset.name,
     target: ruleset.target,

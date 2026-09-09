@@ -110,7 +110,12 @@ new Ruleset(org, 'tier-1-review', {
       },
     },
   ],
-  bypassActors: [{ actorType: 'OrganizationAdmin', actorId: 1 }],
+  // Named, not numbered: the team slug and the app slug are resolved to the ids
+  // GitHub stores while planning, so the plan and the diff both show real ids.
+  bypassActors: [
+    { actorType: 'OrganizationAdmin' },
+    { actorType: 'Team', team: 'platform', bypassMode: 'pull_request' },
+  ],
 });
 
 // ---- Actions --------------------------------------------------------------
