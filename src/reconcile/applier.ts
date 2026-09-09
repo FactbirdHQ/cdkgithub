@@ -1,8 +1,16 @@
-import type { GitHubClient, LiveTeam } from '../github/client.ts';
-import type { Change } from './changes.ts';
+import type { GitHubClient } from '../github/client.ts';
+import {
+  applyGovernanceChange,
+  type GovernanceContext,
+} from './apply-governance.ts';
+import { type Change, isDestructive, isGovernanceChange } from './changes.ts';
+import type { LiveState } from './live.ts';
 
 export interface ApplyOptions {
-  /** Actually delete teams present on GitHub but absent from the desired state. */
+  /**
+   * Actually delete resources present on GitHub but absent from the desired
+   * state — teams, rulesets, code security configurations, custom properties.
+   */
   readonly allowDelete?: boolean;
   /**
    * Perform Entra ID (SCIM) external-group linking. Requires the org to have SCIM
@@ -18,6 +26,8 @@ export interface ApplyResult {
   readonly updated: number;
   readonly deleted: number;
   readonly linked: number;
+  /** Governance changes executed: settings, policy, rulesets, configurations, properties. */
+  readonly governance: number;
   /** Human-readable descriptions of changes intentionally skipped (gated). */
   readonly skipped: string[];
 }
@@ -31,19 +41,34 @@ export async function apply(
   client: GitHubClient,
   org: string,
   changes: Change[],
-  live: LiveTeam[],
+  live: LiveState,
   options: ApplyOptions = {},
 ): Promise<ApplyResult> {
   const log = options.onProgress ?? (() => {});
-  const idBySlug = new Map<string, number>(live.map((t) => [t.slug, t.id]));
+  const idBySlug = new Map<string, number>(
+    live.teams.map((t) => [t.slug, t.id]),
+  );
+  const governanceContext = createGovernanceContext(client, org, log);
 
   let created = 0;
   let updated = 0;
   let deleted = 0;
   let linked = 0;
+  let governance = 0;
   const skipped: string[] = [];
 
   for (const change of changes) {
+    if (isDestructive(change) && !options.allowDelete) {
+      skipped.push(`${describeDelete(change)} (use --allow-delete)`);
+      continue;
+    }
+
+    if (isGovernanceChange(change)) {
+      await applyGovernanceChange(change, governanceContext);
+      governance++;
+      continue;
+    }
+
     switch (change.kind) {
       case 'create': {
         const t = change.team;
@@ -102,10 +127,6 @@ export async function apply(
       }
 
       case 'delete': {
-        if (!options.allowDelete) {
-          skipped.push(`delete ${change.live.slug} (use --allow-delete)`);
-          break;
-        }
         log(`Deleting team ${change.live.slug}`);
         await client.deleteTeam(org, change.live.slug);
         deleted++;
@@ -114,7 +135,82 @@ export async function apply(
     }
   }
 
-  return { created, updated, deleted, linked, skipped };
+  return { created, updated, deleted, linked, governance, skipped };
+}
+
+/**
+ * Lazy lookups shared by the governance changes: the org's repositories, and the
+ * code security configurations including any created earlier in this same run.
+ */
+function createGovernanceContext(
+  client: GitHubClient,
+  org: string,
+  log: (message: string) => void,
+): GovernanceContext {
+  let repositoryIds: Promise<Map<string, number>> | undefined;
+  const configurationIds = new Map<string, number>();
+
+  return {
+    client,
+    org,
+    log,
+
+    async resolveRepositoryIds(names) {
+      repositoryIds ??= client
+        .listRepositories(org)
+        .then((repos) => new Map(repos.map((r) => [r.name, r.id])));
+      const byName = await repositoryIds;
+      return names.map((name) => {
+        const id = byName.get(name);
+        if (id === undefined) {
+          throw new Error(
+            `Repository "${name}" was not found in the ${org} organization.`,
+          );
+        }
+        return id;
+      });
+    },
+
+    rememberConfigurationId(name, id) {
+      configurationIds.set(name, id);
+    },
+
+    async resolveConfigurationId(name) {
+      // A configuration created earlier in this run is already known. Anything
+      // else is looked up live rather than from the pre-apply snapshot, and the
+      // lookup repeats on a miss because this run keeps creating configurations
+      // as it goes.
+      const known = configurationIds.get(name);
+      if (known !== undefined) return known;
+
+      for (const config of await client.listSecurityConfigurations(org)) {
+        configurationIds.set(config.name, config.id);
+      }
+
+      const id = configurationIds.get(name);
+      if (id === undefined) {
+        throw new Error(
+          `Code security configuration "${name}" was not found in the ${org} organization.`,
+        );
+      }
+      return id;
+    },
+  };
+}
+
+function describeDelete(change: Change): string {
+  switch (change.kind) {
+    case 'delete':
+      return `delete team ${change.live.slug}`;
+    case 'delete-ruleset':
+      return `delete ruleset "${change.live.name}"`;
+    case 'delete-security-config':
+      return `delete code security configuration "${change.live.name}"`;
+    case 'delete-property':
+      return `delete custom property "${change.live.name}"`;
+    default:
+      return `delete ${change.kind}`;
+  }
 }
 
 async function resolveGroupId(

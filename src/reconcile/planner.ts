@@ -1,21 +1,25 @@
 import type { LiveTeam } from '../github/client.ts';
 import type { DesiredState, TeamManifest } from '../synth/manifest.ts';
 import type { Change, FieldChange } from './changes.ts';
+import type { LiveState } from './live.ts';
+import { planGovernance } from './plan-governance.ts';
 
 /**
  * Diff desired state against the live org and produce an ordered list of changes.
  *
- * Order: creates (parents before children, as the manifest is already sorted) →
- * updates → external-group links → deletes (children before parents). This lets
- * `apply` run the list top-to-bottom without violating GitHub's parent/child
- * constraints.
+ * Order: team creates (parents before children, as the manifest is already
+ * sorted) → team updates → external-group links → team deletes (children before
+ * parents) → governance. This lets `apply` run the list top-to-bottom without
+ * violating GitHub's parent/child constraints, and puts the governance surfaces
+ * after the teams they may name as ruleset bypass actors.
  *
  * Note on membership: for existing teams we do NOT diff members or repo grants —
  * IdP-synced teams have their membership owned by Entra ID (SCIM). The `members`
  * / `repositories` fields are applied best-effort when a team is first created.
  */
-export function plan(desired: DesiredState, live: LiveTeam[]): Change[] {
-  const liveBySlug = new Map(live.map((t) => [t.slug, t] as const));
+export function plan(desired: DesiredState, live: LiveState): Change[] {
+  const liveTeams = live.teams;
+  const liveBySlug = new Map(liveTeams.map((t) => [t.slug, t] as const));
   const desiredSlugs = new Set(desired.teams.map((t) => t.slug));
 
   const creates: Change[] = [];
@@ -44,12 +48,18 @@ export function plan(desired: DesiredState, live: LiveTeam[]): Change[] {
   }
 
   // Deletes: live teams not in the desired state, children before parents.
-  const deletes = live
+  const deletes = liveTeams
     .filter((t) => !desiredSlugs.has(t.slug))
-    .sort((a, b) => deleteDepth(b, live) - deleteDepth(a, live))
+    .sort((a, b) => deleteDepth(b, liveTeams) - deleteDepth(a, liveTeams))
     .map<Change>((t) => ({ kind: 'delete', live: t }));
 
-  return [...creates, ...updates, ...links, ...deletes];
+  return [
+    ...creates,
+    ...updates,
+    ...links,
+    ...deletes,
+    ...planGovernance(desired, live),
+  ];
 }
 
 function diffTeam(desired: TeamManifest, live: LiveTeam): FieldChange[] {
