@@ -173,6 +173,30 @@ Set `enforcement: "evaluate"` to land a ruleset that records violations without
 blocking anyone. That is the honest way to introduce a rule to an org that has
 been running without it.
 
+Bypass actors are named, not numbered:
+
+```ts
+bypassActors: [
+  { actorType: "OrganizationAdmin" },
+  { actorType: "Team", team: "platform", bypassMode: "pull_request" },
+  { actorType: "Integration", app: "renovate" },
+]
+```
+
+GitHub stores a numeric `actor_id` whose meaning depends on the actor type, and
+those ids are not knowable when you write the definition. cdkgithub resolves the
+team slug and the app slug while planning, before the diff rather than at apply
+time: the live ruleset only ever carries ids, so a definition still holding a
+name would report drift on every run. A name that resolves to nothing fails the
+plan, which is the right moment, because nothing has been written yet. Pass a
+number instead of a name to skip the lookup.
+
+`RepositoryRole` is the exception and takes `roleId`. GitHub's REST description
+carries no route for listing repository roles at the API version pinned here and
+the built-in role ids are not in the published schema, so resolving a role name
+would mean hardcoding a mapping nobody can check. Granting bypass to the wrong
+role is not a good thing to guess at.
+
 ### Custom properties
 
 A property classifies repositories, and a ruleset can then target the class

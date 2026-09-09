@@ -11,7 +11,7 @@ import type {
   CustomPropertyManifest,
   ExternalGroupBinding,
   OrgSettingsManifest,
-  RulesetManifest,
+  ResolvedRuleset,
   TeamManifest,
 } from '../synth/manifest.ts';
 
@@ -68,13 +68,13 @@ export interface UpdateActionsPolicy {
 
 export interface CreateRuleset {
   readonly kind: 'create-ruleset';
-  readonly ruleset: RulesetManifest;
+  readonly ruleset: ResolvedRuleset;
 }
 
 export interface UpdateRuleset {
   readonly kind: 'update-ruleset';
   readonly id: number;
-  readonly ruleset: RulesetManifest;
+  readonly ruleset: ResolvedRuleset;
   readonly fields: FieldChange[];
 }
 

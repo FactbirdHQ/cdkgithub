@@ -5,10 +5,11 @@ import type {
   CodeSecurityConfigurationManifest,
   CustomPropertyManifest,
   DesiredState,
-  RulesetManifest,
+  ResolvedRuleset,
 } from '../synth/manifest.ts';
 import type { Change, FieldChange } from './changes.ts';
 import type { LiveState } from './live.ts';
+import { resolveRuleset } from './resolve-actors.ts';
 import { matchesSubset } from './subset.ts';
 
 /**
@@ -336,8 +337,12 @@ function planRulesets(desired: DesiredState, live: LiveState): Change[] {
   const liveByName = new Map(liveRulesets.map((r) => [r.name, r]));
   const changes: Change[] = [];
 
-  for (const ruleset of rulesets) {
+  for (const declared of rulesets) {
+    // Names become ids before anything is compared, so both sides of the diff
+    // speak the same language.
+    const ruleset = resolveRuleset(declared, live);
     const current = liveByName.get(ruleset.name);
+
     if (!current) {
       changes.push({ kind: 'create-ruleset', ruleset });
       continue;
@@ -364,7 +369,7 @@ function planRulesets(desired: DesiredState, live: LiveState): Change[] {
 }
 
 function diffRuleset(
-  desired: RulesetManifest,
+  desired: ResolvedRuleset,
   live: LiveRuleset,
 ): FieldChange[] {
   const fields: FieldChange[] = [];

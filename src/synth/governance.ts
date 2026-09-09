@@ -92,18 +92,79 @@ export type RulesetTarget = 'branch' | 'tag' | 'push' | 'repository';
 /** `active` enforces the rules; `evaluate` reports violations without blocking. */
 export type RulesetEnforcement = 'disabled' | 'active' | 'evaluate';
 
-/** An actor allowed to bypass a ruleset's rules. */
-export interface RulesetBypassActor {
-  /** Team id, app installation id, or `1` for `OrganizationAdmin`. */
-  readonly actorId?: number | null;
-  readonly actorType:
-    | 'Integration'
-    | 'OrganizationAdmin'
-    | 'RepositoryRole'
-    | 'Team'
-    | 'DeployKey';
-  /** `always`, or `pull_request` to bypass only through a pull request. */
-  readonly bypassMode?: 'always' | 'pull_request';
+/** `always`, or `pull_request` to bypass only through a pull request. */
+export type BypassMode = 'always' | 'pull_request';
+
+export type BypassActorType =
+  | 'Integration'
+  | 'OrganizationAdmin'
+  | 'RepositoryRole'
+  | 'Team'
+  | 'DeployKey';
+
+interface BypassCommon {
+  readonly bypassMode?: BypassMode;
+}
+
+/** Every organization administrator. */
+export interface OrganizationAdminBypass extends BypassCommon {
+  readonly actorType: 'OrganizationAdmin';
+}
+
+/** Any deploy key on a matching repository. */
+export interface DeployKeyBypass extends BypassCommon {
+  readonly actorType: 'DeployKey';
+}
+
+/** One team, named by slug and resolved to its id while planning. */
+export interface TeamBypass extends BypassCommon {
+  readonly actorType: 'Team';
+  /** Team slug, or a numeric team id to skip the lookup. */
+  readonly team: string | number;
+}
+
+/** One GitHub App, named by the slug of its installation on this org. */
+export interface AppBypass extends BypassCommon {
+  readonly actorType: 'Integration';
+  /** App slug as it appears in the org's installations, or a numeric app id. */
+  readonly app: string | number;
+}
+
+/**
+ * One repository role.
+ *
+ * This one takes an id rather than a name. GitHub's REST description carries no
+ * route for listing repository roles at the API version pinned here, and the
+ * ids of the built-in roles are not in the published schema either, so a name
+ * lookup would mean hardcoding a mapping nobody can check. Granting bypass to
+ * the wrong role is the kind of mistake worth refusing to guess at.
+ */
+export interface RepositoryRoleBypass extends BypassCommon {
+  readonly actorType: 'RepositoryRole';
+  readonly roleId: number;
+}
+
+/**
+ * An actor allowed to bypass a ruleset's rules.
+ *
+ * GitHub stores a numeric `actor_id` whose meaning depends on `actor_type`, and
+ * those ids are not knowable when the definition is written. So the definition
+ * names the actor and cdkgithub resolves it while planning, before the diff:
+ * resolving only at apply time would leave the planner comparing a name against
+ * the id GitHub returns, and every run would report drift.
+ */
+export type RulesetBypassActor =
+  | OrganizationAdminBypass
+  | DeployKeyBypass
+  | TeamBypass
+  | AppBypass
+  | RepositoryRoleBypass;
+
+/** A bypass actor after resolution: what GitHub stores, and what the diff compares. */
+export interface ResolvedBypassActor {
+  readonly actorType: BypassActorType;
+  readonly actorId: number | null;
+  readonly bypassMode?: BypassMode;
 }
 
 /** An include/exclude pattern pair, as used for refs and repository names. */
@@ -280,6 +341,14 @@ export interface RulesetManifest {
   readonly conditions?: RulesetConditions;
   readonly rules: RulesetRule[];
   readonly bypassActors?: RulesetBypassActor[];
+}
+
+/**
+ * A ruleset whose bypass actors carry ids instead of names. The planner produces
+ * these, and they are what the client writes and what the live org returns.
+ */
+export interface ResolvedRuleset extends Omit<RulesetManifest, 'bypassActors'> {
+  readonly bypassActors?: ResolvedBypassActor[];
 }
 
 // ---------------------------------------------------------------------------
