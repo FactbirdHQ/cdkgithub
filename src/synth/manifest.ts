@@ -4,7 +4,22 @@
  * This is the serializable contract between `synth` (build desired state from
  * constructs) and `plan`/`apply` (diff & reconcile against the live GitHub org).
  * Keep it JSON-friendly: no class instances, no functions.
+ *
+ * The governance surfaces (settings, Actions policy, rulesets, code security,
+ * custom properties) live in `./governance.ts` and are re-exported here.
  */
+
+import type { BranchProtectionManifest } from './branch-protection.ts';
+import type {
+  ActionsPolicyManifest,
+  CodeSecurityConfigurationManifest,
+  CustomPropertyManifest,
+  OrgSettingsManifest,
+  RulesetManifest,
+} from './governance.ts';
+
+export * from './branch-protection.ts';
+export * from './governance.ts';
 
 /** GitHub team visibility. `closed` = visible to all org members; `secret` = hidden. */
 export type TeamPrivacy = 'closed' | 'secret';
@@ -50,10 +65,44 @@ export interface TeamManifest {
   readonly externalGroup?: ExternalGroupBinding;
 }
 
-/** The complete synthesized desired state for one organization. */
+/**
+ * Who the definition manages. An organization has teams, rulesets, an Actions
+ * policy, code security configurations, custom properties, and member
+ * privileges. A personal account has none of those, so declaring one against a
+ * `UserAccount` is a synthesis error rather than a silent no-op.
+ */
+export type OwnerType = 'organization' | 'user';
+
+/**
+ * The complete synthesized desired state for one account.
+ *
+ * Every governance collection is optional, and absence is meaningful: a surface
+ * the definition never declares is one cdkgithub leaves alone, so it never
+ * proposes deleting rulesets or properties from an org that has only adopted the
+ * team structure. Once a surface is declared, the definition owns it and live
+ * resources missing from it are proposed for deletion (gated by `--allow-delete`).
+ */
 export interface DesiredState {
-  /** GitHub organization login the teams belong to. */
-  readonly org: string;
+  /** The organization login or username everything below belongs to. */
+  readonly owner: string;
+  /** Whether `owner` is an organization or a personal account. */
+  readonly ownerType: OwnerType;
   /** Teams keyed implicitly by slug; ordered parents-before-children. */
   readonly teams: TeamManifest[];
+  /** Member privileges and org-wide defaults. Only declared fields are diffed. */
+  readonly settings?: OrgSettingsManifest;
+  /** GitHub Actions permissions, allowlist, and default token scope. */
+  readonly actions?: ActionsPolicyManifest;
+  /** Organization rulesets, keyed by name. */
+  readonly rulesets?: RulesetManifest[];
+  /** Code security configurations, keyed by name. */
+  readonly codeSecurityConfigurations?: CodeSecurityConfigurationManifest[];
+  /** Repository custom properties, keyed by name. */
+  readonly customProperties?: CustomPropertyManifest[];
+  /**
+   * Legacy per-branch protection, keyed by repository and branch. Rulesets cover
+   * the same ground org-wide; this is for personal accounts and for describing
+   * protection that already exists.
+   */
+  readonly branchProtection?: BranchProtectionManifest[];
 }

@@ -1,5 +1,19 @@
-import type { LiveTeam } from '../github/client.ts';
-import type { ExternalGroupBinding, TeamManifest } from '../synth/manifest.ts';
+import type {
+  LiveCodeSecurityConfiguration,
+  LiveCustomProperty,
+  LiveRuleset,
+  LiveTeam,
+} from '../github/client.ts';
+import type {
+  ActionsPolicyManifest,
+  BranchProtectionManifest,
+  CodeSecurityConfigurationManifest,
+  CustomPropertyManifest,
+  ExternalGroupBinding,
+  OrgSettingsManifest,
+  RulesetManifest,
+  TeamManifest,
+} from '../synth/manifest.ts';
 
 /** Create a team that exists in the desired state but not on GitHub. */
 export interface CreateTeam {
@@ -7,7 +21,7 @@ export interface CreateTeam {
   readonly team: TeamManifest;
 }
 
-/** A single differing field on an existing team. */
+/** A single differing field on an existing resource. */
 export interface FieldChange<T = unknown> {
   readonly field: string;
   readonly from: T;
@@ -35,4 +49,176 @@ export interface LinkExternalGroup {
   readonly group: ExternalGroupBinding;
 }
 
-export type Change = CreateTeam | UpdateTeam | DeleteTeam | LinkExternalGroup;
+/** Bring the org's member privileges and defaults in line with the definition. */
+export interface UpdateOrgSettings {
+  readonly kind: 'org-settings';
+  readonly settings: OrgSettingsManifest;
+  readonly fields: FieldChange[];
+}
+
+/**
+ * Bring the Actions policy in line. `fields` names what differs; `policy` carries
+ * the declaration so the applier knows which of the three endpoints to call.
+ */
+export interface UpdateActionsPolicy {
+  readonly kind: 'actions-policy';
+  readonly policy: ActionsPolicyManifest;
+  readonly fields: FieldChange[];
+}
+
+export interface CreateRuleset {
+  readonly kind: 'create-ruleset';
+  readonly ruleset: RulesetManifest;
+}
+
+export interface UpdateRuleset {
+  readonly kind: 'update-ruleset';
+  readonly id: number;
+  readonly ruleset: RulesetManifest;
+  readonly fields: FieldChange[];
+}
+
+/** An org ruleset absent from the definition. Gated by --allow-delete. */
+export interface DeleteRuleset {
+  readonly kind: 'delete-ruleset';
+  readonly live: LiveRuleset;
+}
+
+export interface CreateSecurityConfiguration {
+  readonly kind: 'create-security-config';
+  readonly config: CodeSecurityConfigurationManifest;
+}
+
+export interface UpdateSecurityConfiguration {
+  readonly kind: 'update-security-config';
+  readonly id: number;
+  readonly config: CodeSecurityConfigurationManifest;
+  readonly fields: FieldChange[];
+}
+
+/** A code security configuration absent from the definition. Gated by --allow-delete. */
+export interface DeleteSecurityConfiguration {
+  readonly kind: 'delete-security-config';
+  readonly live: LiveCodeSecurityConfiguration;
+}
+
+/** Make a configuration the one new repositories of a scope inherit. */
+export interface SetDefaultSecurityConfiguration {
+  readonly kind: 'default-security-config';
+  readonly configName: string;
+  readonly scope: NonNullable<
+    CodeSecurityConfigurationManifest['defaultForNewRepos']
+  >;
+  readonly from?: string;
+}
+
+/**
+ * Attach a configuration to repositories. Attachment lives on the repositories
+ * rather than on the configuration, so this is re-applied every run instead of
+ * being diffed, the way team external-group links are.
+ */
+export interface AttachSecurityConfiguration {
+  readonly kind: 'attach-security-config';
+  readonly configName: string;
+  readonly scope: string;
+  /** Repository names, when attaching to a named list rather than a scope. */
+  readonly repositories?: string[];
+}
+
+export interface CreateCustomProperty {
+  readonly kind: 'create-property';
+  readonly property: CustomPropertyManifest;
+}
+
+export interface UpdateCustomProperty {
+  readonly kind: 'update-property';
+  readonly property: CustomPropertyManifest;
+  readonly fields: FieldChange[];
+}
+
+/** A custom property absent from the definition. Gated by --allow-delete. */
+export interface DeleteCustomProperty {
+  readonly kind: 'delete-property';
+  readonly live: LiveCustomProperty;
+}
+
+/** Set one property's value on the repositories whose value differs. */
+export interface SetPropertyValues {
+  readonly kind: 'property-values';
+  readonly propertyName: string;
+  /** Repository name to desired value, for the repositories that differ. */
+  readonly values: Record<string, string | string[] | null>;
+}
+
+/** Write a branch's legacy protection. */
+export interface SetBranchProtection {
+  readonly kind: 'branch-protection';
+  readonly protection: BranchProtectionManifest;
+  readonly fields: FieldChange[];
+}
+
+/**
+ * Remove a branch's legacy protection, from `enabled: false`. This is a
+ * deliberate declaration rather than a prune, so it is not gated by
+ * `--allow-delete`: the definition asked for the branch to be unprotected.
+ */
+export interface RemoveBranchProtection {
+  readonly kind: 'remove-branch-protection';
+  readonly repository: string;
+  readonly branch: string;
+}
+
+export type Change =
+  | CreateTeam
+  | UpdateTeam
+  | DeleteTeam
+  | LinkExternalGroup
+  | UpdateOrgSettings
+  | UpdateActionsPolicy
+  | CreateRuleset
+  | UpdateRuleset
+  | DeleteRuleset
+  | CreateSecurityConfiguration
+  | UpdateSecurityConfiguration
+  | DeleteSecurityConfiguration
+  | SetDefaultSecurityConfiguration
+  | AttachSecurityConfiguration
+  | CreateCustomProperty
+  | UpdateCustomProperty
+  | DeleteCustomProperty
+  | SetPropertyValues
+  | SetBranchProtection
+  | RemoveBranchProtection;
+
+/** The team-shaped changes, which the team applier owns. */
+export type TeamChange =
+  | CreateTeam
+  | UpdateTeam
+  | DeleteTeam
+  | LinkExternalGroup;
+
+/** Everything else: the org-wide governance surfaces. */
+export type GovernanceChange = Exclude<Change, TeamChange>;
+
+const TEAM_KINDS: ReadonlyArray<Change['kind']> = [
+  'create',
+  'update',
+  'delete',
+  'link-group',
+];
+
+export function isGovernanceChange(change: Change): change is GovernanceChange {
+  return !TEAM_KINDS.includes(change.kind);
+}
+
+/** The change kinds that remove something and therefore need `--allow-delete`. */
+export const DESTRUCTIVE_KINDS = [
+  'delete',
+  'delete-ruleset',
+  'delete-security-config',
+  'delete-property',
+] as const satisfies ReadonlyArray<Change['kind']>;
+
+export function isDestructive(change: Change): boolean {
+  return (DESTRUCTIVE_KINDS as ReadonlyArray<string>).includes(change.kind);
+}
