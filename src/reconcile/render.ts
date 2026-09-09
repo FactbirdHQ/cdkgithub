@@ -1,4 +1,4 @@
-import type { Change } from './changes.ts';
+import type { Change, FieldChange } from './changes.ts';
 
 /** Render a plan as a human-readable, Terraform-flavored summary. */
 export function renderPlan(changes: Change[]): string {
@@ -28,11 +28,7 @@ export function renderPlan(changes: Change[]): string {
       }
       case 'update': {
         lines.push(`  ~ team ${change.slug}`);
-        for (const f of change.fields) {
-          lines.push(
-            `      ${f.field}: ${JSON.stringify(f.from)} -> ${JSON.stringify(f.to)}`,
-          );
-        }
+        lines.push(...renderFields(change.fields));
         break;
       }
       case 'delete': {
@@ -47,27 +43,178 @@ export function renderPlan(changes: Change[]): string {
         );
         break;
       }
+
+      case 'org-settings': {
+        lines.push('  ~ organization settings');
+        lines.push(...renderFields(change.fields));
+        break;
+      }
+      case 'actions-policy': {
+        lines.push('  ~ actions policy');
+        lines.push(...renderFields(change.fields));
+        break;
+      }
+
+      case 'create-ruleset': {
+        const r = change.ruleset;
+        lines.push(`  + ruleset "${r.name}"`);
+        lines.push(`      target      = "${r.target}"`);
+        lines.push(`      enforcement = "${r.enforcement}"`);
+        for (const rule of r.rules) lines.push(`      rule ${rule.type}`);
+        if (r.conditions)
+          lines.push(`      conditions  = ${compact(r.conditions)}`);
+        break;
+      }
+      case 'update-ruleset': {
+        lines.push(`  ~ ruleset "${change.ruleset.name}"`);
+        lines.push(...renderFields(change.fields));
+        break;
+      }
+      case 'delete-ruleset': {
+        lines.push(
+          `  - ruleset "${change.live.name}"   (requires --allow-delete)`,
+        );
+        break;
+      }
+
+      case 'create-security-config': {
+        lines.push(`  + code security configuration "${change.config.name}"`);
+        lines.push(`      description = "${change.config.description}"`);
+        break;
+      }
+      case 'update-security-config': {
+        lines.push(`  ~ code security configuration "${change.config.name}"`);
+        lines.push(...renderFields(change.fields));
+        break;
+      }
+      case 'delete-security-config': {
+        lines.push(
+          `  - code security configuration "${change.live.name}"   (requires --allow-delete)`,
+        );
+        break;
+      }
+      case 'default-security-config': {
+        const from = change.from ? `"${change.from}"` : 'none';
+        lines.push(
+          `  ~ default for ${change.scope} new repositories: ${from} -> "${change.configName}"`,
+        );
+        break;
+      }
+      case 'attach-security-config': {
+        const target = change.repositories
+          ? change.repositories.join(', ')
+          : `${change.scope} repositories`;
+        lines.push(`  ⇄ attach "${change.configName}" to ${target}`);
+        break;
+      }
+
+      case 'create-property': {
+        const p = change.property;
+        lines.push(`  + custom property "${p.name}"`);
+        lines.push(`      value_type = "${p.valueType}"`);
+        if (p.allowedValues?.length)
+          lines.push(`      allowed    = ${JSON.stringify(p.allowedValues)}`);
+        break;
+      }
+      case 'update-property': {
+        lines.push(`  ~ custom property "${change.property.name}"`);
+        lines.push(...renderFields(change.fields));
+        break;
+      }
+      case 'delete-property': {
+        lines.push(
+          `  - custom property "${change.live.name}"   (requires --allow-delete)`,
+        );
+        break;
+      }
+      case 'branch-protection': {
+        const b = change.protection;
+        lines.push(`  ~ branch protection ${b.repository}#${b.branch}`);
+        lines.push(...renderFields(change.fields));
+        break;
+      }
+      case 'remove-branch-protection': {
+        lines.push(
+          `  - branch protection ${change.repository}#${change.branch}`,
+        );
+        break;
+      }
+      case 'property-values': {
+        lines.push(`  ~ custom property "${change.propertyName}" values`);
+        for (const [repo, value] of Object.entries(change.values)) {
+          lines.push(`      ${repo} = ${JSON.stringify(value)}`);
+        }
+        break;
+      }
     }
   }
 
   const counts = summarize(changes);
   lines.push('');
   lines.push(
-    `Plan: ${counts.create} to create, ${counts.update} to update, ${counts.link} to link, ${counts.delete} to delete.`,
+    `Plan: ${counts.create} to create, ${counts.update} to update, ` +
+      `${counts.link} to link, ${counts.delete} to delete.`,
   );
   return lines.join('\n');
 }
 
+function renderFields(fields: FieldChange[]): string[] {
+  return fields.map(
+    (f) => `      ${f.field}: ${compact(f.from)} -> ${compact(f.to)}`,
+  );
+}
+
+/**
+ * A one-line JSON rendering, trimmed. Ruleset rules and conditions are trees;
+ * printing them in full would bury the rest of the plan.
+ */
+function compact(value: unknown, limit = 160): string {
+  const json = JSON.stringify(value) ?? 'undefined';
+  return json.length <= limit ? json : `${json.slice(0, limit - 1)}…`;
+}
+
+const BUCKETS = {
+  create: [
+    'create',
+    'create-ruleset',
+    'create-security-config',
+    'create-property',
+  ],
+  update: [
+    'update',
+    'update-ruleset',
+    'update-security-config',
+    'update-property',
+    'org-settings',
+    'actions-policy',
+    'default-security-config',
+    'property-values',
+    'branch-protection',
+  ],
+  delete: [
+    'delete',
+    'delete-ruleset',
+    'delete-security-config',
+    'delete-property',
+    'remove-branch-protection',
+  ],
+  link: ['link-group', 'attach-security-config'],
+} as const satisfies Record<string, ReadonlyArray<Change['kind']>>;
+
+/** Count the changes per headline bucket, for the one-line plan summary. */
 export function summarize(changes: Change[]): {
   create: number;
   update: number;
   delete: number;
   link: number;
 } {
+  const count = (kinds: ReadonlyArray<Change['kind']>) =>
+    changes.filter((c) => kinds.includes(c.kind)).length;
+
   return {
-    create: changes.filter((c) => c.kind === 'create').length,
-    update: changes.filter((c) => c.kind === 'update').length,
-    delete: changes.filter((c) => c.kind === 'delete').length,
-    link: changes.filter((c) => c.kind === 'link-group').length,
+    create: count(BUCKETS.create),
+    update: count(BUCKETS.update),
+    delete: count(BUCKETS.delete),
+    link: count(BUCKETS.link),
   };
 }

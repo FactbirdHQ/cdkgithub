@@ -1,0 +1,359 @@
+/**
+ * Desired-state types for the organization's governance surfaces: org settings,
+ * the Actions policy, rulesets, code security configurations, and custom
+ * properties.
+ *
+ * Two conventions run through this file:
+ *
+ * - **Partial declaration.** Every field is optional and `undefined` means
+ *   "cdkgithub does not manage this"; the planner only diffs what the definition
+ *   actually declares, so adopting one setting never resets its neighbours.
+ * - **camelCase in, snake_case out.** These types mirror GitHub's payloads
+ *   field-for-field but in the casing the rest of the authoring API uses. The
+ *   client deep-converts keys before writing, and the planner converts the
+ *   desired state the same way before comparing it to what GitHub returns.
+ */
+
+// ---------------------------------------------------------------------------
+// Organization settings — PATCH /orgs/{org}
+// ---------------------------------------------------------------------------
+
+/** Base permission every org member gets on every repository. */
+export type DefaultRepositoryPermission = 'read' | 'write' | 'admin' | 'none';
+
+/**
+ * Member privileges and org-wide defaults.
+ *
+ * The `*_enabled_for_new_repositories` security toggles that `PATCH /orgs` also
+ * accepts are deliberately absent: GitHub has superseded them with code security
+ * configurations, which this tool models as
+ * {@link CodeSecurityConfigurationManifest}.
+ */
+export interface OrgSettingsManifest {
+  readonly defaultRepositoryPermission?: DefaultRepositoryPermission;
+  readonly membersCanCreateRepositories?: boolean;
+  readonly membersCanCreatePublicRepositories?: boolean;
+  readonly membersCanCreatePrivateRepositories?: boolean;
+  readonly membersCanCreateInternalRepositories?: boolean;
+  readonly membersCanCreatePages?: boolean;
+  readonly membersCanCreatePublicPages?: boolean;
+  readonly membersCanCreatePrivatePages?: boolean;
+  readonly membersCanForkPrivateRepositories?: boolean;
+  readonly webCommitSignoffRequired?: boolean;
+  readonly hasOrganizationProjects?: boolean;
+  readonly hasRepositoryProjects?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Actions policy — /orgs/{org}/actions/permissions[/*]
+// ---------------------------------------------------------------------------
+
+/** Which repositories in the org may run GitHub Actions at all. */
+export type EnabledRepositories = 'all' | 'none' | 'selected';
+
+/** Which actions and reusable workflows those repositories may run. */
+export type AllowedActions = 'all' | 'local_only' | 'selected';
+
+/** The allowlist that applies when `allowedActions` is `selected`. */
+export interface AllowedActionsConfig {
+  /** Allow actions published by GitHub itself (the `actions` org). */
+  readonly githubOwnedAllowed?: boolean;
+  /** Allow actions from GitHub Marketplace verified creators. */
+  readonly verifiedAllowed?: boolean;
+  /** Explicit allowlist, e.g. `["octo-org/*", "actions/checkout@v4"]`. */
+  readonly patternsAllowed?: string[];
+}
+
+/** Default `GITHUB_TOKEN` permissions granted to workflow runs. */
+export type DefaultWorkflowPermissions = 'read' | 'write';
+
+export interface ActionsPolicyManifest {
+  readonly enabledRepositories?: EnabledRepositories;
+  /**
+   * Repository names that may run Actions. Only meaningful with
+   * `enabledRepositories: "selected"`; names are resolved to ids at apply time.
+   */
+  readonly selectedRepositories?: string[];
+  readonly allowedActions?: AllowedActions;
+  /** Only meaningful with `allowedActions: "selected"`. */
+  readonly allowedActionsConfig?: AllowedActionsConfig;
+  readonly defaultWorkflowPermissions?: DefaultWorkflowPermissions;
+  /** Whether workflow runs may approve pull requests. Enabling this is a known risk. */
+  readonly canApprovePullRequestReviews?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Rulesets — /orgs/{org}/rulesets
+// ---------------------------------------------------------------------------
+
+/** What a ruleset protects: refs, tags, pushes, or repository lifecycle. */
+export type RulesetTarget = 'branch' | 'tag' | 'push' | 'repository';
+
+/** `active` enforces the rules; `evaluate` reports violations without blocking. */
+export type RulesetEnforcement = 'disabled' | 'active' | 'evaluate';
+
+/** An actor allowed to bypass a ruleset's rules. */
+export interface RulesetBypassActor {
+  /** Team id, app installation id, or `1` for `OrganizationAdmin`. */
+  readonly actorId?: number | null;
+  readonly actorType:
+    | 'Integration'
+    | 'OrganizationAdmin'
+    | 'RepositoryRole'
+    | 'Team'
+    | 'DeployKey';
+  /** `always`, or `pull_request` to bypass only through a pull request. */
+  readonly bypassMode?: 'always' | 'pull_request';
+}
+
+/** An include/exclude pattern pair, as used for refs and repository names. */
+export interface RulesetNamePatterns {
+  /** Patterns that must match. `~ALL` and `~DEFAULT_BRANCH` are accepted for refs. */
+  readonly include?: string[];
+  readonly exclude?: string[];
+}
+
+/** A repository custom property that a ruleset targets. */
+export interface RulesetPropertySpec {
+  readonly name: string;
+  readonly propertyValues: string[];
+  /** `custom` (the default) or `system` for GitHub-defined properties. */
+  readonly source?: 'custom' | 'system';
+}
+
+/**
+ * Which repositories and refs a ruleset applies to.
+ *
+ * Target repositories either by name (`repositoryName`) or by custom property
+ * (`repositoryProperty`) — GitHub accepts one or the other, not both. Property
+ * targeting is what makes {@link CustomPropertyManifest} worth declaring: classify
+ * repos once, then aim rulesets at the class.
+ */
+export interface RulesetConditions {
+  readonly refName?: RulesetNamePatterns;
+  readonly repositoryName?: RulesetNamePatterns & {
+    /** Prevent matching repositories from being renamed out of the ruleset. */
+    readonly protected?: boolean;
+  };
+  readonly repositoryProperty?: {
+    readonly include?: RulesetPropertySpec[];
+    readonly exclude?: RulesetPropertySpec[];
+  };
+}
+
+/** Parameters shared by the five name/message pattern rules. */
+export interface PatternRuleParameters {
+  /** How the rule is labelled in the GitHub UI and in violation messages. */
+  readonly name?: string;
+  /** Fail when the pattern *does* match, rather than when it does not. */
+  readonly negate?: boolean;
+  readonly operator: 'starts_with' | 'ends_with' | 'contains' | 'regex';
+  readonly pattern: string;
+}
+
+/** A status check that must pass, optionally pinned to the app that reports it. */
+export interface StatusCheckConfiguration {
+  readonly context: string;
+  readonly integrationId?: number;
+}
+
+/** A code scanning tool whose results must be in before a ref updates. */
+export interface CodeScanningTool {
+  /** The name of the tool, as it reports itself, e.g. `CodeQL`. */
+  readonly tool: string;
+  /** Severity at which an ordinary alert blocks the update. */
+  readonly alertsThreshold: 'none' | 'errors' | 'errors_and_warnings' | 'all';
+  /** Severity at which a security alert blocks the update. */
+  readonly securityAlertsThreshold:
+    | 'none'
+    | 'critical'
+    | 'high_or_higher'
+    | 'medium_or_higher'
+    | 'all';
+}
+
+/** A reusable workflow that must run, pinned to a ref or sha. */
+export interface WorkflowFileReference {
+  readonly path: string;
+  readonly repositoryId: number;
+  readonly ref?: string;
+  readonly sha?: string;
+}
+
+/**
+ * One rule in a ruleset. This is GitHub's rule union, restricted to the types
+ * that make sense to declare centrally; the shape of each `parameters` object
+ * mirrors the REST payload.
+ */
+export type RulesetRule =
+  | { readonly type: 'creation' }
+  | {
+      readonly type: 'update';
+      readonly parameters?: { readonly updateAllowsFetchAndMerge: boolean };
+    }
+  | { readonly type: 'deletion' }
+  | { readonly type: 'required_linear_history' }
+  | { readonly type: 'required_signatures' }
+  | { readonly type: 'non_fast_forward' }
+  | {
+      readonly type: 'pull_request';
+      readonly parameters: {
+        readonly requiredApprovingReviewCount: number;
+        readonly dismissStaleReviewsOnPush: boolean;
+        readonly requireCodeOwnerReview: boolean;
+        readonly requireLastPushApproval: boolean;
+        readonly requiredReviewThreadResolution: boolean;
+        readonly allowedMergeMethods?: Array<'merge' | 'squash' | 'rebase'>;
+        /** Request a Copilot review on every new pull request. */
+        readonly automaticCopilotCodeReviewEnabled?: boolean;
+      };
+    }
+  | {
+      readonly type: 'required_status_checks';
+      readonly parameters: {
+        readonly requiredStatusChecks: StatusCheckConfiguration[];
+        readonly strictRequiredStatusChecksPolicy: boolean;
+        /** Let branch/repo creation through even when a check would block it. */
+        readonly doNotEnforceOnCreate?: boolean;
+      };
+    }
+  | {
+      readonly type: 'required_deployments';
+      readonly parameters: {
+        readonly requiredDeploymentEnvironments: string[];
+      };
+    }
+  | {
+      readonly type:
+        | 'commit_message_pattern'
+        | 'commit_author_email_pattern'
+        | 'committer_email_pattern'
+        | 'branch_name_pattern'
+        | 'tag_name_pattern';
+      readonly parameters: PatternRuleParameters;
+    }
+  | {
+      readonly type: 'workflows';
+      readonly parameters: { readonly workflows: WorkflowFileReference[] };
+    }
+  | {
+      readonly type: 'file_path_restriction';
+      readonly parameters: { readonly restrictedFilePaths: string[] };
+    }
+  | {
+      readonly type: 'max_file_size';
+      readonly parameters: { readonly maxFileSize: number };
+    }
+  | {
+      readonly type: 'max_file_path_length';
+      readonly parameters: { readonly maxFilePathLength: number };
+    }
+  | {
+      readonly type: 'file_extension_restriction';
+      readonly parameters: { readonly restrictedFileExtensions: string[] };
+    }
+  | {
+      readonly type: 'code_scanning';
+      readonly parameters: { readonly codeScanningTools: CodeScanningTool[] };
+    }
+  | {
+      readonly type: 'merge_queue';
+      readonly parameters: {
+        readonly mergeMethod: 'MERGE' | 'SQUASH' | 'REBASE';
+        /** How many PRs are built together, and how the group is formed. */
+        readonly groupingStrategy: 'ALLGREEN' | 'HEADGREEN';
+        readonly minEntriesToMerge: number;
+        readonly maxEntriesToMerge: number;
+        readonly maxEntriesToBuild: number;
+        /** How long to wait for `minEntriesToMerge` before merging a smaller group. */
+        readonly minEntriesToMergeWaitMinutes: number;
+        /** A required check that has not reported by now counts as failed. */
+        readonly checkResponseTimeoutMinutes: number;
+      };
+    };
+
+/** A single organization ruleset. Identified by its name, which GitHub keeps unique. */
+export interface RulesetManifest {
+  readonly name: string;
+  readonly target: RulesetTarget;
+  readonly enforcement: RulesetEnforcement;
+  readonly conditions?: RulesetConditions;
+  readonly rules: RulesetRule[];
+  readonly bypassActors?: RulesetBypassActor[];
+}
+
+// ---------------------------------------------------------------------------
+// Code security configurations — /orgs/{org}/code-security/configurations
+// ---------------------------------------------------------------------------
+
+/** Tri-state used by most code security features. `not_set` leaves the repo's own choice. */
+export type SecurityFeature = 'enabled' | 'disabled' | 'not_set';
+
+/** Which repositories a configuration is attached to when it is applied. */
+export type SecurityAttachScope =
+  | 'all'
+  | 'all_without_configurations'
+  | 'public'
+  | 'private_or_internal';
+
+/** Which new repositories inherit a configuration automatically. */
+export type SecurityDefaultScope = 'all' | 'public' | 'private_and_internal';
+
+export interface CodeSecurityConfigurationManifest {
+  /** Unique within the org; this is the configuration's identity for diffing. */
+  readonly name: string;
+  readonly description: string;
+  readonly advancedSecurity?:
+    | 'enabled'
+    | 'disabled'
+    | 'code_security'
+    | 'secret_protection';
+  readonly dependencyGraph?: SecurityFeature;
+  readonly dependencyGraphAutosubmitAction?: SecurityFeature;
+  readonly dependabotAlerts?: SecurityFeature;
+  readonly dependabotSecurityUpdates?: SecurityFeature;
+  readonly codeScanningDefaultSetup?: SecurityFeature;
+  readonly secretScanning?: SecurityFeature;
+  readonly secretScanningPushProtection?: SecurityFeature;
+  readonly secretScanningValidityChecks?: SecurityFeature;
+  readonly secretScanningNonProviderPatterns?: SecurityFeature;
+  readonly privateVulnerabilityReporting?: SecurityFeature;
+  /** `enforced` stops repository admins from turning the features back off. */
+  readonly enforcement?: 'enforced' | 'unenforced';
+  /** Make this the configuration new repositories of the given scope start with. */
+  readonly defaultForNewRepos?: SecurityDefaultScope;
+  /**
+   * Attach the configuration to existing repositories. Applied on every run
+   * rather than diffed, because attachment lives on the repositories, not here.
+   */
+  readonly attach?: SecurityAttachScope;
+  /** Attach to these repositories by name. Mutually exclusive with `attach`. */
+  readonly attachRepositories?: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Custom properties — /orgs/{org}/properties/schema and /properties/values
+// ---------------------------------------------------------------------------
+
+export type CustomPropertyValueType =
+  | 'string'
+  | 'single_select'
+  | 'multi_select'
+  | 'true_false';
+
+export interface CustomPropertyManifest {
+  readonly name: string;
+  readonly valueType: CustomPropertyValueType;
+  readonly required?: boolean;
+  readonly defaultValue?: string | string[] | null;
+  readonly description?: string | null;
+  /** Permitted values for `single_select` and `multi_select`. */
+  readonly allowedValues?: string[] | null;
+  readonly valuesEditableBy?: 'org_actors' | 'org_and_repo_actors' | null;
+  /**
+   * Per-repository values: `{ "flow-portal": "tier-1" }`. Declaring them here
+   * keeps a property and the repositories it classifies in one place, which is
+   * what property-targeted rulesets need.
+   */
+  readonly values?: Record<string, string | string[] | null>;
+}

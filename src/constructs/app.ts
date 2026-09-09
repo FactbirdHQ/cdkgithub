@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { Construct } from 'constructs';
 import type { DesiredState } from '../synth/manifest.ts';
 import { synthesize } from '../synth/synthesizer.ts';
+import { collectWarnings } from '../synth/warnings.ts';
 
 export interface AppProps {
   /**
@@ -41,6 +42,11 @@ export class App extends Construct {
     const path = this.manifestPath;
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+
+    // Advisory only, and on stderr so it never lands in a piped manifest.
+    for (const warning of collectWarnings(state)) {
+      console.error(`warning: ${warning}\n`);
+    }
     return state;
   }
 }

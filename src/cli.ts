@@ -4,9 +4,11 @@ import { pathToFileURL } from 'node:url';
 import { OctokitGitHubClient } from './github/client.ts';
 import { resolveToken } from './github/token.ts';
 import { apply } from './reconcile/applier.ts';
+import { readLiveState } from './reconcile/live.ts';
 import { plan } from './reconcile/planner.ts';
 import { renderPlan } from './reconcile/render.ts';
 import type { DesiredState } from './synth/manifest.ts';
+import { collectWarnings } from './synth/warnings.ts';
 
 const USAGE = `cdkgithub — define GitHub org team structure as code
 
@@ -18,10 +20,13 @@ Usage:
 Options:
   --manifest <path>   Manifest to read for plan/apply (default: github.out/manifest.json)
   --yes               Actually execute changes (apply). Without it, apply is a dry run.
-  --allow-delete      Permit deleting teams that are absent from the manifest.
+  --allow-delete      Permit deleting resources absent from the manifest (teams,
+                      rulesets, code security configurations, custom properties).
   --enable-scim       Perform Entra ID (SCIM) external-group linking.
 
-Auth: uses GITHUB_TOKEN/GH_TOKEN, else falls back to \`gh auth token\`.`;
+Auth: uses GITHUB_TOKEN/GH_TOKEN, else falls back to \`gh auth token\`. Managing
+teams needs org-admin scope; the governance surfaces additionally need admin:org,
+and code security configurations need the org to have those features available.`;
 
 export async function main(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
@@ -60,9 +65,10 @@ async function synthCommand(configPath: string | undefined): Promise<number> {
 async function planCommand(flags: Flags): Promise<number> {
   const desired = readManifest(flags.manifest);
   const client = new OctokitGitHubClient(resolveToken());
-  const live = await client.listTeams(desired.org);
+  const live = await readLiveState(client, desired);
   const changes = plan(desired, live);
-  console.log(`Plan for organization "${desired.org}":\n`);
+  printWarnings(desired);
+  console.log(`Plan for ${describeOwner(desired)}:\n`);
   console.log(renderPlan(changes));
   return 0;
 }
@@ -70,10 +76,11 @@ async function planCommand(flags: Flags): Promise<number> {
 async function applyCommand(flags: Flags): Promise<number> {
   const desired = readManifest(flags.manifest);
   const client = new OctokitGitHubClient(resolveToken());
-  const live = await client.listTeams(desired.org);
+  const live = await readLiveState(client, desired);
   const changes = plan(desired, live);
 
-  console.log(`Plan for organization "${desired.org}":\n`);
+  printWarnings(desired);
+  console.log(`Plan for ${describeOwner(desired)}:\n`);
   console.log(renderPlan(changes));
   console.log('');
 
@@ -82,7 +89,7 @@ async function applyCommand(flags: Flags): Promise<number> {
     return 0;
   }
 
-  const result = await apply(client, desired.org, changes, live, {
+  const result = await apply(client, desired.owner, changes, live, {
     allowDelete: flags.allowDelete,
     enableScim: flags.enableScim,
     onProgress: (m) => console.log(`  ${m}`),
@@ -90,10 +97,23 @@ async function applyCommand(flags: Flags): Promise<number> {
 
   console.log(
     `\nApplied: ${result.created} created, ${result.updated} updated, ` +
-      `${result.linked} linked, ${result.deleted} deleted.`,
+      `${result.linked} linked, ${result.deleted} deleted, ` +
+      `${result.governance} governance change${result.governance === 1 ? '' : 's'}.`,
   );
   for (const s of result.skipped) console.log(`  skipped: ${s}`);
   return 0;
+}
+
+function describeOwner(desired: DesiredState): string {
+  const kind = desired.ownerType === 'user' ? 'user' : 'organization';
+  return `${kind} "${desired.owner}"`;
+}
+
+/** Advisory diagnostics, on stderr so piping the plan to a file keeps them visible. */
+function printWarnings(desired: DesiredState): void {
+  for (const warning of collectWarnings(desired)) {
+    console.error(`warning: ${warning}\n`);
+  }
 }
 
 function readManifest(path: string): DesiredState {
