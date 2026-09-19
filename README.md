@@ -36,8 +36,9 @@ apply    reconcile           create / update / (link) / delete to match desired
   top-level.
 - **Team identity is the slug** derived from its name. Renames are out of scope
   for v1 (a rename reads as delete + create).
-- **Deletes are gated** behind `--allow-delete` so unmanaged teams, rulesets,
-  configurations, and properties aren't wiped by accident. Removing branch
+- **Deletes are gated** behind `--allow-delete` so unmanaged teams, repository
+  grants, team members, rulesets, configurations, and properties aren't wiped by
+  accident. Removing branch
   protection with `enabled: false` is a declaration, not a prune, so it is not
   gated. **SCIM linking is gated** behind `--enable-scim`.
 - **A governance surface is unmanaged until you declare it.** See
@@ -102,6 +103,69 @@ new Team(org, "security", {                  // not IdP-synced; members managed 
 
 app.synth();
 ```
+
+### Rosters and repository access
+
+`repositories`, `members` and `maintainers` follow the same rule as the
+governance surfaces below: a team owns nothing it does not declare. Leave the
+access map off and cdkgithub never reads the team's repositories, never reports
+them, and never prunes them, so a definition that only describes the team tree
+runs on a token that only reaches teams. Write the map and the definition owns
+it, including `{}`: a live grant missing from it becomes a remove, gated behind
+`--allow-delete`. The two lists work the same way, and declaring either one
+makes the definition own the whole roster, so the list you left off reads as
+empty rather than as unmanaged.
+
+An IdP-synced team is the exception. A team with an `externalGroup` has its
+membership driven by Entra, so its roster is never diffed whatever it declares.
+Reconciling it here would only fight the next SCIM push.
+
+```ts
+new Team(org, "cloud", {
+  members: ["ada"],                            // owns the roster
+  repositories: { nest: "push" },              // owns the access
+});
+
+new Team(org, "security", {
+  externalGroup: { name: "GH-Security" },      // roster owned by Entra
+  repositories: {},                            // owns the access, and grants none
+});
+```
+
+#### Inherited access is reported but not removable
+
+GitHub reports a child team's repositories as including everything its ancestors
+reach, and a parent team's members as including everyone in its descendants.
+Neither is removable where it is reported. So cdkgithub proposes a removal only
+when the team tree does not already explain what it found: a grant a parent
+gives at the same level or higher is left alone, and so is a member who belongs
+to a team below. Without that, a faithful definition would propose the same
+impossible deletions on every run.
+
+Additions and permission changes need no such care. They compare the declaration
+against the access the team effectively has, which is the thing that matters.
+
+#### Custom repository roles
+
+A permission is one of the five built-ins, `pull`, `triage`, `push`, `maintain`,
+`admin`, or the display name of a custom repository role the organization
+defines:
+
+```ts
+new Team(org, "cloud", {
+  repositories: { nest: "Merge Queue Jumper" },
+});
+```
+
+`plan` resolves every name that is not a built-in against
+`GET /orgs/{org}/custom-repository-roles` and fails on one that matches nothing,
+before anything is written. A typo is caught as a typo rather than granted as a
+role nobody defined. A custom role ranks as the built-in it extends, which is
+what lets the inheritance rule above compare it against the others.
+
+GitHub answers with `read`/`write` where it takes `pull`/`push`. cdkgithub maps
+the reply onto the request, so a grant written as `push` matches a live `write`
+instead of reporting drift forever.
 
 ## Governance and policy
 
