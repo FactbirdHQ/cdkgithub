@@ -9,6 +9,21 @@ export interface TeamProps {
    */
   readonly name?: string;
 
+  /**
+   * The slug this team carries on GitHub right now, when a new `name` no longer
+   * derives it. Set it to rename the team in place.
+   *
+   * Identity is the slug, so without this a renamed team reads as one team
+   * deleted and another created: the id changes, the members are notified, and
+   * the history goes. With it, cdkgithub finds the live team under the old slug
+   * and renames it, which is what GitHub's own endpoint does.
+   *
+   * The marker is idempotent. Once the rename has landed, the live slug matches
+   * the derived one, the lookup never falls back, and the line can be deleted at
+   * leisure.
+   */
+  readonly previousSlug?: string;
+
   readonly description?: string;
 
   /**

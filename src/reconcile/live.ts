@@ -106,9 +106,14 @@ export async function readLiveState(
   ]);
 
   // Per-team reads come second: a team the definition creates this run has no
-  // live grants or roster to read, and asking for them would 404.
-  const live = new Set(teams.map((t) => t.slug));
-  const existing = desired.teams.filter((t) => live.has(t.slug));
+  // live grants or roster to read, and asking for them would 404. A team being
+  // renamed still answers to its old slug here, because nothing has been written
+  // yet, so the maps are keyed by the live slug throughout.
+  const liveBySlug = new Map(teams.map((t) => [t.slug, t] as const));
+  const existing = desired.teams.flatMap((team) => {
+    const current = resolveLive(team, liveBySlug);
+    return current ? [{ team, slug: current.slug }] : [];
+  });
   const [teamRepositories, teamMembers] = await Promise.all([
     readPerTeam(existing, declaresAccess, (slug) =>
       client.listTeamRepositories(owner, slug),
@@ -135,6 +140,24 @@ export async function readLiveState(
   };
 }
 
+/**
+ * The live team a declaration refers to: the one under its own slug, or the one
+ * it is renaming.
+ *
+ * The derived slug is tried first, so a `previousSlug` left in place after the
+ * rename landed still resolves to the team it always did rather than to whatever
+ * someone has since created under the freed-up name.
+ */
+export function resolveLive(
+  team: TeamManifest,
+  liveBySlug: Map<string, LiveTeam>,
+): LiveTeam | undefined {
+  return (
+    liveBySlug.get(team.slug) ??
+    (team.previousSlug ? liveBySlug.get(team.previousSlug) : undefined)
+  );
+}
+
 /** A team declares its repository access when it carries a map, `{}` included. */
 export function declaresAccess(team: TeamManifest): boolean {
   return team.repositories !== undefined;
@@ -156,15 +179,15 @@ export function declaresRoster(team: TeamManifest): boolean {
  * rather than managed-and-empty.
  */
 async function readPerTeam<T>(
-  teams: TeamManifest[],
+  teams: Array<{ team: TeamManifest; slug: string }>,
   declares: (team: TeamManifest) => boolean,
   read: (slug: string) => Promise<T[]>,
 ): Promise<Map<string, T[]> | undefined> {
-  const wanted = teams.filter(declares);
+  const wanted = teams.filter((t) => declares(t.team));
   if (wanted.length === 0) return undefined;
 
   const entries = await Promise.all(
-    wanted.map(async (t) => [t.slug, await read(t.slug)] as const),
+    wanted.map(async ({ slug }) => [slug, await read(slug)] as const),
   );
   return new Map(entries);
 }
