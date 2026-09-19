@@ -3,19 +3,25 @@ import type { DesiredState, TeamManifest } from '../synth/manifest.ts';
 import type { Change, FieldChange } from './changes.ts';
 import type { LiveState } from './live.ts';
 import { planGovernance } from './plan-governance.ts';
+import { planTeamAccess } from './plan-team-access.ts';
 
 /**
  * Diff desired state against the live org and produce an ordered list of changes.
  *
  * Order: team creates (parents before children, as the manifest is already
- * sorted) → team updates → external-group links → team deletes (children before
- * parents) → governance. This lets `apply` run the list top-to-bottom without
- * violating GitHub's parent/child constraints, and puts the governance surfaces
- * after the teams they may name as ruleset bypass actors.
+ * sorted) → team updates → repository grants and rosters → external-group links
+ * → team deletes (children before parents) → governance. This lets `apply` run
+ * the list top-to-bottom without violating GitHub's parent/child constraints,
+ * and puts the governance surfaces after the teams they may name as ruleset
+ * bypass actors.
  *
- * Note on membership: for existing teams we do NOT diff members or repo grants —
- * IdP-synced teams have their membership owned by Entra ID (SCIM). The `members`
- * / `repositories` fields are applied best-effort when a team is first created.
+ * Note on membership and access: a team owns neither until it declares one. A
+ * team with no `repositories` map keeps the grants it has, and a team with no
+ * `members`/`maintainers` keeps its roster, so a definition covering only the
+ * team tree still runs on a token that only reaches teams. An IdP-synced team
+ * never has its roster diffed whatever it declares, because Entra owns it.
+ * Both are written in full when a team is first created, which is the one
+ * moment there is nothing live to diff against.
  */
 export function plan(desired: DesiredState, live: LiveState): Change[] {
   const liveTeams = live.teams;
@@ -56,6 +62,7 @@ export function plan(desired: DesiredState, live: LiveState): Change[] {
   return [
     ...creates,
     ...updates,
+    ...planTeamAccess(desired.teams, live),
     ...links,
     ...deletes,
     ...planGovernance(desired, live),
