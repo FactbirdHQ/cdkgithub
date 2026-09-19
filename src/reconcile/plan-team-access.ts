@@ -43,6 +43,14 @@ export function planTeamAccess(
 ): Change[] {
   const liveBySlug = new Map(live.teams.map((t) => [t.slug, t] as const));
   const roles = rankCustomRoles(live.customRepositoryRoles ?? []);
+  // Keyed by live slug, because that is how the tree and the live rosters are
+  // keyed while a rename is still pending.
+  const declaredByLiveSlug = new Map(
+    teams.flatMap((t) => {
+      const current = resolveLive(t, liveBySlug);
+      return current ? [[current.slug, t] as const] : [];
+    }),
+  );
   assertPermissionsResolve(teams, live.customRepositoryRoles);
 
   const changes: Change[] = [];
@@ -59,7 +67,9 @@ export function planTeamAccess(
       );
     }
     if (declaresRoster(team)) {
-      changes.push(...planRoster(team, current.slug, live, liveBySlug));
+      changes.push(
+        ...planRoster(team, current.slug, live, liveBySlug, declaredByLiveSlug),
+      );
     }
   }
   return changes;
@@ -182,6 +192,7 @@ function planRoster(
   liveSlug: string,
   live: LiveState,
   liveBySlug: Map<string, LiveTeam>,
+  declaredByLiveSlug: Map<string, TeamManifest>,
 ): Change[] {
   const declared = new Map<string, TeamRole>();
   for (const username of team.members ?? []) declared.set(username, 'member');
@@ -190,31 +201,49 @@ function planRoster(
     declared.set(username, 'maintainer');
   }
 
-  const current = new Map(
+  const reported = new Map(
     (live.teamMembers?.get(liveSlug) ?? []).map(
       (m) => [m.login, m.role] as const,
     ),
   );
-  const throughChildren = membersOfDescendants(liveSlug, live, liveBySlug);
+  // The roster GitHub reports is this team's own plus everyone in a team below
+  // it, and the API draws no line between the two: asking for one member's
+  // membership answers the same either way. Whoever a team below explains is
+  // therefore not provably a member of this one.
+  const explainedNow = membersOfDescendants(liveSlug, live, liveBySlug);
+  // The same question asked of the rosters those teams will hold once this run
+  // has been applied. The two differ exactly for someone a child is dropping,
+  // which is the case that needs a membership written here.
+  const explainedAfter = membersOfDescendants(
+    liveSlug,
+    live,
+    liveBySlug,
+    declaredByLiveSlug,
+  );
+  const direct = new Map(
+    [...reported].filter(([login]) => !explainedNow.has(login)),
+  );
 
   const changes: Change[] = [];
   for (const [username, role] of declared) {
-    const from = current.get(username);
-    if (from === role) continue;
+    const effective = reported.get(username);
+    // Satisfied when the role on this team is already right and it comes from
+    // either a membership here or a team below that is keeping them. Moving
+    // someone up from a child fails both, which is the point: the child drops
+    // them this run, so this team has to hold them itself.
+    const held = direct.has(username) || explainedAfter.has(username);
+    if (effective === role && held) continue;
     changes.push({
       kind: 'set-membership',
       slug: team.slug,
       username,
       role,
-      from,
+      from: effective,
     });
   }
 
-  for (const [username, from] of current) {
+  for (const [username, from] of direct) {
     if (declared.has(username)) continue;
-    // Reported here only because they are in a team below this one. Their
-    // membership belongs to that team's roster, not this one's.
-    if (throughChildren.has(username)) continue;
     changes.push({
       kind: 'remove-membership',
       slug: team.slug,
@@ -225,11 +254,19 @@ function planRoster(
   return changes;
 }
 
-/** Everyone who reaches `slug` by being in a team below it. */
+/**
+ * Everyone who reaches `slug` by being in a team below it.
+ *
+ * Without `declaredByLiveSlug` the answer is about the organization as it
+ * stands. With it, the answer is about the organization this run will leave
+ * behind: a descendant that declares a roster is about to become that roster, so
+ * it explains the people it keeps and not the ones it drops.
+ */
 function membersOfDescendants(
   slug: string,
   live: LiveState,
   liveBySlug: Map<string, LiveTeam>,
+  declaredByLiveSlug?: Map<string, TeamManifest>,
 ): Set<string> {
   const children = new Map<string, string[]>();
   for (const team of liveBySlug.values()) {
@@ -246,10 +283,27 @@ function membersOfDescendants(
     const next = queue.shift();
     if (next === undefined || seen.has(next)) continue;
     seen.add(next);
-    for (const member of live.teamMembers?.get(next) ?? []) {
-      inherited.add(member.login);
+    for (const login of rosterOf(next, live, declaredByLiveSlug)) {
+      inherited.add(login);
     }
     queue.push(...(children.get(next) ?? []));
   }
   return inherited;
+}
+
+/**
+ * The logins a team holds, or will hold once this run has been applied when a
+ * declaration is supplied. A team that declares no roster, or whose roster Entra
+ * owns, keeps whoever it has either way.
+ */
+function rosterOf(
+  liveSlug: string,
+  live: LiveState,
+  declaredByLiveSlug?: Map<string, TeamManifest>,
+): string[] {
+  const declaration = declaredByLiveSlug?.get(liveSlug);
+  if (declaration && declaresRoster(declaration)) {
+    return [...(declaration.members ?? []), ...(declaration.maintainers ?? [])];
+  }
+  return (live.teamMembers?.get(liveSlug) ?? []).map((m) => m.login);
 }
