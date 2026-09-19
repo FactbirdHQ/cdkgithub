@@ -255,6 +255,7 @@ function toManifest(team: Team): TeamManifest {
   return {
     slug: team.slug,
     name: team.teamName,
+    previousSlug: team.props.previousSlug,
     description: team.props.description,
     privacy: team.props.privacy ?? 'closed',
     parentSlug: parent?.slug,

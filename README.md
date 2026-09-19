@@ -34,8 +34,9 @@ apply    reconcile           create / update / (link) / delete to match desired
 - **Nesting is the construct tree.** A `Team` scoped under another `Team` becomes
   a child team (GitHub `parent_team_id`); a team under the `Organization` is
   top-level.
-- **Team identity is the slug** derived from its name. Renames are out of scope
-  for v1 (a rename reads as delete + create).
+- **Team identity is the slug** derived from its name, so a new name is a new
+  team unless you say otherwise. `previousSlug` is how you say otherwise. See
+  [Renaming a team](#renaming-a-team).
 - **Deletes are gated** behind `--allow-delete` so unmanaged teams, repository
   grants, team members, rulesets, configurations, and properties aren't wiped by
   accident. Removing branch
@@ -103,6 +104,33 @@ new Team(org, "security", {                  // not IdP-synced; members managed 
 
 app.synth();
 ```
+
+### Renaming a team
+
+GitHub derives a team's slug from its name and addresses the team by that slug,
+so changing the name changes the address. cdkgithub keys identity on the slug
+too, which means a new name reads as one team gone and another arrived. Name the
+old slug and it becomes a rename instead:
+
+```ts
+new Team(cloud, 'tech-council', {
+  name: 'Tech Council',
+  previousSlug: 'tech-leads',
+});
+```
+
+The team keeps its id, its members, its grants and its history, because the
+whole operation is the `PATCH` GitHub offers for exactly this. The plan shows
+both the slug and the name moving, and nothing is deleted.
+
+`previousSlug` is looked up only when nothing matches the derived slug, so the
+line goes inert the moment the rename lands and can be deleted whenever you next
+touch the team. Leaving it is harmless: it will not grab a team someone later
+creates under the freed-up name.
+
+What a rename does not fix is everything outside GitHub's team API that spells
+the slug out. `CODEOWNERS` is the one that bites, since `@org/old-slug` silently
+stops matching anyone. Grep for the old slug before renaming.
 
 ### Rosters and repository access
 

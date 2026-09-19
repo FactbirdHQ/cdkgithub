@@ -20,7 +20,7 @@ import type { TeamManifest } from '../synth/manifest.ts';
 import { isBuiltInRepoPermission } from '../synth/manifest.ts';
 import type { Change, TeamRole } from './changes.ts';
 import type { LiveState } from './live.ts';
-import { declaresAccess, declaresRoster } from './live.ts';
+import { declaresAccess, declaresRoster, resolveLive } from './live.ts';
 
 /** Built-in permissions from weakest to strongest. */
 const PERMISSION_RANK: Record<string, number> = {
@@ -47,12 +47,19 @@ export function planTeamAccess(
 
   const changes: Change[] = [];
   for (const team of teams) {
-    if (!liveBySlug.has(team.slug)) continue;
+    // Live state is keyed by the slug GitHub answers to now, which for a team
+    // being renamed is still the old one. The changes below are addressed to the
+    // new slug instead: they run after the rename, and the old slug is gone by
+    // then, since GitHub redirects neither the team nor its sub-resources.
+    const current = resolveLive(team, liveBySlug);
+    if (!current) continue;
     if (declaresAccess(team)) {
-      changes.push(...planRepoAccess(team, live, liveBySlug, roles));
+      changes.push(
+        ...planRepoAccess(team, current.slug, live, liveBySlug, roles),
+      );
     }
     if (declaresRoster(team)) {
-      changes.push(...planRoster(team, live, liveBySlug));
+      changes.push(...planRoster(team, current.slug, live, liveBySlug));
     }
   }
   return changes;
@@ -102,17 +109,18 @@ function rankOf(permission: string, roles: Map<string, number>): number {
 
 function planRepoAccess(
   team: TeamManifest,
+  liveSlug: string,
   live: LiveState,
   liveBySlug: Map<string, LiveTeam>,
   roles: Map<string, number>,
 ): Change[] {
   const declared = team.repositories ?? {};
   const current = new Map(
-    (live.teamRepositories?.get(team.slug) ?? []).map(
+    (live.teamRepositories?.get(liveSlug) ?? []).map(
       (r) => [r.name, comparableRoleName(r.roleName)] as const,
     ),
   );
-  const inherited = inheritedAccess(team.slug, live, liveBySlug);
+  const inherited = inheritedAccess(liveSlug, live, liveBySlug);
 
   const changes: Change[] = [];
   for (const [repository, permission] of Object.entries(declared)) {
@@ -171,6 +179,7 @@ function inheritedAccess(
 
 function planRoster(
   team: TeamManifest,
+  liveSlug: string,
   live: LiveState,
   liveBySlug: Map<string, LiveTeam>,
 ): Change[] {
@@ -182,11 +191,11 @@ function planRoster(
   }
 
   const current = new Map(
-    (live.teamMembers?.get(team.slug) ?? []).map(
+    (live.teamMembers?.get(liveSlug) ?? []).map(
       (m) => [m.login, m.role] as const,
     ),
   );
-  const throughChildren = membersOfDescendants(team.slug, live, liveBySlug);
+  const throughChildren = membersOfDescendants(liveSlug, live, liveBySlug);
 
   const changes: Change[] = [];
   for (const [username, role] of declared) {
