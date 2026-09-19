@@ -7,12 +7,15 @@ import type {
   LiveBranchProtection,
   LiveCodeSecurityConfiguration,
   LiveCustomProperty,
+  LiveCustomRepositoryRole,
   LiveDefaultSecurityConfiguration,
   LiveOrgSettings,
   LiveRepository,
   LiveRepositoryProperties,
   LiveRuleset,
   LiveTeam,
+  LiveTeamMember,
+  LiveTeamRepository,
   UpdateTeamParams,
 } from '../src/github/client.ts';
 import type {
@@ -32,6 +35,11 @@ import type {
 
 export interface FakeClientState {
   teams?: LiveTeam[];
+  /** Live repository grants keyed by team slug, as GitHub reports them. */
+  teamRepositories?: Record<string, LiveTeamRepository[]>;
+  /** Live rosters keyed by team slug. */
+  teamMembers?: Record<string, LiveTeamMember[]>;
+  customRepositoryRoles?: LiveCustomRepositoryRole[];
   externalGroups?: ExternalIdpGroup[];
   repositories?: LiveRepository[];
   appInstallations?: LiveAppInstallation[];
@@ -54,6 +62,9 @@ export interface FakeClientState {
  */
 export class FakeClient implements GitHubClient {
   teams: LiveTeam[];
+  teamRepositories: Record<string, LiveTeamRepository[]>;
+  teamMembers: Record<string, LiveTeamMember[]>;
+  customRepositoryRoles: LiveCustomRepositoryRole[];
   externalGroups: ExternalIdpGroup[];
   repositories: LiveRepository[];
   appInstallations: LiveAppInstallation[];
@@ -74,6 +85,9 @@ export class FakeClient implements GitHubClient {
 
   constructor(state: FakeClientState = {}) {
     this.teams = state.teams ?? [];
+    this.teamRepositories = state.teamRepositories ?? {};
+    this.teamMembers = state.teamMembers ?? {};
+    this.customRepositoryRoles = state.customRepositoryRoles ?? [];
     this.externalGroups = state.externalGroups ?? [];
     this.repositories = state.repositories ?? [];
     this.appInstallations = state.appInstallations ?? [];
@@ -144,6 +158,14 @@ export class FakeClient implements GitHubClient {
     this.memberships.push({ slug, username, role });
   }
 
+  async removeMembership(
+    _org: string,
+    slug: string,
+    username: string,
+  ): Promise<void> {
+    this.record('removeMembership', { slug, username });
+  }
+
   async setRepoPermission(
     _org: string,
     slug: string,
@@ -151,6 +173,29 @@ export class FakeClient implements GitHubClient {
     permission: RepoPermission,
   ): Promise<void> {
     this.record('setRepoPermission', { slug, repo, permission });
+  }
+
+  async removeRepoPermission(
+    _org: string,
+    slug: string,
+    repo: string,
+  ): Promise<void> {
+    this.record('removeRepoPermission', { slug, repo });
+  }
+
+  async listTeamMembers(_org: string, slug: string): Promise<LiveTeamMember[]> {
+    return this.teamMembers[slug] ?? [];
+  }
+
+  async listTeamRepositories(
+    _org: string,
+    slug: string,
+  ): Promise<LiveTeamRepository[]> {
+    return this.teamRepositories[slug] ?? [];
+  }
+
+  async listCustomRepositoryRoles(): Promise<LiveCustomRepositoryRole[]> {
+    return this.customRepositoryRoles;
   }
 
   async listExternalGroups(): Promise<ExternalIdpGroup[]> {

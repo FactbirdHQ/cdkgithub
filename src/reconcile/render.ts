@@ -17,11 +17,11 @@ export function renderPlan(changes: Change[]): string {
         lines.push(`      name       = "${t.name}"`);
         if (t.description) lines.push(`      description = "${t.description}"`);
         lines.push(`      privacy    = "${t.privacy}"`);
-        if (t.maintainers.length)
+        if (t.maintainers?.length)
           lines.push(`      maintainers = ${JSON.stringify(t.maintainers)}`);
-        if (t.members.length)
+        if (t.members?.length)
           lines.push(`      members     = ${JSON.stringify(t.members)}`);
-        for (const [repo, perm] of Object.entries(t.repositories)) {
+        for (const [repo, perm] of Object.entries(t.repositories ?? {})) {
           lines.push(`      repo ${repo} = "${perm}"`);
         }
         break;
@@ -35,6 +35,33 @@ export function renderPlan(changes: Change[]): string {
         lines.push(`  - team ${change.live.slug}   (requires --allow-delete)`);
         break;
       }
+      case 'set-repo-access': {
+        const from = change.from ? `"${change.from}" -> ` : '';
+        lines.push(
+          `  ~ team ${change.slug} on ${change.repository}: ${from}"${change.permission}"`,
+        );
+        break;
+      }
+      case 'remove-repo-access': {
+        lines.push(
+          `  - team ${change.slug} on ${change.repository} ("${change.from}")   (requires --allow-delete)`,
+        );
+        break;
+      }
+      case 'set-membership': {
+        const from = change.from ? `"${change.from}" -> ` : '';
+        lines.push(
+          `  ~ ${change.username} in ${change.slug}: ${from}"${change.role}"`,
+        );
+        break;
+      }
+      case 'remove-membership': {
+        lines.push(
+          `  - ${change.username} from ${change.slug} ("${change.from}")   (requires --allow-delete)`,
+        );
+        break;
+      }
+
       case 'link-group': {
         const g = change.group;
         const ref = g.id !== undefined ? `id ${g.id}` : `"${g.name}"`;
@@ -182,6 +209,8 @@ const BUCKETS = {
   ],
   update: [
     'update',
+    'set-repo-access',
+    'set-membership',
     'update-ruleset',
     'update-security-config',
     'update-property',
@@ -193,6 +222,8 @@ const BUCKETS = {
   ],
   delete: [
     'delete',
+    'remove-repo-access',
+    'remove-membership',
     'delete-ruleset',
     'delete-security-config',
     'delete-property',
