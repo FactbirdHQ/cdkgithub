@@ -84,14 +84,15 @@ export async function apply(
         });
         idBySlug.set(team.slug, team.id);
 
-        // Best-effort membership & repo grants on creation (see planner notes).
-        for (const username of t.maintainers) {
+        // Written in full here: a team that has just been created has no live
+        // roster or grants to diff, so the planner has nothing to say about it.
+        for (const username of t.maintainers ?? []) {
           await client.setMembership(org, team.slug, username, 'maintainer');
         }
-        for (const username of t.members) {
+        for (const username of t.members ?? []) {
           await client.setMembership(org, team.slug, username, 'member');
         }
-        for (const [repo, permission] of Object.entries(t.repositories)) {
+        for (const [repo, permission] of Object.entries(t.repositories ?? {})) {
           await client.setRepoPermission(org, team.slug, repo, permission);
         }
         created++;
@@ -108,6 +109,46 @@ export async function apply(
           parentTeamId: parentSlug ? (idBySlug.get(parentSlug) ?? null) : null,
         });
         updated++;
+        break;
+      }
+
+      case 'set-repo-access': {
+        log(
+          `Granting ${change.slug} ${change.permission} on ${change.repository}`,
+        );
+        await client.setRepoPermission(
+          org,
+          change.slug,
+          change.repository,
+          change.permission,
+        );
+        updated++;
+        break;
+      }
+
+      case 'remove-repo-access': {
+        log(`Removing ${change.slug} from ${change.repository}`);
+        await client.removeRepoPermission(org, change.slug, change.repository);
+        deleted++;
+        break;
+      }
+
+      case 'set-membership': {
+        log(`Adding ${change.username} to ${change.slug} as ${change.role}`);
+        await client.setMembership(
+          org,
+          change.slug,
+          change.username,
+          change.role,
+        );
+        updated++;
+        break;
+      }
+
+      case 'remove-membership': {
+        log(`Removing ${change.username} from ${change.slug}`);
+        await client.removeMembership(org, change.slug, change.username);
+        deleted++;
         break;
       }
 
@@ -202,6 +243,10 @@ function describeDelete(change: Change): string {
   switch (change.kind) {
     case 'delete':
       return `delete team ${change.live.slug}`;
+    case 'remove-repo-access':
+      return `remove ${change.slug}'s ${change.from} on ${change.repository}`;
+    case 'remove-membership':
+      return `remove ${change.username} from ${change.slug}`;
     case 'delete-ruleset':
       return `delete ruleset "${change.live.name}"`;
     case 'delete-security-config':

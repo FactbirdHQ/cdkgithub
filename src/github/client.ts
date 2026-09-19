@@ -33,6 +33,54 @@ export interface LiveTeam {
   readonly parentSlug: string | null;
 }
 
+/**
+ * One repository a team can reach, as GitHub reports it.
+ *
+ * `roleName` is GitHub's friendly vocabulary, `read`/`write`/`admin` and the
+ * display name of a custom role, which is not the vocabulary
+ * `PUT /orgs/{org}/teams/{slug}/repos/{repo}` takes. {@link comparableRoleName}
+ * is what reconciles the two.
+ */
+export interface LiveTeamRepository {
+  readonly name: string;
+  readonly roleName: string;
+}
+
+/** One member of a team, with the role GitHub records for them. */
+export interface LiveTeamMember {
+  readonly login: string;
+  readonly role: 'member' | 'maintainer';
+}
+
+/** Shape of `GET /orgs/{org}/custom-repository-roles` (not a typed Octokit method). */
+interface CustomRepositoryRolesResponse {
+  custom_roles?: Array<{ id: number; name: string; base_role?: string }>;
+}
+
+/** A repository role the organization defines on top of the five built-ins. */
+export interface LiveCustomRepositoryRole {
+  readonly id: number;
+  readonly name: string;
+  /** The built-in the role extends, which is what ranks it against the others. */
+  readonly baseRole: string;
+}
+
+/**
+ * GitHub answers with a friendly role name and takes a permission value, and the
+ * two vocabularies disagree on exactly two words. Mapping the reply onto the
+ * request is what lets a declared `push` match a live `write` instead of
+ * reporting drift on every run. A custom role passes through: its display name
+ * is both the reply and the request.
+ */
+const ROLE_NAME_TO_PERMISSION: Record<string, string> = {
+  read: 'pull',
+  write: 'push',
+};
+
+export function comparableRoleName(roleName: string): string {
+  return ROLE_NAME_TO_PERMISSION[roleName] ?? roleName;
+}
+
 /** An Entra ID (Azure AD) security group exposed to GitHub via SCIM. */
 export interface ExternalIdpGroup {
   readonly id: number;
@@ -171,12 +219,27 @@ export interface GitHubClient {
     username: string,
     role: 'member' | 'maintainer',
   ): Promise<void>;
+  removeMembership(org: string, slug: string, username: string): Promise<void>;
   setRepoPermission(
     org: string,
     slug: string,
     repo: string,
     permission: RepoPermission,
   ): Promise<void>;
+  removeRepoPermission(org: string, slug: string, repo: string): Promise<void>;
+
+  /** A team's direct roster, read back only when the definition declares one. */
+  listTeamMembers(org: string, slug: string): Promise<LiveTeamMember[]>;
+
+  /** A team's repository grants, read back only when the definition declares them. */
+  listTeamRepositories(
+    org: string,
+    slug: string,
+  ): Promise<LiveTeamRepository[]>;
+
+  /** The org's custom repository roles, for resolving a non-built-in permission. */
+  listCustomRepositoryRoles(org: string): Promise<LiveCustomRepositoryRole[]>;
+
   listExternalGroups(org: string): Promise<ExternalIdpGroup[]>;
   linkExternalGroup(org: string, slug: string, groupId: number): Promise<void>;
 
@@ -370,6 +433,18 @@ export class OctokitGitHubClient implements GitHubClient {
     });
   }
 
+  async removeMembership(
+    org: string,
+    slug: string,
+    username: string,
+  ): Promise<void> {
+    await this.octokit.rest.teams.removeMembershipForUserInOrg({
+      org,
+      team_slug: slug,
+      username,
+    });
+  }
+
   async setRepoPermission(
     org: string,
     slug: string,
@@ -383,6 +458,67 @@ export class OctokitGitHubClient implements GitHubClient {
       repo,
       permission,
     });
+  }
+
+  async removeRepoPermission(
+    org: string,
+    slug: string,
+    repo: string,
+  ): Promise<void> {
+    await this.octokit.rest.teams.removeRepoInOrg({
+      org,
+      team_slug: slug,
+      owner: org,
+      repo,
+    });
+  }
+
+  async listTeamMembers(org: string, slug: string): Promise<LiveTeamMember[]> {
+    // Two calls rather than one: the unfiltered listing reports every member
+    // with the same role, so the maintainers have to be asked for by name.
+    const byRole = async (role: 'maintainer' | 'member') => {
+      const users = await this.octokit.paginate(
+        this.octokit.rest.teams.listMembersInOrg,
+        { org, team_slug: slug, role, per_page: 100 },
+      );
+      return users.map((u) => ({ login: u.login, role }));
+    };
+    const [maintainers, members] = await Promise.all([
+      byRole('maintainer'),
+      byRole('member'),
+    ]);
+    return [...maintainers, ...members];
+  }
+
+  async listTeamRepositories(
+    org: string,
+    slug: string,
+  ): Promise<LiveTeamRepository[]> {
+    const repos = await this.octokit.paginate(
+      this.octokit.rest.teams.listReposInOrg,
+      { org, team_slug: slug, per_page: 100 },
+    );
+    return repos.map((r) => ({
+      name: r.name,
+      roleName: r.role_name ?? 'read',
+    }));
+  }
+
+  async listCustomRepositoryRoles(
+    org: string,
+  ): Promise<LiveCustomRepositoryRole[]> {
+    // Not among Octokit's generated typed methods at the pinned API version, so
+    // it goes through the raw route with the response typed here.
+    const { data } = await this.octokit.request<string>(
+      'GET /orgs/{org}/custom-repository-roles',
+      { org },
+    );
+    const roles = (data as CustomRepositoryRolesResponse).custom_roles ?? [];
+    return roles.map((r) => ({
+      id: r.id,
+      name: r.name,
+      baseRole: r.base_role ?? 'read',
+    }));
   }
 
   // The external-groups endpoints are not in Octokit's generated typed methods,
