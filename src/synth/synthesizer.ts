@@ -258,9 +258,12 @@ function toManifest(team: Team): TeamManifest {
     description: team.props.description,
     privacy: team.props.privacy ?? 'closed',
     parentSlug: parent?.slug,
-    maintainers: team.props.maintainers ?? [],
-    members: team.props.members ?? [],
-    repositories: team.props.repositories ?? {},
+    // Carried through undefined rather than defaulted: the reconciler reads a
+    // missing roster or access map as "not managed here" and leaves the live
+    // team alone, where an empty one means "nobody, prune the rest".
+    maintainers: team.props.maintainers,
+    members: team.props.members,
+    repositories: team.props.repositories,
     externalGroup,
   };
 }
