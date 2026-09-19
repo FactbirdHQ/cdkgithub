@@ -49,10 +49,17 @@ export function renderPlan(changes: Change[]): string {
         break;
       }
       case 'set-membership': {
-        const from = change.from ? `"${change.from}" -> ` : '';
-        lines.push(
-          `  ~ ${change.username} in ${change.slug}: ${from}"${change.role}"`,
-        );
+        // `from` is the role the team reports, which may be one the member holds
+        // through a team below. Landing on the same role is not a no-op then: it
+        // is the membership becoming this team's own.
+        const { username, slug, role, from } = change;
+        const how =
+          from === undefined
+            ? `joins ${slug} as "${role}"`
+            : from === role
+              ? `in ${slug}: inherited -> "${role}"`
+              : `in ${slug}: "${from}" -> "${role}"`;
+        lines.push(`  ~ ${username} ${how}`);
         break;
       }
       case 'remove-membership': {
