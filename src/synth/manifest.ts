@@ -24,8 +24,43 @@ export * from './governance.ts';
 /** GitHub team visibility. `closed` = visible to all org members; `secret` = hidden. */
 export type TeamPrivacy = 'closed' | 'secret';
 
-/** Repository access level granted to a team. Mirrors GitHub's permission values. */
-export type RepoPermission = 'pull' | 'triage' | 'push' | 'maintain' | 'admin';
+/** The five permissions GitHub ships with every repository. */
+export type BuiltInRepoPermission =
+  | 'pull'
+  | 'triage'
+  | 'push'
+  | 'maintain'
+  | 'admin';
+
+/**
+ * Repository access level granted to a team: one of the five built-ins, or the
+ * name of a custom repository role the organization defines.
+ *
+ * A custom role is written as its display name, `"Merge Queue Jumper"`, which is
+ * the string GitHub's own API both takes and returns. `plan` resolves every name
+ * that is not a built-in against `GET /orgs/{org}/custom-repository-roles` and
+ * fails on one that matches nothing, so a misspelled `"pul"` is caught before
+ * anything is written rather than granted as a role nobody defined.
+ *
+ * The `string & {}` arm widens the type without collapsing it, so an editor
+ * still completes the five built-ins.
+ */
+export type RepoPermission = BuiltInRepoPermission | (string & {});
+
+/** The built-ins, for telling a declared permission from a custom role name. */
+export const BUILT_IN_REPO_PERMISSIONS: readonly BuiltInRepoPermission[] = [
+  'pull',
+  'triage',
+  'push',
+  'maintain',
+  'admin',
+];
+
+export function isBuiltInRepoPermission(
+  permission: string,
+): permission is BuiltInRepoPermission {
+  return (BUILT_IN_REPO_PERMISSIONS as readonly string[]).includes(permission);
+}
 
 /**
  * A reference to an external identity-provider group (Entra ID security group)
@@ -55,12 +90,28 @@ export interface TeamManifest {
   readonly privacy: TeamPrivacy;
   /** Slug of the parent team, if this team is nested. */
   readonly parentSlug?: string;
-  /** Usernames that should be team maintainers. */
-  readonly maintainers: string[];
-  /** Usernames that should be plain members. */
-  readonly members: string[];
-  /** Repository access grants. */
-  readonly repositories: RepositoryAccess;
+  /**
+   * Usernames that should be team maintainers, absent when the definition does
+   * not manage this team's roster. See {@link members}.
+   */
+  readonly maintainers?: string[];
+  /**
+   * Usernames that should be plain members, absent when the definition does not
+   * manage this team's roster.
+   *
+   * Absence is meaningful here the way it is for the governance surfaces. A team
+   * that declares neither list keeps the members it has and is never read back,
+   * so a definition covering only the team tree still runs on a token that only
+   * reaches teams. Declaring either list makes the definition own the roster,
+   * and a live member missing from it is proposed for removal.
+   */
+  readonly members?: string[];
+  /**
+   * Repository access grants, absent when the definition does not manage this
+   * team's access. Declaring the map, `{}` included, makes the definition own
+   * it, and a live grant missing from the map is proposed for removal.
+   */
+  readonly repositories?: RepositoryAccess;
   /** Entra ID group linkage (SCIM). Absent when the team is not IdP-synced. */
   readonly externalGroup?: ExternalGroupBinding;
 }

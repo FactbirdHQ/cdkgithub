@@ -11,9 +11,13 @@ import type {
   CustomPropertyManifest,
   ExternalGroupBinding,
   OrgSettingsManifest,
+  RepoPermission,
   ResolvedRuleset,
   TeamManifest,
 } from '../synth/manifest.ts';
+
+/** The two roles GitHub records for a team member. */
+export type TeamRole = 'member' | 'maintainer';
 
 /** Create a team that exists in the desired state but not on GitHub. */
 export interface CreateTeam {
@@ -40,6 +44,48 @@ export interface UpdateTeam {
 export interface DeleteTeam {
   readonly kind: 'delete';
   readonly live: LiveTeam;
+}
+
+/** Give a team access to a repository, or change the access it already has. */
+export interface SetRepoAccess {
+  readonly kind: 'set-repo-access';
+  readonly slug: string;
+  readonly repository: string;
+  readonly permission: RepoPermission;
+  /** The live permission, absent when the team cannot reach the repository yet. */
+  readonly from?: string;
+}
+
+/**
+ * A live repository grant the team's declared access map does not carry. Gated
+ * by --allow-delete, because it takes a team's access away.
+ */
+export interface RemoveRepoAccess {
+  readonly kind: 'remove-repo-access';
+  readonly slug: string;
+  readonly repository: string;
+  readonly from: string;
+}
+
+/** Put a user in a team, or change the role they hold in it. */
+export interface SetTeamMembership {
+  readonly kind: 'set-membership';
+  readonly slug: string;
+  readonly username: string;
+  readonly role: TeamRole;
+  /** The live role, absent when the user is not in the team yet. */
+  readonly from?: TeamRole;
+}
+
+/**
+ * A live team member the declared roster does not carry. Gated by
+ * --allow-delete, because it removes someone's access.
+ */
+export interface RemoveTeamMembership {
+  readonly kind: 'remove-membership';
+  readonly slug: string;
+  readonly username: string;
+  readonly from: TeamRole;
 }
 
 /** Ensure a team is linked to its Entra ID security group via SCIM. Gated by --enable-scim. */
@@ -172,6 +218,10 @@ export type Change =
   | CreateTeam
   | UpdateTeam
   | DeleteTeam
+  | SetRepoAccess
+  | RemoveRepoAccess
+  | SetTeamMembership
+  | RemoveTeamMembership
   | LinkExternalGroup
   | UpdateOrgSettings
   | UpdateActionsPolicy
@@ -195,6 +245,10 @@ export type TeamChange =
   | CreateTeam
   | UpdateTeam
   | DeleteTeam
+  | SetRepoAccess
+  | RemoveRepoAccess
+  | SetTeamMembership
+  | RemoveTeamMembership
   | LinkExternalGroup;
 
 /** Everything else: the org-wide governance surfaces. */
@@ -204,6 +258,10 @@ const TEAM_KINDS: ReadonlyArray<Change['kind']> = [
   'create',
   'update',
   'delete',
+  'set-repo-access',
+  'remove-repo-access',
+  'set-membership',
+  'remove-membership',
   'link-group',
 ];
 
@@ -214,6 +272,8 @@ export function isGovernanceChange(change: Change): change is GovernanceChange {
 /** The change kinds that remove something and therefore need `--allow-delete`. */
 export const DESTRUCTIVE_KINDS = [
   'delete',
+  'remove-repo-access',
+  'remove-membership',
   'delete-ruleset',
   'delete-security-config',
   'delete-property',
