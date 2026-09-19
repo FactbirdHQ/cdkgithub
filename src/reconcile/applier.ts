@@ -48,6 +48,14 @@ export async function apply(
   const idBySlug = new Map<string, number>(
     live.teams.map((t) => [t.slug, t.id]),
   );
+  // A rename keeps the team's id, so the new slug can be resolved before the
+  // PATCH that creates it. Without this, a team nested under one being renamed
+  // would look up a parent that does not exist yet and be created top-level.
+  for (const change of changes) {
+    if (change.kind !== 'update' || change.team.slug === change.slug) continue;
+    const id = idBySlug.get(change.slug);
+    if (id !== undefined) idBySlug.set(change.team.slug, id);
+  }
   const governanceContext = createGovernanceContext(client, org, log);
 
   let created = 0;
@@ -100,8 +108,16 @@ export async function apply(
       }
 
       case 'update': {
-        log(`Updating team ${change.slug}`);
+        const renamed = change.team.slug !== change.slug;
+        log(
+          renamed
+            ? `Renaming team ${change.slug} to ${change.team.slug}`
+            : `Updating team ${change.slug}`,
+        );
         const parentSlug = change.team.parentSlug;
+        // Addressed by the live slug. GitHub derives the new one from the name
+        // and stops answering to the old one, so anything else this run must
+        // already be addressed to the new slug.
         await client.updateTeam(org, change.slug, {
           name: change.team.name,
           description: change.team.description ?? '',
