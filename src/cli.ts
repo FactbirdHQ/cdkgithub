@@ -210,7 +210,15 @@ async function diffCommand(flags: Flags): Promise<number> {
   printWarnings(desired);
   // The live roles rank a grant made through a custom repository role, so both
   // sides order it the same way instead of reading as drift.
-  const wanted = desiredTree(desired, live.customRoles);
+  // The live roles also say what an organization role reaches, and the live
+  // repositories are the estate such a role reaches over: both sides of the
+  // comparison are then measured against the same organization.
+  const wanted = desiredTree(
+    desired,
+    live.customRoles,
+    live.orgRoles,
+    live.repositories,
+  );
 
   // The same two trees, read down the other axis: who reaches what, rather than
   // what changes. An access review asks the first and a code review the second.
