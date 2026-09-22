@@ -413,3 +413,84 @@ describe('organization roles in the access review', () => {
     expect([...(vil?.repositories.keys() ?? [])]).toEqual([]);
   });
 });
+
+describe('a blanket role in the rendered report', () => {
+  const ESTATE = [
+    { id: 1, name: 'nest' },
+    { id: 2, name: 'yarnix' },
+    { id: 3, name: 'fbctl' },
+  ];
+
+  /** Two roles held together, the weaker folded in after the stronger. */
+  const ROLES = [
+    {
+      id: 1,
+      name: 'all_repo_maintain',
+      baseRole: 'maintain',
+      permissions: [],
+      source: 'Predefined',
+    },
+    {
+      id: 2,
+      name: 'security_manager',
+      permissions: [],
+      source: 'Predefined',
+    },
+  ];
+
+  async function tree() {
+    const client = new FakeClient({
+      teams: [liveTeam('devops')],
+      teamMembers: { devops: [{ login: 'vil', role: 'member' }] },
+      teamRepositories: { devops: [{ name: 'nest', roleName: 'admin' }] },
+      repositories: ESTATE,
+      organizationRoles: ROLES,
+      roleAssignments: {
+        1: { teams: ['devops'], users: [] },
+        2: { teams: ['devops'], users: [] },
+      },
+    });
+    return readLiveTree(client, 'acme');
+  }
+
+  test('a weaker role folded in after a stronger one keeps the tag', async () => {
+    const vil = accessByPerson(await tree()).get('vil');
+    // `security_manager` carries read and loses to `all_repo_maintain`. Losing
+    // must not erase which role the permission actually came from.
+    expect(vil?.repositories.get('yarnix')?.blanket).toBe('all_repo_maintain');
+    expect(vil?.repositories.get('yarnix')?.permission).toBe('maintain');
+    // The team grant beats both, so no role claims it.
+    expect(vil?.repositories.get('nest')?.blanket).toBeUndefined();
+  });
+
+  test('the role is stated once and only what exceeds it is listed', async () => {
+    const live = await tree();
+    const wanted = desiredTree(
+      {
+        ...manifest([
+          team('devops', {
+            members: ['vil'],
+            repositories: { nest: 'admin' },
+          }),
+        ]),
+        organizationRoles: [
+          { name: 'all_repo_maintain', teams: ['devops'] },
+          { name: 'security_manager', teams: ['devops'] },
+        ],
+      },
+      live.customRoles,
+      live.orgRoles,
+      live.repositories,
+    );
+
+    const rendered = renderAccessByPerson(diffAccessByPerson(live, wanted), {
+      full: true,
+    });
+    expect(rendered).toContain(
+      'all 2 repositories = "maintain"   via all_repo_maintain (organization role)',
+    );
+    // The one the team grants above the role still gets its own line.
+    expect(rendered).toContain('nest = "admin"   via devops');
+    expect(rendered).not.toContain('yarnix =');
+  });
+});
