@@ -26,6 +26,15 @@ export {
   CustomRepositoryRole,
   type CustomRepositoryRoleProps,
 } from './constructs/custom-repository-role.ts';
+export {
+  admin,
+  maintain,
+  pull,
+  push,
+  role,
+  triage,
+  type RepositoryGrant,
+} from './constructs/grants.ts';
 export type { ExternalGroupProps } from './constructs/external-group.ts';
 export {
   Organization,
