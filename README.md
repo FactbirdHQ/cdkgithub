@@ -236,14 +236,44 @@ team being added or removed is summarised rather than listed out. A declaration
 carrying `previousSlug` pairs with the live team of that name, so a rename reads
 as one changed team rather than an addition beside a removal.
 
-Four flags shape the output:
+Six flags shape the output:
 
 | Flag | Effect |
 | --- | --- |
 | `--changed-only` | Hide every subtree that matches end to end. |
 | `--full` | Expand every team and list every grant, rather than the first eight. |
 | `--live` | Print the live org and stop. No manifest is compared. |
+| `--by-person` | Pivot onto people: who can reach what, before and after. |
+| `--csv` | Write `--by-person` as CSV, one row per person per repository. |
 | `--color` / `--no-color` | Force color on or off. |
+
+### Who can reach what
+
+`--by-person` reads the same two trees down the other axis. Instead of a team
+and what changes about it, each person and the repositories they can reach,
+before and after, with the team granting each one named.
+
+```
+alex-doe   (36 -> 4 repos)
+    + team engineering
+    - team cloud
+    + agent-skills = "push"   via engineering
+    - cloud-provisioning   (had "push" via cloud)
+    - customer-integration   (had "maintain" via cloud)
+    … and 21 more   (--full to list)
+```
+
+Someone's access is the union of the effective access of every team they belong
+to directly. Belonging to a parent does not confer a child's grants, only the
+other way around, and where two teams grant the same repository the stronger
+permission wins, which is what GitHub does. `--changed-only` drops the people
+nothing happens to, `--full` lists every repository each one holds rather than
+only what moves, and `--csv` writes it as one row per person per repository for
+a review that wants a spreadsheet.
+
+Two things it cannot see, both outside the team structure: an organization owner
+reaches every repository whatever the teams say, and a collaborator added to a
+single repository by hand holds a grant no team records.
 
 ### What it compares
 
@@ -597,8 +627,9 @@ src/
                 planner.ts/applier.ts, policy in plan-governance.ts/
                 apply-governance.ts), subset comparison, render
   reconcile/    tree.ts + tree-diff.ts + render-tree.ts build and compare the
-                org as a tree, which is what `diff` prints; color.ts is the
-                palette and when to use it
+                org as a tree, which is what `diff` prints; access-by-person.ts
+                + render-person.ts pivot the same trees onto people; color.ts is
+                the palette and when to use it
   cli.ts        synth | diff | plan | apply
 bin/cdkgithub.ts
 examples/factbird.ts   example org definition

@@ -6,7 +6,12 @@ import { resolveToken } from './github/token.ts';
 import { apply } from './reconcile/applier.ts';
 import { readLiveState } from './reconcile/live.ts';
 import { plan } from './reconcile/planner.ts';
+import { diffAccessByPerson } from './reconcile/access-by-person.ts';
 import { choosePalette } from './reconcile/color.ts';
+import {
+  renderAccessByPerson,
+  renderAccessCsv,
+} from './reconcile/render-person.ts';
 import {
   renderRedundant,
   renderTree,
@@ -39,6 +44,9 @@ Options:
   --full              Expand every team, listing every grant rather than a sample.
   --changed-only      Hide teams whose whole subtree matches (diff).
   --live              Print the live org tree and stop, without comparing (diff).
+  --by-person         Pivot the diff onto people: the repositories each one can
+                      reach, before and after, and the team granting each.
+  --csv               Emit --by-person as CSV, one row per person per repository.
   --color / --no-color  Force color on or off. The default colors a terminal and
                       leaves a pipe or a file plain; NO_COLOR is honoured.
 
@@ -173,6 +181,27 @@ async function diffCommand(flags: Flags): Promise<number> {
   // The live roles rank a grant made through a custom repository role, so both
   // sides order it the same way instead of reading as drift.
   const wanted = desiredTree(desired, live.customRoles);
+
+  // The same two trees, read down the other axis: who reaches what, rather than
+  // what changes. An access review asks the first and a code review the second.
+  if (flags.byPerson) {
+    const people = diffAccessByPerson(live, wanted);
+    if (flags.csv) {
+      console.log(renderAccessCsv(people));
+      return 0;
+    }
+    console.log(`Repository access for ${describeOwner(desired)}:
+`);
+    console.log(
+      renderAccessByPerson(people, {
+        full: flags.full,
+        changedOnly: flags.changedOnly,
+        palette,
+      }),
+    );
+    return 0;
+  }
+
   console.log(`Tree diff for ${describeOwner(desired)}:
 `);
   console.log(
@@ -196,6 +225,8 @@ interface Flags {
   full: boolean;
   changedOnly: boolean;
   live: boolean;
+  byPerson: boolean;
+  csv: boolean;
   color?: 'always' | 'never';
 }
 
@@ -208,6 +239,8 @@ function parseFlags(args: string[]): Flags {
     full: false,
     changedOnly: false,
     live: false,
+    byPerson: false,
+    csv: false,
   };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -238,6 +271,13 @@ function parseFlags(args: string[]): Flags {
         break;
       case '--no-color':
         flags.color = 'never';
+        break;
+      case '--by-person':
+        flags.byPerson = true;
+        break;
+      case '--csv':
+        flags.csv = true;
+        flags.byPerson = true;
         break;
     }
   }
