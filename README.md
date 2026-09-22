@@ -329,6 +329,24 @@ Repository "netcore" is maintained by both "cloud" and "product". A repository h
 one maintaining team; grant the other team access through \`repositories\` instead.
 \`\`\`
 
+### Repositories are never created or deleted
+
+cdkgithub has no create or delete for a repository, and the `Repository`
+construct exists to netcore branch protection under rather than to make one. A
+repository has to exist before anything here can attach to it.
+
+That is deliberate. A definition is edited far more often than the organization
+is, and the edit that drops a repository from a team looks identical to the edit
+that drops it from the company. Only one of those is recoverable.
+
+So removing a repository from a definition removes the **grants**, never the
+repository: `remove-repo-access` calls `teams.removeRepoInOrg`, which takes the
+team off the repository and leaves the repository where it was. It is gated
+behind `--allow-delete` like every other removal.
+
+Archiving, transferring and deleting stay in GitHub's own hands, where they are
+one deliberate action rather than a consequence of an edit.
+
 ## Governance and policy
 
 Teams say who exists. Governance says what they can do. Five more surfaces are
