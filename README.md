@@ -223,19 +223,27 @@ sides as the same tree, and prints one marked up against the other.
 28 teams to change, 2 to add, 1 to remove.
 ```
 
+Color carries the same three marks a second time: green adds, red removes,
+yellow changes, and a dim grey for the teams that match and for counts and
+hints. It is applied per line rather than per team, so under a team that differs
+a grant being added is green and a member leaving is red. Output goes plain into
+a pipe or a file and colored into a terminal; `NO_COLOR` turns it off,
+`FORCE_COLOR` turns it on, and `--color`/`--no-color` beat both.
+
 Indentation says where a team sits; the gutter says what happens to it. A team
 that matches is one line, a team that differs expands into what differs, and a
 team being added or removed is summarised rather than listed out. A declaration
 carrying `previousSlug` pairs with the live team of that name, so a rename reads
 as one changed team rather than an addition beside a removal.
 
-Three flags shape the output:
+Four flags shape the output:
 
 | Flag | Effect |
 | --- | --- |
 | `--changed-only` | Hide every subtree that matches end to end. |
 | `--full` | Expand every team and list every grant, rather than the first eight. |
 | `--live` | Print the live org and stop. No manifest is compared. |
+| `--color` / `--no-color` | Force color on or off. |
 
 ### What it compares
 
@@ -589,7 +597,8 @@ src/
                 planner.ts/applier.ts, policy in plan-governance.ts/
                 apply-governance.ts), subset comparison, render
   reconcile/    tree.ts + tree-diff.ts + render-tree.ts build and compare the
-                org as a tree, which is what `diff` prints
+                org as a tree, which is what `diff` prints; color.ts is the
+                palette and when to use it
   cli.ts        synth | diff | plan | apply
 bin/cdkgithub.ts
 examples/factbird.ts   example org definition

@@ -5,9 +5,16 @@
  * the page: indentation says where a team is, the gutter says what happens to
  * it. An unchanged team is one line, a changed one expands into what differs,
  * and an added or removed team is summarised rather than listed in full.
+ *
+ * Color carries the same three marks a second time, so the eye finds a change
+ * before it reads one. It is applied per line rather than per team: under a team
+ * that differs, a grant being added is green and a member leaving is red, which
+ * is the distinction worth seeing there.
  */
 
 import type { RepositoryAccess } from '../synth/manifest.ts';
+import type { Palette } from './color.ts';
+import { PLAIN } from './color.ts';
 import type { OrgTree, TeamNode } from './tree.ts';
 import type { OrgDiff, TeamDiff } from './tree-diff.ts';
 
@@ -16,6 +23,8 @@ export interface RenderTreeOptions {
   readonly full?: boolean;
   /** Hide teams whose whole subtree is unchanged. */
   readonly changedOnly?: boolean;
+  /** How to decorate the output. Defaults to no decoration at all. */
+  readonly palette?: Palette;
 }
 
 const INDENT = '  ';
@@ -36,17 +45,23 @@ const GUTTER: Record<TeamDiff['mark'], string> = {
 const GRANT_SAMPLE = 8;
 
 /** Render one tree on its own, the way `diff --live` prints the live org. */
-export function renderTree(tree: OrgTree): string {
+export function renderTree(
+  tree: OrgTree,
+  options: RenderTreeOptions = {},
+): string {
+  const paint = options.palette ?? PLAIN;
   const lines = [`organization ${tree.owner}`];
   const walk = (node: TeamNode, depth: number) => {
     const pad = INDENT.repeat(depth + 1);
-    lines.push(`${pad}team ${node.slug}${summary(node)}`);
-    for (const line of detailLines(node)) lines.push(`${pad}${INDENT}${line}`);
+    lines.push(`${pad}team ${node.slug}${paint.muted(summary(node))}`);
+    for (const line of detailLines(node)) {
+      lines.push(paint.muted(`${pad}${INDENT}${line}`));
+    }
     for (const child of node.children) walk(child, depth + 1);
   };
   for (const root of tree.roots) walk(root, 0);
 
-  if (tree.roots.length === 0) lines.push(`${INDENT}(no teams)`);
+  if (tree.roots.length === 0) lines.push(paint.muted(`${INDENT}(no teams)`));
   return lines.join('\n');
 }
 
@@ -55,6 +70,17 @@ export function renderTreeDiff(
   diff: OrgDiff,
   options: RenderTreeOptions = {},
 ): string {
+  const paint = options.palette ?? PLAIN;
+  // A team's own line takes the color of its mark; the lines beneath it are
+  // painted one at a time, because a team that differs holds both additions and
+  // removals and one color over the lot would hide which is which.
+  const byMark: Record<TeamDiff['mark'], (text: string) => string> = {
+    unchanged: paint.muted,
+    changed: paint.changed,
+    added: paint.added,
+    removed: paint.removed,
+  };
+
   const lines = [`${BLANK_GUTTER}organization ${diff.owner}`];
 
   const walk = (team: TeamDiff, depth: number) => {
@@ -62,10 +88,14 @@ export function renderTreeDiff(
 
     const pad = INDENT.repeat(depth + 1);
     lines.push(
-      `${GUTTER[team.mark]}${pad}team ${team.slug}${renamedFrom(team)}${headline(team)}`,
+      byMark[team.mark](
+        `${GUTTER[team.mark]}${pad}team ${team.slug}${renamedFrom(team)}${headline(team)}`,
+      ),
     );
     for (const line of teamDetail(team, options)) {
-      lines.push(`${BLANK_GUTTER}${pad}${INDENT}${line}`);
+      lines.push(
+        paint[line.tone](`${BLANK_GUTTER}${pad}${INDENT}${line.text}`),
+      );
     }
     for (const child of team.children) walk(child, depth + 1);
   };
@@ -73,12 +103,20 @@ export function renderTreeDiff(
   for (const root of diff.roots) walk(root, 0);
 
   const { added, removed, changed } = diff.counts;
+  // A count of none is muted whatever it counts, so the colors mark the work
+  // there is rather than drawing the eye to a zero.
+  const tally = (count: number, text: string, tone: keyof Palette) =>
+    count === 0 ? paint.muted(text) : paint[tone](text);
+
   lines.push('');
   lines.push(
     added + removed + changed === 0
-      ? 'No differences. The organization tree matches the definition.'
-      : `${changed} team${changed === 1 ? '' : 's'} to change, ` +
-          `${added} to add, ${removed} to remove.`,
+      ? paint.muted(
+          'No differences. The organization tree matches the definition.',
+        )
+      : `${tally(changed, `${changed} team${changed === 1 ? '' : 's'} to change`, 'changed')}, ` +
+          `${tally(added, `${added} to add`, 'added')}, ` +
+          `${tally(removed, `${removed} to remove`, 'removed')}.`,
   );
   return lines.join('\n');
 }
@@ -114,33 +152,61 @@ function summary(node: TeamNode): string {
   return parts.length > 0 ? `   (${parts.join(', ')})` : '';
 }
 
+/** A line beneath a team, and which of the palette's colors it takes. */
+interface DetailLine {
+  readonly text: string;
+  readonly tone: keyof Palette;
+}
+
 /** The lines beneath a team in the diff. */
-function teamDetail(team: TeamDiff, options: RenderTreeOptions): string[] {
+function teamDetail(team: TeamDiff, options: RenderTreeOptions): DetailLine[] {
   if (team.mark !== 'changed') {
-    return options.full ? detailLines(team.node) : [];
+    return options.full
+      ? detailLines(team.node).map((text) => ({ text, tone: 'muted' as const }))
+      : [];
   }
 
-  const lines: string[] = [];
+  const lines: DetailLine[] = [];
   // The slug change is already on the team's own line as `(was …)`.
   for (const p of team.properties) {
     if (p.property === 'slug') continue;
-    lines.push(`${p.property}: ${quote(p.from)} -> ${quote(p.to)}`);
+    lines.push({
+      text: `${p.property}: ${quote(p.from)} -> ${quote(p.to)}`,
+      tone: 'changed',
+    });
   }
 
-  const grants = team.grants.map((g) => {
-    if (g.from === undefined) return `+ repo ${g.repository} = "${g.to}"`;
-    if (g.to === undefined) return `- repo ${g.repository}   (was "${g.from}")`;
-    return `~ repo ${g.repository}: "${g.from}" -> "${g.to}"`;
+  const grants = team.grants.map<DetailLine>((g) => {
+    if (g.from === undefined) {
+      return { text: `+ repo ${g.repository} = "${g.to}"`, tone: 'added' };
+    }
+    if (g.to === undefined) {
+      return {
+        text: `- repo ${g.repository}   (was "${g.from}")`,
+        tone: 'removed',
+      };
+    }
+    return {
+      text: `~ repo ${g.repository}: "${g.from}" -> "${g.to}"`,
+      tone: 'changed',
+    };
   });
   lines.push(...sample(grants, options, 'grant'));
 
   if (team.rosterOwnedByIdp) {
-    lines.push('roster not compared: Entra owns it through the external group');
+    lines.push({
+      text: 'roster not compared: Entra owns it through the external group',
+      tone: 'muted',
+    });
   }
-  const roster: string[] = [];
+  const roster: DetailLine[] = [];
   for (const r of team.rosters) {
-    for (const user of r.added) roster.push(`+ ${r.role} ${user}`);
-    for (const user of r.removed) roster.push(`- ${r.role} ${user}`);
+    for (const user of r.added) {
+      roster.push({ text: `+ ${r.role} ${user}`, tone: 'added' });
+    }
+    for (const user of r.removed) {
+      roster.push({ text: `- ${r.role} ${user}`, tone: 'removed' });
+    }
   }
   lines.push(...sample(roster, options, 'roster change'));
 
@@ -149,15 +215,18 @@ function teamDetail(team: TeamDiff, options: RenderTreeOptions): string[] {
 
 /** The first {@link GRANT_SAMPLE} lines, with the remainder as a count. */
 function sample(
-  lines: string[],
+  lines: DetailLine[],
   options: RenderTreeOptions,
   noun: string,
-): string[] {
+): DetailLine[] {
   if (options.full || lines.length <= GRANT_SAMPLE) return lines;
   const hidden = lines.length - GRANT_SAMPLE;
   return [
     ...lines.slice(0, GRANT_SAMPLE),
-    `… and ${hidden} more ${noun}${hidden === 1 ? '' : 's'}   (--full to list)`,
+    {
+      text: `… and ${hidden} more ${noun}${hidden === 1 ? '' : 's'}   (--full to list)`,
+      tone: 'muted',
+    },
   ];
 }
 
@@ -189,6 +258,7 @@ export function renderRedundant(
 ): string {
   if (redundant.length === 0) return '';
 
+  const paint = options.palette ?? PLAIN;
   const total = redundant.reduce((n, r) => n + r.repositories.length, 0);
   const lines = [
     '',
@@ -202,8 +272,9 @@ export function renderRedundant(
       : entry.repositories.slice(0, GRANT_SAMPLE);
     const rest = entry.repositories.length - shown.length;
     const tail = rest > 0 ? `, … and ${rest} more` : '';
-    lines.push(`  ${entry.slug}: ${shown.join(', ')}${tail}`);
+    // The team is what someone acts on here; the repository list is the detail.
+    lines.push(`  ${entry.slug}: ${paint.muted(`${shown.join(', ')}${tail}`)}`);
   }
-  if (!options.full) lines.push('', '  (--full to list them all)');
+  if (!options.full) lines.push('', paint.muted('  (--full to list them all)'));
   return lines.join('\n');
 }
