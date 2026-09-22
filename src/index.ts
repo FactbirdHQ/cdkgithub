@@ -84,6 +84,7 @@ export type {
   OrganizationAdminBypass,
   RepoPermission,
   RepositoryAccess,
+  RepositoryVisibility,
   RepositoryRoleBypass,
   RequiredPullRequestReviews,
   RequiredStatusChecks,

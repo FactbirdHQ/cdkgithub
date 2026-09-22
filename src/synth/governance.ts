@@ -459,6 +459,15 @@ export interface CustomRepositoryRoleManifest {
 }
 
 /**
+ * Who can see a repository.
+ *
+ * `internal` exists only in an organization owned by an enterprise account, and
+ * means every member of that enterprise can read it while nobody outside can.
+ * `private` means only the teams and people given access.
+ */
+export type RepositoryVisibility = 'public' | 'private' | 'internal';
+
+/**
  * A repository to create if the organization does not have one by this name.
  *
  * Everything but `name` describes what to create. An existing repository is
@@ -467,7 +476,7 @@ export interface CustomRepositoryRoleManifest {
 export interface RepositoryManifest {
   readonly name: string;
   readonly description?: string;
-  readonly private?: boolean;
+  readonly visibility?: RepositoryVisibility;
   readonly allowMergeCommit?: boolean;
   readonly allowSquashMerge?: boolean;
   readonly allowRebaseMerge?: boolean;
