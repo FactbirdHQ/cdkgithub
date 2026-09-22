@@ -1,4 +1,5 @@
 import { Construct } from 'constructs';
+import type { RepositoryVisibility } from '../synth/manifest.ts';
 
 export interface RepositoryProps {
   /** Repository name without the owner. Defaults to the construct id. */
@@ -10,13 +11,19 @@ export interface RepositoryProps {
   readonly description?: string;
 
   /**
-   * Whether a repository created from this declaration is private.
+   * Who can see a repository created from this declaration.
    *
-   * Defaults to `true`, where GitHub's API defaults to public. A repository
-   * created private and opened later is a decision someone made; one created
-   * public by a default nobody read is a decision nobody made.
+   * Left unset it resolves at apply time to `internal` where the organization
+   * is owned by an enterprise account, and `private` where it is not. Internal
+   * is the better default of the two: every member of the enterprise can read
+   * it, which is what makes cross-team work possible without asking, while
+   * nobody outside the enterprise can, including outside collaborators.
+   *
+   * `public` is never a default and never inferred. GitHub's own API defaults a
+   * new repository to public, and a repository opened to the internet by a
+   * default nobody read is a decision nobody made.
    */
-  readonly private?: boolean;
+  readonly visibility?: RepositoryVisibility;
 
   /** Merge buttons offered on a repository created from this declaration. */
   readonly allowMergeCommit?: boolean;

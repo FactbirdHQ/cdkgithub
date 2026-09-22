@@ -35,8 +35,9 @@ describe('a repository is never deleted', () => {
     // Octokit's `repos.*` namespace covers rulesets and branch protection too,
     // so match the calls that act on the repository itself.
     expect(client).not.toContain('repos.delete(');
-    // Creating is the one direction offered, and it is recoverable.
-    expect(client).toContain('repos.createInOrg');
+    // Creating is the one direction offered, and it is recoverable. Through
+    // the raw route, because `internal` is missing from the generated types.
+    expect(client).toContain('POST /orgs/{org}/repos');
     expect(client).not.toContain('repos.transfer');
     expect(client).not.toContain('repos.createFork');
     expect(client).not.toMatch(/DELETE \/repos\/\{owner\}\/\{repo\}'/);

@@ -164,10 +164,19 @@ export async function applyGovernanceChange(
       await client.deleteCustomProperty(org, change.live.name);
       return;
 
-    case 'create-repository':
-      ctx.log(`Creating repository "${change.repository.name}"`);
-      await client.createRepository(org, change.repository);
+    case 'create-repository': {
+      // Unset means "the most open thing that stays inside the company", which
+      // is `internal` under an enterprise account and `private` otherwise.
+      // Asked outright, it is honoured; `public` is never inferred.
+      const visibility =
+        change.repository.visibility ??
+        ((await client.supportsInternalRepositories(org))
+          ? 'internal'
+          : 'private');
+      ctx.log(`Creating ${visibility} repository "${change.repository.name}"`);
+      await client.createRepository(org, { ...change.repository, visibility });
       return;
+    }
 
     case 'create-repo-role':
       ctx.log(`Creating repository role "${change.role.name}"`);

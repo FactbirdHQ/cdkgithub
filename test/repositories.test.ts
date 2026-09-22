@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import type { LiveState } from '../src/reconcile/live.ts';
 import { planRepositories } from '../src/reconcile/plan-repositories.ts';
+import { apply } from '../src/reconcile/applier.ts';
+import { FakeClient } from './fake-client.ts';
 
 const live: LiveState = {
   teams: [],
@@ -37,5 +39,61 @@ describe('planning repositories', () => {
     expect(planRepositories([{ name: 'brand-new' }], live)).not.toContainEqual(
       expect.objectContaining({ kind: 'delete-repository' }),
     );
+  });
+});
+
+describe('visibility', () => {
+  test('public is never inferred, only asked for', () => {
+    const [change] = planRepositories([{ name: 'brand-new' }], live) as Array<{
+      repository: { visibility?: string };
+    }>;
+    expect(change?.repository.visibility).toBeUndefined();
+  });
+
+  test('unset resolves to internal under an enterprise account', async () => {
+    const client = new FakeClient({ internalRepositoriesAllowed: true });
+    await apply(
+      client,
+      'acme',
+      [{ kind: 'create-repository', repository: { name: 'brand-new' } }],
+      { teams: [] },
+      {},
+    );
+    expect(client.callsTo('createRepository')).toEqual([
+      { name: 'brand-new', visibility: 'internal' },
+    ]);
+  });
+
+  test('unset resolves to private without one', async () => {
+    const client = new FakeClient({ internalRepositoriesAllowed: false });
+    await apply(
+      client,
+      'acme',
+      [{ kind: 'create-repository', repository: { name: 'brand-new' } }],
+      { teams: [] },
+      {},
+    );
+    expect(client.callsTo('createRepository')).toEqual([
+      { name: 'brand-new', visibility: 'private' },
+    ]);
+  });
+
+  test('an explicit visibility is honoured, enterprise or not', async () => {
+    const client = new FakeClient({ internalRepositoriesAllowed: true });
+    await apply(
+      client,
+      'acme',
+      [
+        {
+          kind: 'create-repository',
+          repository: { name: 'the-blog', visibility: 'public' },
+        },
+      ],
+      { teams: [] },
+      {},
+    );
+    expect(client.callsTo('createRepository')).toEqual([
+      { name: 'the-blog', visibility: 'public' },
+    ]);
   });
 });

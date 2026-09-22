@@ -339,6 +339,12 @@ export interface GitHubClient {
    */
   createRepository(org: string, repository: RepositoryManifest): Promise<void>;
 
+  /**
+   * Whether this organization can have internal repositories, which is true
+   * exactly when an enterprise account owns it.
+   */
+  supportsInternalRepositories(org: string): Promise<boolean>;
+
   /** Apps installed on the org, used to resolve a ruleset bypass actor by slug. */
   listAppInstallations(org: string): Promise<LiveAppInstallation[]>;
 
@@ -743,17 +749,29 @@ export class OctokitGitHubClient implements GitHubClient {
     );
   }
 
+  async supportsInternalRepositories(org: string): Promise<boolean> {
+    const { data } = await this.octokit.rest.orgs.get({ org });
+    return (
+      (data as { members_can_create_internal_repositories?: boolean })
+        .members_can_create_internal_repositories === true
+    );
+  }
+
   async createRepository(
     org: string,
     repository: RepositoryManifest,
   ): Promise<void> {
-    await this.octokit.rest.repos.createInOrg({
+    await this.octokit.request('POST /orgs/{org}/repos', {
       org,
       name: repository.name,
       description: repository.description,
-      // GitHub defaults this to public; a repository nobody chose to open
-      // should not be open.
-      private: repository.private ?? true,
+      // Resolved by the caller: `internal` where the enterprise allows it,
+      // `private` where it does not, and `public` only when it was asked for.
+      //
+      // Cast because Octokit's generated types still say public-or-private.
+      // The endpoint has accepted `internal` since enterprise accounts gained
+      // it, and sends back the repository with that visibility.
+      visibility: (repository.visibility ?? 'private') as 'public' | 'private',
       allow_merge_commit: repository.allowMergeCommit,
       allow_squash_merge: repository.allowSquashMerge,
       allow_rebase_merge: repository.allowRebaseMerge,

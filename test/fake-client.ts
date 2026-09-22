@@ -44,6 +44,7 @@ export interface FakeClientState {
   teamMembers?: Record<string, LiveTeamMember[]>;
   customRepositoryRoles?: LiveCustomRepositoryRole[];
   organizationRoles?: LiveOrganizationRole[];
+  internalRepositoriesAllowed?: boolean;
   /** Assignment per role id. */
   roleAssignments?: Record<number, { teams: string[]; users: string[] }>;
   externalGroups?: ExternalIdpGroup[];
@@ -72,6 +73,7 @@ export class FakeClient implements GitHubClient {
   teamMembers: Record<string, LiveTeamMember[]>;
   customRepositoryRoles: LiveCustomRepositoryRole[];
   organizationRoles: LiveOrganizationRole[];
+  internalRepositoriesAllowed: boolean;
   roleAssignments: Record<number, { teams: string[]; users: string[] }>;
   externalGroups: ExternalIdpGroup[];
   repositories: LiveRepository[];
@@ -97,6 +99,8 @@ export class FakeClient implements GitHubClient {
     this.teamMembers = state.teamMembers ?? {};
     this.customRepositoryRoles = state.customRepositoryRoles ?? [];
     this.organizationRoles = state.organizationRoles ?? [];
+    this.internalRepositoriesAllowed =
+      state.internalRepositoriesAllowed ?? false;
     this.roleAssignments = state.roleAssignments ?? {};
     this.externalGroups = state.externalGroups ?? [];
     this.repositories = state.repositories ?? [];
@@ -273,6 +277,10 @@ export class FakeClient implements GitHubClient {
     roleId: number,
   ): Promise<void> {
     this.record('deleteCustomRepositoryRole', { roleId });
+  }
+
+  async supportsInternalRepositories(): Promise<boolean> {
+    return this.internalRepositoriesAllowed;
   }
 
   async createRepository(

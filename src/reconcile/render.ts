@@ -177,7 +177,7 @@ export function renderPlan(changes: Change[]): string {
         const repo = change.repository;
         lines.push(`  + repository "${repo.name}"`);
         lines.push(
-          `      private = ${repo.private ?? true}` +
+          `      visibility = "${repo.visibility ?? 'private'}"` +
             (repo.description ? `   "${repo.description}"` : ''),
         );
         break;
