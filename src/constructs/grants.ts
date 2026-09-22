@@ -6,6 +6,11 @@
  * the part worth seeing first, and it is the part that gets skimmed past in a
  * column of forty names. `maintain('nest')` reads as the sentence it is.
  *
+ * Each helper takes as many repositories as you like, so a category declared
+ * elsewhere is granted by spreading it: `triage(...systemII)`. A list of those
+ * calls is flattened, which is why `[push('nest'), triage(...systemII)]` is one
+ * list of grants rather than a list of lists.
+ *
  * The helpers are generic over the repository name so a definition can narrow
  * them to its own list of repositories and have a misspelling fail where it is
  * written. They deliberately do not check for a repository granted twice in one
@@ -29,10 +34,8 @@ export interface RepositoryGrant<
 
 const at =
   <P extends BuiltInRepoPermission>(permission: P) =>
-  <R extends string>(repository: R): RepositoryGrant<R, P> => ({
-    repository,
-    permission,
-  });
+  <R extends string>(...repositories: R[]): RepositoryGrant<R, P>[] =>
+    repositories.map((repository) => ({ repository, permission }));
 
 /** Read the code, and nothing else. */
 export const pull = at('pull');
@@ -68,7 +71,14 @@ export const admin = at('admin');
  */
 export const role =
   <N extends string>(name: N) =>
-  <R extends string>(repository: R): RepositoryGrant<R, N> => ({
-    repository,
-    permission: name,
-  });
+  <R extends string>(...repositories: R[]): RepositoryGrant<R, N>[] =>
+    repositories.map((repository) => ({ repository, permission: name }));
+
+/**
+ * What a helper returns, or one grant on its own.
+ *
+ * `push('nest')` is a list of one and `triage(...systemII)` a list of many, so
+ * a team's grants are a list of lists. Flattened on the way into the manifest,
+ * which is what lets both sit in the same array.
+ */
+export type RepositoryGrantList = RepositoryGrant | readonly RepositoryGrant[];

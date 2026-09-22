@@ -127,3 +127,45 @@ describe('grants written one repository at a time', () => {
     });
   });
 });
+
+describe('granting a category', () => {
+  /** A group declared elsewhere, the way a definition keeps its categories. */
+  const SYSTEM_II = ['nest', 'nest-qa', 'nest-staging'] as const;
+
+  test('a spread group grants every repository in it', () => {
+    const root = org();
+    new Team(root, 'support', { repositories: [triage(...SYSTEM_II)] });
+
+    expect(synthesize(root.node.root).teams[0]?.repositories).toEqual({
+      nest: 'triage',
+      'nest-qa': 'triage',
+      'nest-staging': 'triage',
+    });
+  });
+
+  test('a group and a single grant sit in the same list', () => {
+    const root = org();
+    new Team(root, 'cloud', {
+      repositories: [push('fbctl'), triage(...SYSTEM_II), maintain('tools')],
+    });
+
+    expect(synthesize(root.node.root).teams[0]?.repositories).toEqual({
+      fbctl: 'push',
+      nest: 'triage',
+      'nest-qa': 'triage',
+      'nest-staging': 'triage',
+      tools: 'maintain',
+    });
+  });
+
+  test('a repository in a group and named again is still a duplicate', () => {
+    const root = org();
+    new Team(root, 'cloud', {
+      repositories: [triage(...SYSTEM_II), push('nest')],
+    });
+
+    expect(() => synthesize(root.node.root)).toThrow(
+      /grants "nest" twice, as "triage" and "push"/,
+    );
+  });
+});
