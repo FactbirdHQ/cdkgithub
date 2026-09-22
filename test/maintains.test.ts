@@ -127,3 +127,45 @@ describe('grants written one repository at a time', () => {
     });
   });
 });
+
+describe('granting a category', () => {
+  /** A group declared elsewhere, the way a definition keeps its categories. */
+  const SYSTEM_II = ['netcore', 'netcore-qa', 'netcore-staging'] as const;
+
+  test('a spread group grants every repository in it', () => {
+    const root = org();
+    new Team(root, 'support', { repositories: [triage(...SYSTEM_II)] });
+
+    expect(synthesize(root.node.root).teams[0]?.repositories).toEqual({
+      netcore: 'triage',
+      'netcore-qa': 'triage',
+      'netcore-staging': 'triage',
+    });
+  });
+
+  test('a group and a single grant sit in the same list', () => {
+    const root = org();
+    new Team(root, 'cloud', {
+      repositories: [push('fctl'), triage(...SYSTEM_II), maintain('tools')],
+    });
+
+    expect(synthesize(root.node.root).teams[0]?.repositories).toEqual({
+      fctl: 'push',
+      netcore: 'triage',
+      'netcore-qa': 'triage',
+      'netcore-staging': 'triage',
+      tools: 'maintain',
+    });
+  });
+
+  test('a repository in a group and named again is still a duplicate', () => {
+    const root = org();
+    new Team(root, 'cloud', {
+      repositories: [triage(...SYSTEM_II), push('netcore')],
+    });
+
+    expect(() => synthesize(root.node.root)).toThrow(
+      /grants "netcore" twice, as "triage" and "push"/,
+    );
+  });
+});

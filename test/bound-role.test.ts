@@ -21,8 +21,8 @@ describe('a custom role bound once', () => {
   });
 
   test('the binding keeps the literal type, so the name is checked', () => {
-    const grant = mergeQueueJumper('netcore');
-    const permission: typeof MERGE_QUEUE_JUMPER = grant.permission;
+    const [grant] = mergeQueueJumper('netcore');
+    const permission: typeof MERGE_QUEUE_JUMPER = grant!.permission;
     expect(permission).toBe('Merge Queue Jumper');
   });
 });

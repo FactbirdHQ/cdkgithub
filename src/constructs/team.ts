@@ -1,6 +1,6 @@
 import { Construct } from 'constructs';
 import type { RepositoryAccess, TeamPrivacy } from '../synth/manifest.ts';
-import type { RepositoryGrant } from './grants.ts';
+import type { RepositoryGrantList } from './grants.ts';
 import type { ExternalGroupProps } from './external-group.ts';
 
 export interface TeamProps {
@@ -61,11 +61,13 @@ export interface TeamProps {
    * Repository access grants, as a map or as a list of one-repository grants:
    * `{ netcore: "push" }` or `[push("netcore")]`.
    *
-   * The list form reads permission-first, which is the part worth seeing in a
-   * column of forty repositories. Synthesis rejects a repository granted twice
+   * Each helper takes many repositories, so a category is granted by spreading
+   * it: `[push('netcore'), triage(...systemII)]`. The list form reads
+   * permission-first, which is the part worth seeing in a column of forty
+   * repositories. Synthesis rejects a repository granted twice
    * in one list; the map form cannot express that.
    */
-  readonly repositories?: RepositoryAccess | readonly RepositoryGrant[];
+  readonly repositories?: RepositoryAccess | readonly RepositoryGrantList[];
 
   /**
    * Link this team to an Entra ID security group via SCIM. When set, membership

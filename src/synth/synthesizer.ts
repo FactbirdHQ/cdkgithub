@@ -8,7 +8,10 @@ import { CustomRepositoryRole } from '../constructs/custom-repository-role.ts';
 import { OrganizationRole } from '../constructs/organization-role.ts';
 import { Repository } from '../constructs/repository.ts';
 import { Ruleset } from '../constructs/ruleset.ts';
-import type { RepositoryGrant } from '../constructs/grants.ts';
+import type {
+  RepositoryGrant,
+  RepositoryGrantList,
+} from '../constructs/grants.ts';
 import { Team } from '../constructs/team.ts';
 import { UserAccount } from '../constructs/user-account.ts';
 import type { BranchProtectionManifest } from './branch-protection.ts';
@@ -300,14 +303,28 @@ function toManifest(team: Team): TeamManifest {
 
 /** The list form and the map form, reduced to the one the manifest carries. */
 function normalizeGrants(
-  grants: RepositoryAccess | readonly RepositoryGrant[] | undefined,
+  grants: RepositoryAccess | readonly RepositoryGrantList[] | undefined,
 ): RepositoryAccess | undefined {
   if (!Array.isArray(grants)) return grants as RepositoryAccess | undefined;
   return Object.fromEntries(
-    (grants as readonly RepositoryGrant[]).map((g) => [
+    flattenGrants(grants as readonly RepositoryGrantList[]).map((g) => [
       g.repository,
       g.permission,
     ]),
+  );
+}
+
+/**
+ * One list of grants out of a list of what the helpers return.
+ *
+ * `push('netcore')` is a list of one and `triage(...systemII)` a list of many, so
+ * the array a team declares is a list of lists. One level is all there is.
+ */
+function flattenGrants(
+  grants: readonly RepositoryGrantList[],
+): RepositoryGrant[] {
+  return grants.flatMap((g) =>
+    Array.isArray(g) ? [...g] : [g as RepositoryGrant],
   );
 }
 
@@ -408,7 +425,9 @@ function assertNoDuplicateGrants(teams: Team[]): void {
     if (!Array.isArray(grants)) continue;
 
     const seen = new Map<string, RepoPermission>();
-    for (const { repository, permission } of grants) {
+    for (const { repository, permission } of flattenGrants(
+      grants as readonly RepositoryGrantList[],
+    )) {
       const held = seen.get(repository);
       if (held !== undefined) {
         throw new Error(
