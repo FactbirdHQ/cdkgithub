@@ -371,6 +371,32 @@ describe('rendering', () => {
     expect(output).not.toContain('team quiet');
   });
 
+  test('--full marks a created team’s repositories as additions', async () => {
+    const client = new FakeClient({ teams: [] });
+    const live = await readLiveTree(client, 'acme');
+    const diff = diffTrees(
+      live,
+      desiredTree(manifest([team('cloud', { repositories: { api: 'push' } })])),
+    );
+
+    expect(renderTreeDiff(diff, { full: true })).toContain(
+      '+ repo api = "push"',
+    );
+  });
+
+  test('--full marks a deleted team’s repositories as removals', async () => {
+    const client = new FakeClient({
+      teams: [liveTeam('gone')],
+      teamRepositories: { gone: [{ name: 'legacy', roleName: 'write' }] },
+    });
+    const live = await readLiveTree(client, 'acme');
+    const diff = diffTrees(live, desiredTree(manifest([])));
+
+    expect(renderTreeDiff(diff, { full: true })).toContain(
+      '- repo legacy = "push"',
+    );
+  });
+
   test('says nothing changed when the trees match', async () => {
     const client = new FakeClient({ teams: [liveTeam('cloud')] });
     const live = await readLiveTree(client, 'acme');
