@@ -50,7 +50,7 @@ export {
   type RepositoryProps,
 } from './constructs/repository.ts';
 export { Ruleset, type RulesetProps } from './constructs/ruleset.ts';
-export { Team, type TeamProps } from './constructs/team.ts';
+export { Team, teamOf, type TeamProps } from './constructs/team.ts';
 export {
   UserAccount,
   type UserAccountProps,

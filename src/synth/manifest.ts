@@ -103,7 +103,7 @@ export interface TeamManifest {
    * Usernames that should be team maintainers, absent when the definition does
    * not manage this team's roster. See {@link members}.
    */
-  readonly maintainers?: string[];
+  readonly maintainers?: readonly string[];
   /**
    * Usernames that should be plain members, absent when the definition does not
    * manage this team's roster.
@@ -114,7 +114,7 @@ export interface TeamManifest {
    * reaches teams. Declaring either list makes the definition own the roster,
    * and a live member missing from it is proposed for removal.
    */
-  readonly members?: string[];
+  readonly members?: readonly string[];
   /**
    * Repository access grants, absent when the definition does not manage this
    * team's access. Declaring the map, `{}` included, makes the definition own

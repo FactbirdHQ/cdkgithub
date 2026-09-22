@@ -3,7 +3,7 @@ import type { RepositoryAccess, TeamPrivacy } from '../synth/manifest.ts';
 import type { RepositoryGrantList } from './grants.ts';
 import type { ExternalGroupProps } from './external-group.ts';
 
-export interface TeamProps {
+export interface TeamProps<Member extends string = string> {
   /**
    * Human-readable team name. Defaults to the construct id.
    * The GitHub slug is derived from this name.
@@ -34,10 +34,10 @@ export interface TeamProps {
   readonly privacy?: TeamPrivacy;
 
   /** Usernames to add as team maintainers. */
-  readonly maintainers?: string[];
+  readonly maintainers?: readonly Member[];
 
   /** Usernames to add as plain members. */
-  readonly members?: string[];
+  readonly members?: readonly Member[];
 
   /**
    * Repository access grants, as a map or as a list of one-repository grants:
@@ -65,14 +65,14 @@ export interface TeamProps {
  * another `Team` becomes a child (GitHub `parent_team_id`) of that team. A team
  * scoped directly under an `Organization` is top-level.
  */
-export class Team extends Construct {
+export class Team<Member extends string = string> extends Construct {
   /** The team name (falls back to the construct id). */
   public readonly teamName: string;
   /** URL-safe slug GitHub uses to address the team. */
   public readonly slug: string;
-  public readonly props: TeamProps;
+  public readonly props: TeamProps<Member>;
 
-  constructor(scope: Construct, id: string, props: TeamProps = {}) {
+  constructor(scope: Construct, id: string, props: TeamProps<Member> = {}) {
     super(scope, id);
     this.props = props;
     this.teamName = props.name ?? id;
@@ -89,4 +89,35 @@ export class Team extends Construct {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '');
   }
+}
+
+/**
+ * A {@link Team} whose rosters may only name people you have declared.
+ *
+ * `Team` is generic over its roster, but a type parameter is only ever
+ * *inferred* from the argument, so `new Team(org, 'x', { members: ['ana'] })`
+ * infers `'ana'` from the literal rather than checking it against anything. To
+ * constrain it, the parameter has to be bound, and binding it at every call is
+ * what `satisfies` was already doing by hand.
+ *
+ * Bind it once instead:
+ *
+ * ```ts
+ * // team.ts, beside the list of people
+ * export const USERS = ['ana', 'bo'] as const;
+ * export const Team = teamOf<(typeof USERS)[number]>();
+ *
+ * // and everywhere a team is declared
+ * new Team(org, 'cloud', { members: ['ana'] });   // 'anna' does not compile
+ * ```
+ *
+ * The result is the same class: `instanceof Team` still holds, because it is
+ * the same constructor with a narrower parameter type.
+ */
+export function teamOf<Member extends string>(): new (
+  scope: Construct,
+  id: string,
+  props?: TeamProps<Member>,
+) => Team<Member> {
+  return Team;
 }
