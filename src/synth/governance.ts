@@ -426,3 +426,21 @@ export interface CustomPropertyManifest {
    */
   readonly values?: Record<string, string | string[] | null>;
 }
+
+// ---------------------------------------------------------------------------
+// Organization roles — /orgs/{org}/organization-roles
+// ---------------------------------------------------------------------------
+
+/**
+ * Who holds one organization role.
+ *
+ * Absent lists mean the same thing they mean everywhere else here: a surface
+ * the definition does not own. Declaring `teams` and leaving `users` off leaves
+ * the individual assignments alone.
+ */
+export interface OrganizationRoleManifest {
+  /** GitHub's name for the role, e.g. `security_manager`. */
+  readonly name: string;
+  readonly teams?: string[];
+  readonly users?: string[];
+}

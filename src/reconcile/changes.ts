@@ -214,6 +214,28 @@ export interface RemoveBranchProtection {
   readonly branch: string;
 }
 
+/** Grant an organization role to a team or a person. */
+export interface AssignOrganizationRole {
+  readonly kind: 'assign-org-role';
+  readonly role: string;
+  readonly roleId: number;
+  readonly subject: 'team' | 'user';
+  readonly name: string;
+}
+
+/**
+ * Take an organization role away. Gated by `--allow-delete`: a role can carry a
+ * repository permission on every repository, so removing one is as wide a change
+ * as this tool makes.
+ */
+export interface RevokeOrganizationRole {
+  readonly kind: 'revoke-org-role';
+  readonly role: string;
+  readonly roleId: number;
+  readonly subject: 'team' | 'user';
+  readonly name: string;
+}
+
 export type Change =
   | CreateTeam
   | UpdateTeam
@@ -238,7 +260,9 @@ export type Change =
   | DeleteCustomProperty
   | SetPropertyValues
   | SetBranchProtection
-  | RemoveBranchProtection;
+  | RemoveBranchProtection
+  | AssignOrganizationRole
+  | RevokeOrganizationRole;
 
 /** The team-shaped changes, which the team applier owns. */
 export type TeamChange =
@@ -272,6 +296,7 @@ export function isGovernanceChange(change: Change): change is GovernanceChange {
 /** The change kinds that remove something and therefore need `--allow-delete`. */
 export const DESTRUCTIVE_KINDS = [
   'delete',
+  'revoke-org-role',
   'remove-repo-access',
   'remove-membership',
   'delete-ruleset',

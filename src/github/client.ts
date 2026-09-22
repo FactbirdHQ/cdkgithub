@@ -81,10 +81,46 @@ export function comparableRoleName(roleName: string): string {
   return ROLE_NAME_TO_PERMISSION[roleName] ?? roleName;
 }
 
+/**
+ * An organization role, which grants privileges across the whole organization
+ * rather than on one repository.
+ *
+ * The five `all_repo_*` roles carry a `baseRole`, which is a repository
+ * permission on every repository at once: the wildcard a team grant cannot
+ * express. The rest carry `permissions` instead, naming what they allow.
+ */
+export interface LiveOrganizationRole {
+  readonly id: number;
+  readonly name: string;
+  /** A repository permission granted on every repository, when the role has one. */
+  readonly baseRole?: string;
+  readonly permissions: string[];
+  /** `Predefined` for GitHub's own roles, `Organization` for one defined here. */
+  readonly source?: string;
+}
+
+/** Who holds one organization role. */
+export interface LiveRoleAssignment {
+  readonly role: string;
+  readonly teams: string[];
+  readonly users: string[];
+}
+
 /** An Entra ID (Azure AD) security group exposed to GitHub via SCIM. */
 export interface ExternalIdpGroup {
   readonly id: number;
   readonly name: string;
+}
+
+/** Shape of `GET /orgs/{org}/organization-roles` (not a typed Octokit method). */
+interface OrganizationRolesResponse {
+  roles?: Array<{
+    id: number;
+    name: string;
+    base_role?: string | null;
+    permissions?: string[];
+    source?: string;
+  }>;
 }
 
 /** Shape of `GET /orgs/{org}/external-groups` (not covered by Octokit's typed methods). */
@@ -242,6 +278,25 @@ export interface GitHubClient {
 
   listExternalGroups(org: string): Promise<ExternalIdpGroup[]>;
   linkExternalGroup(org: string, slug: string, groupId: number): Promise<void>;
+
+  // Organization roles — /orgs/{org}/organization-roles
+  listOrganizationRoles(org: string): Promise<LiveOrganizationRole[]>;
+  readRoleAssignment(
+    org: string,
+    roleId: number,
+  ): Promise<{ teams: string[]; users: string[] }>;
+  assignRoleToTeam(org: string, roleId: number, team: string): Promise<void>;
+  removeRoleFromTeam(org: string, roleId: number, team: string): Promise<void>;
+  assignRoleToUser(
+    org: string,
+    roleId: number,
+    username: string,
+  ): Promise<void>;
+  removeRoleFromUser(
+    org: string,
+    roleId: number,
+    username: string,
+  ): Promise<void>;
 
   /** Repositories in the org, used to resolve names to ids. */
   listRepositories(org: string): Promise<LiveRepository[]>;
@@ -524,6 +579,89 @@ export class OctokitGitHubClient implements GitHubClient {
   // The external-groups endpoints are not in Octokit's generated typed methods,
   // so we call them via the raw request route and type the response ourselves.
   // See: https://docs.github.com/en/enterprise-cloud@latest/rest/teams/external-groups
+
+  // The organization-roles endpoints are not in Octokit's generated typed
+  // methods, so they go through the raw request route with the response typed
+  // here. See https://docs.github.com/en/rest/orgs/organization-roles
+
+  async listOrganizationRoles(org: string): Promise<LiveOrganizationRole[]> {
+    const { data } = await this.octokit.request(
+      'GET /orgs/{org}/organization-roles',
+      { org },
+    );
+    const roles = (data as OrganizationRolesResponse).roles ?? [];
+    return roles.map((r) => ({
+      id: r.id,
+      name: r.name,
+      baseRole: r.base_role ?? undefined,
+      permissions: r.permissions ?? [],
+      source: r.source,
+    }));
+  }
+
+  async readRoleAssignment(
+    org: string,
+    roleId: number,
+  ): Promise<{ teams: string[]; users: string[] }> {
+    const [teams, users] = await Promise.all([
+      this.octokit.paginate(
+        'GET /orgs/{org}/organization-roles/{role_id}/teams',
+        { org, role_id: roleId, per_page: 100 },
+      ),
+      this.octokit.paginate(
+        'GET /orgs/{org}/organization-roles/{role_id}/users',
+        { org, role_id: roleId, per_page: 100 },
+      ),
+    ]);
+    return {
+      teams: (teams as Array<{ slug: string }>).map((t) => t.slug).sort(),
+      users: (users as Array<{ login: string }>).map((u) => u.login).sort(),
+    };
+  }
+
+  async assignRoleToTeam(
+    org: string,
+    roleId: number,
+    team: string,
+  ): Promise<void> {
+    await this.octokit.request(
+      'PUT /orgs/{org}/organization-roles/teams/{team_slug}/{role_id}',
+      { org, team_slug: team, role_id: roleId },
+    );
+  }
+
+  async removeRoleFromTeam(
+    org: string,
+    roleId: number,
+    team: string,
+  ): Promise<void> {
+    await this.octokit.request(
+      'DELETE /orgs/{org}/organization-roles/teams/{team_slug}/{role_id}',
+      { org, team_slug: team, role_id: roleId },
+    );
+  }
+
+  async assignRoleToUser(
+    org: string,
+    roleId: number,
+    username: string,
+  ): Promise<void> {
+    await this.octokit.request(
+      'PUT /orgs/{org}/organization-roles/users/{username}/{role_id}',
+      { org, username, role_id: roleId },
+    );
+  }
+
+  async removeRoleFromUser(
+    org: string,
+    roleId: number,
+    username: string,
+  ): Promise<void> {
+    await this.octokit.request(
+      'DELETE /orgs/{org}/organization-roles/users/{username}/{role_id}',
+      { org, username, role_id: roleId },
+    );
+  }
 
   async listExternalGroups(org: string): Promise<ExternalIdpGroup[]> {
     const { data } = await this.octokit.request(

@@ -164,6 +164,24 @@ export async function applyGovernanceChange(
       await client.deleteCustomProperty(org, change.live.name);
       return;
 
+    case 'assign-org-role':
+      ctx.log(
+        `Granting org role "${change.role}" to ${change.subject} ${change.name}`,
+      );
+      await (change.subject === 'team'
+        ? client.assignRoleToTeam(org, change.roleId, change.name)
+        : client.assignRoleToUser(org, change.roleId, change.name));
+      return;
+
+    case 'revoke-org-role':
+      ctx.log(
+        `Revoking org role "${change.role}" from ${change.subject} ${change.name}`,
+      );
+      await (change.subject === 'team'
+        ? client.removeRoleFromTeam(org, change.roleId, change.name)
+        : client.removeRoleFromUser(org, change.roleId, change.name));
+      return;
+
     case 'branch-protection': {
       const { protection } = change;
       ctx.log(

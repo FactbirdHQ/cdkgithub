@@ -13,6 +13,7 @@ import type {
   LiveRepository,
   LiveRepositoryProperties,
   LiveRuleset,
+  LiveOrganizationRole,
   LiveTeam,
   LiveTeamMember,
   LiveTeamRepository,
@@ -40,6 +41,9 @@ export interface FakeClientState {
   /** Live rosters keyed by team slug. */
   teamMembers?: Record<string, LiveTeamMember[]>;
   customRepositoryRoles?: LiveCustomRepositoryRole[];
+  organizationRoles?: LiveOrganizationRole[];
+  /** Assignment per role id. */
+  roleAssignments?: Record<number, { teams: string[]; users: string[] }>;
   externalGroups?: ExternalIdpGroup[];
   repositories?: LiveRepository[];
   appInstallations?: LiveAppInstallation[];
@@ -65,6 +69,8 @@ export class FakeClient implements GitHubClient {
   teamRepositories: Record<string, LiveTeamRepository[]>;
   teamMembers: Record<string, LiveTeamMember[]>;
   customRepositoryRoles: LiveCustomRepositoryRole[];
+  organizationRoles: LiveOrganizationRole[];
+  roleAssignments: Record<number, { teams: string[]; users: string[] }>;
   externalGroups: ExternalIdpGroup[];
   repositories: LiveRepository[];
   appInstallations: LiveAppInstallation[];
@@ -88,6 +94,8 @@ export class FakeClient implements GitHubClient {
     this.teamRepositories = state.teamRepositories ?? {};
     this.teamMembers = state.teamMembers ?? {};
     this.customRepositoryRoles = state.customRepositoryRoles ?? [];
+    this.organizationRoles = state.organizationRoles ?? [];
+    this.roleAssignments = state.roleAssignments ?? {};
     this.externalGroups = state.externalGroups ?? [];
     this.repositories = state.repositories ?? [];
     this.appInstallations = state.appInstallations ?? [];
@@ -114,6 +122,51 @@ export class FakeClient implements GitHubClient {
 
   private record(method: string, args: unknown): void {
     this.calls.push({ method, args });
+  }
+
+  // ---- organization roles --------------------------------------------------
+
+  async listOrganizationRoles(): Promise<LiveOrganizationRole[]> {
+    return this.organizationRoles;
+  }
+
+  async readRoleAssignment(
+    _org: string,
+    roleId: number,
+  ): Promise<{ teams: string[]; users: string[] }> {
+    return this.roleAssignments[roleId] ?? { teams: [], users: [] };
+  }
+
+  async assignRoleToTeam(
+    _org: string,
+    roleId: number,
+    team: string,
+  ): Promise<void> {
+    this.record('assignRoleToTeam', { roleId, team });
+  }
+
+  async removeRoleFromTeam(
+    _org: string,
+    roleId: number,
+    team: string,
+  ): Promise<void> {
+    this.record('removeRoleFromTeam', { roleId, team });
+  }
+
+  async assignRoleToUser(
+    _org: string,
+    roleId: number,
+    username: string,
+  ): Promise<void> {
+    this.record('assignRoleToUser', { roleId, username });
+  }
+
+  async removeRoleFromUser(
+    _org: string,
+    roleId: number,
+    username: string,
+  ): Promise<void> {
+    this.record('removeRoleFromUser', { roleId, username });
   }
 
   // ---- teams ---------------------------------------------------------------

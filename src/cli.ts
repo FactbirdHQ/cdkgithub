@@ -5,6 +5,7 @@ import { OctokitGitHubClient } from './github/client.ts';
 import { resolveToken } from './github/token.ts';
 import { apply } from './reconcile/applier.ts';
 import { readLiveState } from './reconcile/live.ts';
+import { unmanagedRoleAssignments } from './reconcile/plan-org-roles.ts';
 import { plan } from './reconcile/planner.ts';
 import { diffAccessByPerson } from './reconcile/access-by-person.ts';
 import { choosePalette } from './reconcile/color.ts';
@@ -98,7 +99,32 @@ async function planCommand(flags: Flags): Promise<number> {
   printWarnings(desired);
   console.log(`Plan for ${describeOwner(desired)}:\n`);
   console.log(renderPlan(changes));
+  printUnmanagedRoles(desired, live);
   return 0;
+}
+
+/**
+ * Organization roles the definition does not account for.
+ *
+ * A role can carry a repository permission on every repository at once, so an
+ * assignment nobody wrote down is a wider access path than any team grant, and
+ * invisible until it is printed.
+ */
+function printUnmanagedRoles(
+  desired: DesiredState,
+  live: Awaited<ReturnType<typeof readLiveState>>,
+): void {
+  const unmanaged = unmanagedRoleAssignments(desired.organizationRoles, live);
+  if (unmanaged.length === 0) return;
+
+  console.log('\nOrganization roles held outside this definition:');
+  for (const role of unmanaged) {
+    const base = role.baseRole ? ` (${role.baseRole} on every repository)` : '';
+    const who = [...role.teams.map((t) => `team ${t}`), ...role.users].join(
+      ', ',
+    );
+    console.log(`  ${role.role}${base}: ${who}`);
+  }
 }
 
 async function applyCommand(flags: Flags): Promise<number> {

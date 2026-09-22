@@ -4,6 +4,7 @@ import { BranchProtection } from '../constructs/branch-protection.ts';
 import { CodeSecurityConfiguration } from '../constructs/code-security.ts';
 import { CustomProperty } from '../constructs/custom-property.ts';
 import { Organization } from '../constructs/organization.ts';
+import { OrganizationRole } from '../constructs/organization-role.ts';
 import { Repository } from '../constructs/repository.ts';
 import { Ruleset } from '../constructs/ruleset.ts';
 import { Team } from '../constructs/team.ts';
@@ -51,6 +52,10 @@ export function synthesize(root: IConstruct): DesiredState {
 
   const branchProtection = collect(root, BranchProtection, toBranchProtection);
   const rulesets = collect(root, Ruleset, toRulesetManifest);
+  const organizationRoles = collect(root, OrganizationRole, (r) => ({
+    name: r.roleName,
+    ...r.props,
+  }));
   const codeSecurityConfigurations = collect(
     root,
     CodeSecurityConfiguration,
@@ -63,6 +68,7 @@ export function synthesize(root: IConstruct): DesiredState {
   );
 
   assertUniqueNames(rulesets, 'ruleset');
+  assertUniqueNames(organizationRoles, 'organization role');
   assertUniqueNames(codeSecurityConfigurations, 'code security configuration');
   assertUniqueNames(customProperties, 'custom property');
 
@@ -73,6 +79,7 @@ export function synthesize(root: IConstruct): DesiredState {
     settings: owner.settings,
     actions: singleActionsPolicy(root),
     rulesets,
+    organizationRoles,
     codeSecurityConfigurations,
     customProperties,
     branchProtection,
