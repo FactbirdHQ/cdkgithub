@@ -6,7 +6,18 @@ import { resolveToken } from './github/token.ts';
 import { apply } from './reconcile/applier.ts';
 import { readLiveState } from './reconcile/live.ts';
 import { plan } from './reconcile/planner.ts';
+import {
+  renderRedundant,
+  renderTree,
+  renderTreeDiff,
+} from './reconcile/render-tree.ts';
 import { renderPlan } from './reconcile/render.ts';
+import {
+  desiredTree,
+  readLiveTree,
+  redundantGrants,
+} from './reconcile/tree.ts';
+import { diffTrees } from './reconcile/tree-diff.ts';
 import type { DesiredState } from './synth/manifest.ts';
 import { collectWarnings } from './synth/warnings.ts';
 
@@ -14,6 +25,7 @@ const USAGE = `cdkgithub — define GitHub org team structure as code
 
 Usage:
   cdkgithub synth <config.ts>      Run a definition and write github.out/manifest.json
+  cdkgithub diff  [options]        Compare the live org tree against the manifest
   cdkgithub plan  [options]        Diff the manifest against the live org (read-only)
   cdkgithub apply [options]        Reconcile the live org to match the manifest
 
@@ -23,6 +35,9 @@ Options:
   --allow-delete      Permit deleting resources absent from the manifest (teams,
                       rulesets, code security configurations, custom properties).
   --enable-scim       Perform Entra ID (SCIM) external-group linking.
+  --full              Expand every team, listing every grant rather than a sample.
+  --changed-only      Hide teams whose whole subtree matches (diff).
+  --live              Print the live org tree and stop, without comparing (diff).
 
 Auth: uses GITHUB_TOKEN/GH_TOKEN, else falls back to \`gh auth token\`. Managing
 teams needs org-admin scope; the governance surfaces additionally need admin:org,
@@ -35,6 +50,8 @@ export async function main(argv: string[]): Promise<number> {
   switch (command) {
     case 'synth':
       return synthCommand(rest[0]);
+    case 'diff':
+      return diffCommand(flags);
     case 'plan':
       return planCommand(flags);
     case 'apply':
@@ -126,11 +143,48 @@ function readManifest(path: string): DesiredState {
   }
 }
 
+/**
+ * Read the live organization, render it as a tree, and compare it against the
+ * synthesized one.
+ *
+ * This reads every team whole, where `plan` reads only the surfaces a team
+ * declares. Nothing here is applied, so a team the definition leaves alone still
+ * appears in the tree next to the ones it owns.
+ */
+async function diffCommand(flags: Flags): Promise<number> {
+  const desired = readManifest(flags.manifest);
+  const client = new OctokitGitHubClient(resolveToken());
+  const live = await readLiveTree(client, desired.owner, desired.ownerType);
+
+  if (flags.live) {
+    console.log(renderTree(live));
+    return 0;
+  }
+
+  printWarnings(desired);
+  // The live roles rank a grant made through a custom repository role, so both
+  // sides order it the same way instead of reading as drift.
+  const wanted = desiredTree(desired, live.customRoles);
+  console.log(`Tree diff for ${describeOwner(desired)}:
+`);
+  console.log(
+    renderTreeDiff(diffTrees(live, wanted), {
+      full: flags.full,
+      changedOnly: flags.changedOnly,
+    }),
+  );
+  console.log(renderRedundant(redundantGrants(wanted), { full: flags.full }));
+  return 0;
+}
+
 interface Flags {
   manifest: string;
   yes: boolean;
   allowDelete: boolean;
   enableScim: boolean;
+  full: boolean;
+  changedOnly: boolean;
+  live: boolean;
 }
 
 function parseFlags(args: string[]): Flags {
@@ -139,6 +193,9 @@ function parseFlags(args: string[]): Flags {
     yes: false,
     allowDelete: false,
     enableScim: false,
+    full: false,
+    changedOnly: false,
+    live: false,
   };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -154,6 +211,15 @@ function parseFlags(args: string[]): Flags {
         break;
       case '--enable-scim':
         flags.enableScim = true;
+        break;
+      case '--full':
+        flags.full = true;
+        break;
+      case '--changed-only':
+        flags.changedOnly = true;
+        break;
+      case '--live':
+        flags.live = true;
         break;
     }
   }

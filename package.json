@@ -11,6 +11,7 @@
     "build": "tsc --noEmit",
     "test": "bun test",
     "synth": "bun bin/cdkgithub.ts synth examples/factbird.ts",
+    "diff": "bun bin/cdkgithub.ts diff",
     "plan": "bun bin/cdkgithub.ts plan",
     "apply": "bun bin/cdkgithub.ts apply",
     "synth:workflows": "bun cicd/main.ts"
