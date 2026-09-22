@@ -8,11 +8,11 @@ import { FakeClient } from './fake-client.ts';
 /**
  * Removing a repository from a definition must never remove the repository.
  *
- * A definition is edited far more often than the organization is, and the edit
- * that drops a repository from a team looks identical to the edit that drops it
- * from the company. Only one of those is recoverable, so this tool does not
- * offer the other: it has no create or delete for a repository at all, and the
- * `Repository` construct exists to be nested under, not to be made.
+ * Creating one is supported, because it is recoverable: a repository made by
+ * mistake is deleted by hand in seconds. Deleting is not, and the edit that
+ * drops a repository from a definition is textually identical to the edit that
+ * drops it from the company. So the asymmetry is deliberate — `createInOrg` and
+ * nothing that removes, transfers or archives.
  *
  * These are guards rather than behaviour. They fail if someone adds repository
  * deletion later, which is the point.
@@ -29,13 +29,14 @@ function sourceFiles(base: string): string[] {
 }
 
 describe('a repository is never deleted', () => {
-  test('the client has no way to delete or create one', () => {
+  test('the client can create one and cannot remove one', () => {
     const client = readFileSync('src/github/client.ts', 'utf8');
 
     // Octokit's `repos.*` namespace covers rulesets and branch protection too,
     // so match the calls that act on the repository itself.
     expect(client).not.toContain('repos.delete(');
-    expect(client).not.toContain('repos.createInOrg');
+    // Creating is the one direction offered, and it is recoverable.
+    expect(client).toContain('repos.createInOrg');
     expect(client).not.toContain('repos.transfer');
     expect(client).not.toContain('repos.createFork');
     expect(client).not.toMatch(/DELETE \/repos\/\{owner\}\/\{repo\}'/);
@@ -50,7 +51,9 @@ describe('a repository is never deleted', () => {
     // `remove-repo-access` takes a team off a repository. Nothing takes the
     // repository off GitHub.
     expect(kinds).toContain('remove-repo-access');
+    expect(kinds).toContain('create-repository');
     expect(kinds).not.toContain('delete-repository');
+    expect(kinds).not.toContain('update-repository');
     expect(
       kinds.filter((k) => /^delete-repo$|^delete-repository/.test(k)),
     ).toEqual([]);

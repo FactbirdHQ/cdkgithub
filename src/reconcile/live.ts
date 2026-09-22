@@ -9,6 +9,7 @@ import type {
   LiveOrganizationRole,
   LiveOrgSettings,
   LiveCustomRepositoryRole,
+  LiveRepository,
   LiveRepositoryProperties,
   LiveRuleset,
   LiveTeam,
@@ -28,6 +29,8 @@ import { isBuiltInRepoPermission } from '../synth/manifest.ts';
  */
 export interface LiveState {
   readonly teams: LiveTeam[];
+  /** Every repository in the organization, read when the definition names one. */
+  readonly repositories?: LiveRepository[];
   /**
    * Repository grants of the teams that declare an access map, keyed by slug. A
    * team absent from this map declared none, so its access is left alone.
@@ -94,6 +97,7 @@ export async function readLiveState(
     repositoryProperties,
     branchProtection,
     appInstallations,
+    repositories,
     customRepositoryRoles,
     organizationRoles,
   ] = await Promise.all([
@@ -112,6 +116,7 @@ export async function readLiveState(
     declaresPropertyValues ? client.listRepositoryProperties(owner) : undefined,
     readBranchProtection(client, owner, desired),
     namesAnApp ? client.listAppInstallations(owner) : undefined,
+    desired.repositories ? client.listRepositories(owner) : undefined,
     namesCustomRole || desired.customRepositoryRoles
       ? client.listCustomRepositoryRoles(owner)
       : undefined,
@@ -142,6 +147,7 @@ export async function readLiveState(
     teams,
     teamRepositories,
     teamMembers,
+    repositories,
     customRepositoryRoles,
     organizationRoles,
     settings,

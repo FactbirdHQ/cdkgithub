@@ -18,32 +18,32 @@ function org() {
 describe('repository maintainership', () => {
   test('maintaining grants maintain', () => {
     const root = org();
-    new Team(root, 'cloud', { maintains: ['nest', 'cloud-ingress'] });
+    new Team(root, 'cloud', {
+      repositories: [maintain('nest', 'cloud-ingress')],
+    });
 
     const state = synthesize(root.node.root);
     expect(state.teams[0]?.repositories).toEqual({
       nest: 'maintain',
       'cloud-ingress': 'maintain',
     });
-    expect(state.teams[0]?.maintains).toEqual(['nest', 'cloud-ingress']);
   });
 
-  test('a line in repositories overrides what maintaining grants', () => {
+  test('the map form claims maintainership too', () => {
+    // The claim is the permission, not the helper that wrote it.
     const root = org();
-    new Team(root, 'cloud', {
-      maintains: ['nest'],
-      repositories: { nest: 'push' },
-    });
+    new Team(root, 'cloud', { repositories: { nest: 'maintain' } });
+    new Team(root, 'product', { repositories: [maintain('nest')] });
 
-    expect(synthesize(root.node.root).teams[0]?.repositories).toEqual({
-      nest: 'push',
-    });
+    expect(() => synthesize(root.node.root)).toThrow(
+      /"nest" is maintained by both/,
+    );
   });
 
   test('two teams claiming one repository fails synthesis', () => {
     const root = org();
-    new Team(root, 'cloud', { maintains: ['nest'] });
-    new Team(root, 'product', { maintains: ['nest'] });
+    new Team(root, 'cloud', { repositories: [maintain('nest')] });
+    new Team(root, 'product', { repositories: [maintain('nest')] });
 
     expect(() => synthesize(root.node.root)).toThrow(
       /"nest" is maintained by both "cloud" and "product"/,
@@ -52,15 +52,17 @@ describe('repository maintainership', () => {
 
   test('the conflict is reported even across the tree', () => {
     const root = org();
-    const parent = new Team(root, 'engineering', { maintains: ['fbctl'] });
-    new Team(parent, 'cloud', { maintains: ['fbctl'] });
+    const parent = new Team(root, 'engineering', {
+      repositories: [maintain('fbctl')],
+    });
+    new Team(parent, 'cloud', { repositories: [maintain('fbctl')] });
 
     expect(() => synthesize(root.node.root)).toThrow(/maintained by both/);
   });
 
   test('access may overlap freely; only maintainership is exclusive', () => {
     const root = org();
-    new Team(root, 'cloud', { maintains: ['nest'] });
+    new Team(root, 'cloud', { repositories: [maintain('nest')] });
     new Team(root, 'support', { repositories: { nest: 'triage' } });
 
     const state = synthesize(root.node.root);
@@ -114,17 +116,15 @@ describe('grants written one repository at a time', () => {
     );
   });
 
-  test('maintaining and granting the same repository is not a duplicate', () => {
-    // `maintains` is merged first and `repositories` overrides it, which is the
-    // documented way to hold a repository at something other than maintain.
+  test('maintaining and granting the same repository is still a duplicate', () => {
+    // One repository takes one permission per team, whichever helper wrote it.
     const root = org();
     new Team(root, 'cloud', {
-      maintains: ['nest'],
-      repositories: [push('nest')],
+      repositories: [maintain('nest'), push('nest')],
     });
-    expect(synthesize(root.node.root).teams[0]?.repositories).toEqual({
-      nest: 'push',
-    });
+    expect(() => synthesize(root.node.root)).toThrow(
+      /grants "nest" twice, as "maintain" and "push"/,
+    );
   });
 });
 

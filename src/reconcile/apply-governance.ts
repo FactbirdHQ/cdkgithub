@@ -164,6 +164,11 @@ export async function applyGovernanceChange(
       await client.deleteCustomProperty(org, change.live.name);
       return;
 
+    case 'create-repository':
+      ctx.log(`Creating repository "${change.repository.name}"`);
+      await client.createRepository(org, change.repository);
+      return;
+
     case 'create-repo-role':
       ctx.log(`Creating repository role "${change.role.name}"`);
       await client.createCustomRepositoryRole(org, change.role);

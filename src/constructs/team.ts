@@ -40,24 +40,6 @@ export interface TeamProps {
   readonly members?: string[];
 
   /**
-   * Repositories this team maintains, by name.
-   *
-   * The word is the permission: maintaining carries `maintain`, which is write
-   * plus the repository's description, topics, Pages and pull-request merge
-   * settings, and nothing that deletes, transfers or re-permissions it. That is
-   * the whole of what answering for a repository needs, so it is not a choice
-   * made per repository.
-   *
-   * Maintaining is exclusive: synthesis fails if two teams claim the same
-   * repository, because "who answers for this" has one answer. Access is not,
-   * so a team that needs a repository it does not maintain declares it in
-   * {@link repositories} at whatever level it needs.
-   *
-   * A line in {@link repositories} still overrides what maintaining grants.
-   */
-  readonly maintains?: readonly string[];
-
-  /**
    * Repository access grants, as a map or as a list of one-repository grants:
    * `{ nest: "push" }` or `[push("nest")]`.
    *

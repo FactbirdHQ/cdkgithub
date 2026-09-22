@@ -7,6 +7,7 @@ import type {
   CodeSecurityConfigurationManifest,
   CustomPropertyManifest,
   CustomRepositoryRoleManifest,
+  RepositoryManifest,
   DefaultWorkflowPermissions,
   EnabledRepositories,
   OrgSettingsManifest,
@@ -330,6 +331,13 @@ export interface GitHubClient {
 
   /** Repositories in the org, used to resolve names to ids. */
   listRepositories(org: string): Promise<LiveRepository[]>;
+
+  /**
+   * Create a repository. There is deliberately no update and no delete beside
+   * it: an existing repository is adopted as it stands, and nothing here
+   * removes one.
+   */
+  createRepository(org: string, repository: RepositoryManifest): Promise<void>;
 
   /** Apps installed on the org, used to resolve a ruleset bypass actor by slug. */
   listAppInstallations(org: string): Promise<LiveAppInstallation[]>;
@@ -733,6 +741,27 @@ export class OctokitGitHubClient implements GitHubClient {
       'DELETE /orgs/{org}/custom-repository-roles/{role_id}',
       { org, role_id: roleId },
     );
+  }
+
+  async createRepository(
+    org: string,
+    repository: RepositoryManifest,
+  ): Promise<void> {
+    await this.octokit.rest.repos.createInOrg({
+      org,
+      name: repository.name,
+      description: repository.description,
+      // GitHub defaults this to public; a repository nobody chose to open
+      // should not be open.
+      private: repository.private ?? true,
+      allow_merge_commit: repository.allowMergeCommit,
+      allow_squash_merge: repository.allowSquashMerge,
+      allow_rebase_merge: repository.allowRebaseMerge,
+      delete_branch_on_merge: repository.deleteBranchOnMerge,
+      has_issues: repository.hasIssues,
+      has_projects: repository.hasProjects,
+      has_wiki: repository.hasWiki,
+    });
   }
 
   async listExternalGroups(org: string): Promise<ExternalIdpGroup[]> {
