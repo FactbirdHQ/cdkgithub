@@ -48,8 +48,23 @@ export const admin = at('admin');
 /**
  * A grant through a repository role the organization defines.
  *
- * `role('Merge Queue Jumper')('nest')` rather than a sixth helper, because the
- * set of custom roles belongs to an organization and not to this tool.
+ * Curried so the role is named once and the binding is imported, rather than
+ * its display name being retyped at every grant:
+ *
+ * ```ts
+ * // roles.ts, beside the CustomRepositoryRole that declares it
+ * export const MERGE_QUEUE_JUMPER = 'Merge Queue Jumper';
+ * export const mergeQueueJumper = role(MERGE_QUEUE_JUMPER);
+ *
+ * // and wherever it is granted
+ * repositories: [mergeQueueJumper('nest'), push('fbctl')],
+ * ```
+ *
+ * A custom role is a string to GitHub, so a retyped one is a typo waiting to
+ * reach `plan`. Binding it once makes the name a symbol the compiler checks.
+ *
+ * Not a sixth built-in helper, because which roles exist belongs to an
+ * organization rather than to this tool.
  */
 export const role =
   <N extends string>(name: N) =>
