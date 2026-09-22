@@ -1,6 +1,7 @@
 import type {
   LiveCodeSecurityConfiguration,
   LiveCustomProperty,
+  LiveCustomRepositoryRole,
   LiveRuleset,
   LiveTeam,
 } from '../github/client.ts';
@@ -9,6 +10,7 @@ import type {
   BranchProtectionManifest,
   CodeSecurityConfigurationManifest,
   CustomPropertyManifest,
+  CustomRepositoryRoleManifest,
   ExternalGroupBinding,
   OrgSettingsManifest,
   RepoPermission,
@@ -236,6 +238,28 @@ export interface RevokeOrganizationRole {
   readonly name: string;
 }
 
+export interface CreateRepositoryRole {
+  readonly kind: 'create-repo-role';
+  readonly role: CustomRepositoryRoleManifest;
+}
+
+export interface UpdateRepositoryRole {
+  readonly kind: 'update-repo-role';
+  readonly id: number;
+  readonly role: CustomRepositoryRoleManifest;
+  readonly fields: FieldChange[];
+}
+
+/**
+ * A custom repository role the definition does not declare. Gated by
+ * `--allow-delete`: teams grant through it, and deleting it takes their access
+ * rather than dropping them to the base role.
+ */
+export interface DeleteRepositoryRole {
+  readonly kind: 'delete-repo-role';
+  readonly live: LiveCustomRepositoryRole;
+}
+
 export type Change =
   | CreateTeam
   | UpdateTeam
@@ -261,6 +285,9 @@ export type Change =
   | SetPropertyValues
   | SetBranchProtection
   | RemoveBranchProtection
+  | CreateRepositoryRole
+  | UpdateRepositoryRole
+  | DeleteRepositoryRole
   | AssignOrganizationRole
   | RevokeOrganizationRole;
 
@@ -297,6 +324,7 @@ export function isGovernanceChange(change: Change): change is GovernanceChange {
 export const DESTRUCTIVE_KINDS = [
   'delete',
   'revoke-org-role',
+  'delete-repo-role',
   'remove-repo-access',
   'remove-membership',
   'delete-ruleset',

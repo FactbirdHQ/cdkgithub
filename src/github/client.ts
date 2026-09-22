@@ -6,6 +6,7 @@ import type {
   BranchProtectionManifest,
   CodeSecurityConfigurationManifest,
   CustomPropertyManifest,
+  CustomRepositoryRoleManifest,
   DefaultWorkflowPermissions,
   EnabledRepositories,
   OrgSettingsManifest,
@@ -54,7 +55,13 @@ export interface LiveTeamMember {
 
 /** Shape of `GET /orgs/{org}/custom-repository-roles` (not a typed Octokit method). */
 interface CustomRepositoryRolesResponse {
-  custom_roles?: Array<{ id: number; name: string; base_role?: string }>;
+  custom_roles?: Array<{
+    id: number;
+    name: string;
+    base_role?: string;
+    description?: string;
+    permissions?: string[];
+  }>;
 }
 
 /** A repository role the organization defines on top of the five built-ins. */
@@ -63,6 +70,9 @@ export interface LiveCustomRepositoryRole {
   readonly name: string;
   /** The built-in the role extends, which is what ranks it against the others. */
   readonly baseRole: string;
+  readonly description?: string;
+  /** What the role adds on top of its base. */
+  readonly permissions: string[];
 }
 
 /**
@@ -76,6 +86,16 @@ const ROLE_NAME_TO_PERMISSION: Record<string, string> = {
   read: 'pull',
   write: 'push',
 };
+
+/** The inverse: the word GitHub takes, for a value written back to it. */
+const PERMISSION_TO_ROLE_NAME: Record<string, string> = {
+  pull: 'read',
+  push: 'write',
+};
+
+export function githubRoleName(permission: string): string {
+  return PERMISSION_TO_ROLE_NAME[permission] ?? permission;
+}
 
 export function comparableRoleName(roleName: string): string {
   return ROLE_NAME_TO_PERMISSION[roleName] ?? roleName;
@@ -275,6 +295,16 @@ export interface GitHubClient {
 
   /** The org's custom repository roles, for resolving a non-built-in permission. */
   listCustomRepositoryRoles(org: string): Promise<LiveCustomRepositoryRole[]>;
+  createCustomRepositoryRole(
+    org: string,
+    role: CustomRepositoryRoleManifest,
+  ): Promise<void>;
+  updateCustomRepositoryRole(
+    org: string,
+    roleId: number,
+    role: CustomRepositoryRoleManifest,
+  ): Promise<void>;
+  deleteCustomRepositoryRole(org: string, roleId: number): Promise<void>;
 
   listExternalGroups(org: string): Promise<ExternalIdpGroup[]>;
   linkExternalGroup(org: string, slug: string, groupId: number): Promise<void>;
@@ -573,6 +603,8 @@ export class OctokitGitHubClient implements GitHubClient {
       id: r.id,
       name: r.name,
       baseRole: r.base_role ?? 'read',
+      description: r.description,
+      permissions: r.permissions ?? [],
     }));
   }
 
@@ -660,6 +692,46 @@ export class OctokitGitHubClient implements GitHubClient {
     await this.octokit.request(
       'DELETE /orgs/{org}/organization-roles/users/{username}/{role_id}',
       { org, username, role_id: roleId },
+    );
+  }
+
+  // Custom repository roles — /orgs/{org}/custom-repository-roles
+
+  async createCustomRepositoryRole(
+    org: string,
+    role: CustomRepositoryRoleManifest,
+  ): Promise<void> {
+    await this.octokit.request('POST /orgs/{org}/custom-repository-roles', {
+      org,
+      name: role.name,
+      description: role.description,
+      base_role: githubRoleName(role.baseRole),
+      permissions: [...role.permissions],
+    });
+  }
+
+  async updateCustomRepositoryRole(
+    org: string,
+    roleId: number,
+    role: CustomRepositoryRoleManifest,
+  ): Promise<void> {
+    await this.octokit.request(
+      'PATCH /orgs/{org}/custom-repository-roles/{role_id}',
+      {
+        org,
+        role_id: roleId,
+        name: role.name,
+        description: role.description,
+        base_role: githubRoleName(role.baseRole),
+        permissions: [...role.permissions],
+      },
+    );
+  }
+
+  async deleteCustomRepositoryRole(org: string, roleId: number): Promise<void> {
+    await this.octokit.request(
+      'DELETE /orgs/{org}/custom-repository-roles/{role_id}',
+      { org, role_id: roleId },
     );
   }
 

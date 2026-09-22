@@ -112,7 +112,9 @@ export async function readLiveState(
     declaresPropertyValues ? client.listRepositoryProperties(owner) : undefined,
     readBranchProtection(client, owner, desired),
     namesAnApp ? client.listAppInstallations(owner) : undefined,
-    namesCustomRole ? client.listCustomRepositoryRoles(owner) : undefined,
+    namesCustomRole || desired.customRepositoryRoles
+      ? client.listCustomRepositoryRoles(owner)
+      : undefined,
     desired.organizationRoles
       ? readOrganizationRoles(client, owner)
       : undefined,

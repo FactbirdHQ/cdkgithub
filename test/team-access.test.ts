@@ -189,7 +189,12 @@ describe('custom repository roles', () => {
       cloud: [{ name: 'nest', roleName: 'Merge Queue Jumper' }],
     }),
     customRepositoryRoles: [
-      { id: 71928, name: 'Merge Queue Jumper', baseRole: 'write' },
+      {
+        id: 71928,
+        name: 'Merge Queue Jumper',
+        baseRole: 'write',
+        permissions: [],
+      },
     ],
   });
 
@@ -217,7 +222,12 @@ describe('custom repository roles', () => {
           cloud: [{ name: 'nest', roleName: 'Merge Queue Jumper' }],
         }),
         customRepositoryRoles: [
-          { id: 71928, name: 'Merge Queue Jumper', baseRole: 'write' },
+          {
+            id: 71928,
+            name: 'Merge Queue Jumper',
+            baseRole: 'write',
+            permissions: [],
+          },
         ],
       }),
     );
