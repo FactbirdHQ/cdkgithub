@@ -6,6 +6,7 @@ import { resolveToken } from './github/token.ts';
 import { apply } from './reconcile/applier.ts';
 import { readLiveState } from './reconcile/live.ts';
 import { plan } from './reconcile/planner.ts';
+import { choosePalette } from './reconcile/color.ts';
 import {
   renderRedundant,
   renderTree,
@@ -38,6 +39,8 @@ Options:
   --full              Expand every team, listing every grant rather than a sample.
   --changed-only      Hide teams whose whole subtree matches (diff).
   --live              Print the live org tree and stop, without comparing (diff).
+  --color / --no-color  Force color on or off. The default colors a terminal and
+                      leaves a pipe or a file plain; NO_COLOR is honoured.
 
 Auth: uses GITHUB_TOKEN/GH_TOKEN, else falls back to \`gh auth token\`. Managing
 teams needs org-admin scope; the governance surfaces additionally need admin:org,
@@ -155,9 +158,14 @@ async function diffCommand(flags: Flags): Promise<number> {
   const desired = readManifest(flags.manifest);
   const client = new OctokitGitHubClient(resolveToken());
   const live = await readLiveTree(client, desired.owner, desired.ownerType);
+  const palette = choosePalette({
+    flag: flags.color,
+    isTTY: process.stdout.isTTY === true,
+    env: process.env,
+  });
 
   if (flags.live) {
-    console.log(renderTree(live));
+    console.log(renderTree(live, { palette }));
     return 0;
   }
 
@@ -171,9 +179,12 @@ async function diffCommand(flags: Flags): Promise<number> {
     renderTreeDiff(diffTrees(live, wanted), {
       full: flags.full,
       changedOnly: flags.changedOnly,
+      palette,
     }),
   );
-  console.log(renderRedundant(redundantGrants(wanted), { full: flags.full }));
+  console.log(
+    renderRedundant(redundantGrants(wanted), { full: flags.full, palette }),
+  );
   return 0;
 }
 
@@ -185,6 +196,7 @@ interface Flags {
   full: boolean;
   changedOnly: boolean;
   live: boolean;
+  color?: 'always' | 'never';
 }
 
 function parseFlags(args: string[]): Flags {
@@ -220,6 +232,12 @@ function parseFlags(args: string[]): Flags {
         break;
       case '--live':
         flags.live = true;
+        break;
+      case '--color':
+        flags.color = 'always';
+        break;
+      case '--no-color':
+        flags.color = 'never';
         break;
     }
   }
