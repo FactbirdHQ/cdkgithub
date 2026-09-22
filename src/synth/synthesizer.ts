@@ -50,6 +50,7 @@ export function synthesize(root: IConstruct): DesiredState {
   teams.sort((a, b) => depthOf(a, teams) - depthOf(b, teams));
 
   assertUniqueSlugs(teams);
+  assertSingleOwner(teams);
 
   const branchProtection = collect(root, BranchProtection, toBranchProtection);
   const rulesets = collect(root, Ruleset, toRulesetManifest);
@@ -278,7 +279,17 @@ function toManifest(team: Team): TeamManifest {
     // team alone, where an empty one means "nobody, prune the rest".
     maintainers: team.props.maintainers,
     members: team.props.members,
-    repositories: team.props.repositories,
+    owns: team.props.owns,
+    // Owning carries `maintain`; a line in `repositories` still overrides it.
+    repositories:
+      team.props.owns || team.props.repositories
+        ? {
+            ...Object.fromEntries(
+              (team.props.owns ?? []).map((repo) => [repo, 'maintain']),
+            ),
+            ...team.props.repositories,
+          }
+        : undefined,
     externalGroup,
   };
 }
@@ -331,4 +342,32 @@ function assertUniqueSlugs(teams: TeamManifest[]): void {
 
 function isTeam(c: IConstruct): c is Team {
   return c instanceof Team;
+}
+
+/**
+ * No repository has two owning teams.
+ *
+ * Ownership answers "who is answerable for this", and two answers is not a
+ * stronger claim than one, it is the absence of one. Access can overlap freely —
+ * that is what `repositories` is for — but the owner is singular by definition,
+ * so a second claim is a mistake to fix rather than a grant to merge.
+ *
+ * Checked at synth, before anything is read or written, because the conflict is
+ * in the definition and has nothing to do with the live organization.
+ */
+function assertSingleOwner(teams: TeamManifest[]): void {
+  const owner = new Map<string, string>();
+  for (const team of teams) {
+    for (const repository of team.owns ?? []) {
+      const held = owner.get(repository);
+      if (held !== undefined) {
+        throw new Error(
+          `Repository "${repository}" is owned by both "${held}" and ` +
+            `"${team.slug}". A repository has one owning team; grant the other ` +
+            'team access through `repositories` instead.',
+        );
+      }
+      owner.set(repository, team.slug);
+    }
+  }
 }
