@@ -50,6 +50,7 @@ export type {
   AppBypass,
   BranchProtectionManifest,
   BranchStatusCheck,
+  BuiltInRepoPermission,
   BypassActorType,
   BypassMode,
   CodeScanningTool,
@@ -61,6 +62,7 @@ export type {
   DesiredState,
   EnabledRepositories,
   ExternalGroupBinding,
+  OrganizationRoleManifest,
   OrgSettingsManifest,
   OwnerType,
   PatternRuleParameters,
@@ -89,5 +91,9 @@ export type {
   TeamManifest,
   TeamPrivacy,
   WorkflowFileReference,
+} from './synth/manifest.ts';
+export {
+  BUILT_IN_REPO_PERMISSIONS,
+  isBuiltInRepoPermission,
 } from './synth/manifest.ts';
 export { collectWarnings } from './synth/warnings.ts';
