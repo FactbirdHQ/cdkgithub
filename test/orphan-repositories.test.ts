@@ -13,10 +13,10 @@ const live = [
 const plain = { muted: (s: string) => s };
 
 describe('orphaned repositories', () => {
-  test('one no team reaches and nothing declares is orphaned', () => {
+  test('one nothing mentions and no team reaches is undeclared', () => {
     expect(orphanRepositories(live, ['nest'], ['nest'])).toEqual([
-      { name: 'Also-Forgotten', unreachable: true },
-      { name: 'forgotten', unreachable: true },
+      { name: 'Also-Forgotten', reason: 'undeclared' },
+      { name: 'forgotten', reason: 'undeclared' },
     ]);
   });
 
@@ -26,6 +26,15 @@ describe('orphaned repositories', () => {
         (o) => o.name,
       ),
     ).toEqual(['Also-Forgotten']);
+  });
+
+  test('a declared repository no team reaches is unreachable, not undeclared', () => {
+    // Declaring the estate makes a repository visible. It does not give anyone
+    // access to it, and that is the half worth naming separately.
+    expect(orphanRepositories(live, ['nest', 'forgotten'], ['nest'])).toEqual([
+      { name: 'Also-Forgotten', reason: 'undeclared' },
+      { name: 'forgotten', reason: 'unreachable' },
+    ]);
   });
 
   test('matching ignores case, because GitHub does', () => {
@@ -38,21 +47,27 @@ describe('orphaned repositories', () => {
     ).toEqual([]);
   });
 
-  test('a definition declaring no repositories still reports by grants', () => {
+  test('a definition declaring no repositories reports by grants alone', () => {
     expect(
-      orphanRepositories(live, undefined, ['nest']).map((o) => o.name),
-    ).toEqual(['Also-Forgotten', 'forgotten']);
+      orphanRepositories(live, undefined, ['nest']).map((o) => o.reason),
+    ).toEqual(['undeclared', 'undeclared']);
   });
 
   test('nothing is reported when the live list was never read', () => {
     expect(orphanRepositories(undefined, ['nest'], [])).toEqual([]);
   });
 
-  test('the report names them and says what to do', () => {
-    const text = renderOrphans(orphanRepositories(live, [], ['nest']), plain);
-    expect(text).toContain('2 repositories in the organization');
+  test('the report separates the two and says what to do about each', () => {
+    const text = renderOrphans(
+      orphanRepositories(live, ['forgotten'], ['nest']),
+      plain,
+    );
+    expect(text).toContain(
+      '1 repository the definition does not mention at all',
+    );
     expect(text).toContain('Declare it or archive it');
-    expect(text).toContain('forgotten');
+    expect(text).toContain('1 declared repository that no team reaches');
+    expect(text).toContain('open to nobody except the organization owners');
   });
 
   test('nothing is printed when there are none', () => {
