@@ -44,6 +44,22 @@ const GUTTER: Record<TeamDiff['mark'], string> = {
  */
 const GRANT_SAMPLE = 8;
 
+/** The color a team's own contents take, when `--full` lists them. */
+const MARK_TONE: Record<TeamDiff['mark'], keyof Palette> = {
+  unchanged: 'muted',
+  changed: 'changed',
+  added: 'added',
+  removed: 'removed',
+};
+
+/** The marker those contents carry, so a pipe reads the same as a terminal. */
+const MARK_MARKER: Record<TeamDiff['mark'], string> = {
+  unchanged: '',
+  changed: '',
+  added: '+ ',
+  removed: '- ',
+};
+
 /** Render one tree on its own, the way `diff --live` prints the live org. */
 export function renderTree(
   tree: OrgTree,
@@ -161,9 +177,15 @@ interface DetailLine {
 /** The lines beneath a team in the diff. */
 function teamDetail(team: TeamDiff, options: RenderTreeOptions): DetailLine[] {
   if (team.mark !== 'changed') {
-    return options.full
-      ? detailLines(team.node).map((text) => ({ text, tone: 'muted' as const }))
-      : [];
+    if (!options.full) return [];
+    // Everything a created team holds is being added, and everything a deleted
+    // one holds is being removed. Only a team that matches is context.
+    const tone = MARK_TONE[team.mark];
+    const marker = MARK_MARKER[team.mark];
+    return detailLines(team.node).map((text) => ({
+      text: `${marker}${text}`,
+      tone,
+    }));
   }
 
   const lines: DetailLine[] = [];
