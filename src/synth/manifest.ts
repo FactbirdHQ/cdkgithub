@@ -115,6 +115,14 @@ export interface TeamManifest {
    */
   readonly members?: string[];
   /**
+   * Repositories this team owns, by name. Exclusive: no two teams may claim one.
+   *
+   * Owning carries `maintain`, which is write plus the repository's own
+   * presentation and nothing destructive. These are folded into
+   * {@link repositories}, so the reconciler reads one map.
+   */
+  readonly owns?: readonly string[];
+  /**
    * Repository access grants, absent when the definition does not manage this
    * team's access. Declaring the map, `{}` included, makes the definition own
    * it, and a live grant missing from the map is proposed for removal.
