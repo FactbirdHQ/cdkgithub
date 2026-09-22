@@ -37,6 +37,14 @@ export interface RepositoryReach {
    * not mention the repository.
    */
   readonly through: string[];
+  /**
+   * The organization role supplying this permission, when one does.
+   *
+   * Such a role reaches every repository at once, so a report that lists it
+   * per repository says the same sentence two hundred times. The tag is what
+   * lets the renderer say it once and list only what exceeds it.
+   */
+  readonly blanket?: string;
 }
 
 /** Everything one person can reach, on one side of the comparison. */
@@ -136,20 +144,23 @@ export function accessByPerson(tree: OrgTree): Map<string, PersonAccess> {
       };
       for (const repository of estate) {
         const held = entry.reach.get(repository);
-        const strongest = held
-          ? strongerPermission(held.permission, permission, tree.ranks)
-          : permission;
-        // The role is named as the source only when it is what decides the
-        // permission; a team already granting as much keeps the credit.
-        const through =
-          held &&
-          rankOf(held.permission, tree.ranks) >= rankOf(permission, tree.ranks)
-            ? held.through
-            : [...(held?.through ?? []), `${role.name} (organization role)`];
+        // What is already held wins a tie, so a team granting as much as the
+        // role keeps the credit, and so does the stronger of two roles. Every
+        // holder is folded in this way, one role at a time, which is why the
+        // tag a previous round set has to survive a round it does not win.
+        const heldWins =
+          held !== undefined &&
+          rankOf(held.permission, tree.ranks) >= rankOf(permission, tree.ranks);
+        if (heldWins) continue;
+
         entry.reach.set(repository, {
           repository,
-          permission: strongest,
-          through,
+          permission,
+          through: [
+            ...(held?.through ?? []),
+            `${role.name} (organization role)`,
+          ],
+          blanket: role.name,
         });
       }
       people.set(login, entry);

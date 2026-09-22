@@ -95,6 +95,61 @@ function renderPerson(
   return lines;
 }
 
+/**
+ * Split off the repositories an organization role reaches wholesale.
+ *
+ * A role carrying a base permission reaches every repository, so listing it
+ * per repository buries the handful of grants a reader is looking for under
+ * two hundred identical lines. The role is stated once and the exceptions,
+ * where a team grants more than it, stay listed one by one.
+ *
+ * A single repository is left where it is: a summary of one says less than the
+ * line it replaces.
+ */
+function collapseBlanket<
+  T extends { readonly repository: string; readonly to?: RepositoryReach },
+>(
+  entries: T[],
+): {
+  summaries: Array<{ role: string; permission: string; count: number }>;
+  rest: T[];
+} {
+  const grouped = new Map<string, T[]>();
+  const rest: T[] = [];
+  for (const entry of entries) {
+    const role = entry.to?.blanket;
+    if (!role) {
+      rest.push(entry);
+      continue;
+    }
+    grouped.set(role, [...(grouped.get(role) ?? []), entry]);
+  }
+
+  const summaries: Array<{ role: string; permission: string; count: number }> =
+    [];
+  for (const [role, group] of [...grouped].sort(([a], [b]) =>
+    a.localeCompare(b),
+  )) {
+    if (group.length === 1) {
+      rest.push(...group);
+      continue;
+    }
+    summaries.push({
+      role,
+      permission: group[0]?.to?.permission ?? '',
+      count: group.length,
+    });
+  }
+  return { summaries, rest: rest.sort(byRepository) };
+}
+
+function byRepository(
+  a: { readonly repository?: string },
+  b: { readonly repository?: string },
+): number {
+  return (a.repository ?? '').localeCompare(b.repository ?? '');
+}
+
 /** The gained, changed or lost repositories, sampled unless `--full`. */
 function changeLines(
   changes: ReachChange[],
@@ -103,7 +158,20 @@ function changeLines(
   marker: string,
   paint: Palette,
 ): string[] {
-  const rendered = changes.map((c) => {
+  // Only a gain or a change can come from a role; losing one is losing the
+  // assignment, which the role's own summary already says.
+  const { summaries, rest } =
+    marker === '-'
+      ? { summaries: [], rest: changes }
+      : collapseBlanket(changes);
+
+  const summaryLines = summaries.map((s) =>
+    paint[tone](
+      `${indent}${marker} all ${s.count} repositories = "${s.permission}"   via ${s.role} (organization role)`,
+    ),
+  );
+
+  const rendered = rest.map((c) => {
     if (marker === '+') {
       return `${indent}+ ${c.repository} = "${c.to?.permission}"   via ${c.to?.through.join(', ')}`;
     }
@@ -113,9 +181,12 @@ function changeLines(
     return `${indent}~ ${c.repository}: "${c.from?.permission}" -> "${c.to?.permission}"   via ${c.to?.through.join(', ')}`;
   });
 
-  if (rendered.length <= SAMPLE) return rendered.map(paint[tone]);
+  if (rendered.length <= SAMPLE) {
+    return [...summaryLines, ...rendered.map(paint[tone])];
+  }
   const hidden = rendered.length - SAMPLE;
   return [
+    ...summaryLines,
     ...rendered.slice(0, SAMPLE).map(paint[tone]),
     paint.muted(`${indent}… and ${hidden} more   (--full to list)`),
   ];
@@ -140,30 +211,48 @@ function listAll(person: PersonDiff, indent: string, paint: Palette): string[] {
     return [paint.muted(`${indent}(no repositories)`)];
   }
 
-  return repositories.map((repository) => {
-    const from = before.repositories.get(repository);
-    const to = after.repositories.get(repository);
+  const entries = repositories.map((repository) => ({
+    repository,
+    from: before.repositories.get(repository),
+    to: after.repositories.get(repository),
+  }));
+  const { summaries, rest } = collapseBlanket(entries);
 
-    if (!from && to) {
-      return paint.added(
-        `${indent}+ ${repository} = "${to.permission}"   via ${to.through.join(', ')}`,
-      );
-    }
-    if (from && !to) {
-      return paint.removed(
-        `${indent}- ${repository}   (had "${from.permission}" via ${from.through.join(', ')})`,
-      );
-    }
-    if (from && to && from.permission !== to.permission) {
-      return paint.changed(
-        `${indent}~ ${repository}: "${from.permission}" -> "${to.permission}"   via ${to.through.join(', ')}`,
-      );
-    }
-    const held = (to ?? from) as RepositoryReach;
-    return paint.muted(
-      `${indent}  ${repository} = "${held.permission}"   via ${held.through.join(', ')}`,
+  // The role's line takes the tone of what it does to the reader's access: a
+  // role that was not there before is a gain, one that was is unchanged.
+  const summaryLines = summaries.map((s) => {
+    const gained = entries.every((e) => e.to?.blanket !== s.role || !e.from);
+    const tone: keyof Palette = gained ? 'added' : 'muted';
+    const marker = gained ? '+' : ' ';
+    return paint[tone](
+      `${indent}${marker} all ${s.count} repositories = "${s.permission}"   via ${s.role} (organization role)`,
     );
   });
+
+  return [
+    ...summaryLines,
+    ...rest.map(({ repository, from, to }) => {
+      if (!from && to) {
+        return paint.added(
+          `${indent}+ ${repository} = "${to.permission}"   via ${to.through.join(', ')}`,
+        );
+      }
+      if (from && !to) {
+        return paint.removed(
+          `${indent}- ${repository}   (had "${from.permission}" via ${from.through.join(', ')})`,
+        );
+      }
+      if (from && to && from.permission !== to.permission) {
+        return paint.changed(
+          `${indent}~ ${repository}: "${from.permission}" -> "${to.permission}"   via ${to.through.join(', ')}`,
+        );
+      }
+      const held = (to ?? from) as RepositoryReach;
+      return paint.muted(
+        `${indent}  ${repository} = "${held.permission}"   via ${held.through.join(', ')}`,
+      );
+    }),
+  ];
 }
 
 /** The same data as CSV, for an access review that wants a spreadsheet. */
