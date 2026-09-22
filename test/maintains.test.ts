@@ -7,23 +7,23 @@ function org() {
   return new Organization(app, 'acme', { login: 'acme' });
 }
 
-describe('repository ownership', () => {
-  test('owning grants maintain', () => {
+describe('repository maintainership', () => {
+  test('maintaining grants maintain', () => {
     const root = org();
-    new Team(root, 'cloud', { owns: ['netcore', 'cloud-gateway'] });
+    new Team(root, 'cloud', { maintains: ['netcore', 'cloud-gateway'] });
 
     const state = synthesize(root.node.root);
     expect(state.teams[0]?.repositories).toEqual({
       netcore: 'maintain',
       'cloud-gateway': 'maintain',
     });
-    expect(state.teams[0]?.owns).toEqual(['netcore', 'cloud-gateway']);
+    expect(state.teams[0]?.maintains).toEqual(['netcore', 'cloud-gateway']);
   });
 
-  test('a line in repositories overrides what ownership grants', () => {
+  test('a line in repositories overrides what maintaining grants', () => {
     const root = org();
     new Team(root, 'cloud', {
-      owns: ['netcore'],
+      maintains: ['netcore'],
       repositories: { netcore: 'push' },
     });
 
@@ -34,25 +34,25 @@ describe('repository ownership', () => {
 
   test('two teams claiming one repository fails synthesis', () => {
     const root = org();
-    new Team(root, 'cloud', { owns: ['netcore'] });
-    new Team(root, 'product', { owns: ['netcore'] });
+    new Team(root, 'cloud', { maintains: ['netcore'] });
+    new Team(root, 'product', { maintains: ['netcore'] });
 
     expect(() => synthesize(root.node.root)).toThrow(
-      /"netcore" is owned by both "cloud" and "product"/,
+      /"netcore" is maintained by both "cloud" and "product"/,
     );
   });
 
   test('the conflict is reported even across the tree', () => {
     const root = org();
-    const parent = new Team(root, 'engineering', { owns: ['fctl'] });
-    new Team(parent, 'cloud', { owns: ['fctl'] });
+    const parent = new Team(root, 'engineering', { maintains: ['fctl'] });
+    new Team(parent, 'cloud', { maintains: ['fctl'] });
 
-    expect(() => synthesize(root.node.root)).toThrow(/owned by both/);
+    expect(() => synthesize(root.node.root)).toThrow(/maintained by both/);
   });
 
-  test('access may overlap freely; only ownership is exclusive', () => {
+  test('access may overlap freely; only maintainership is exclusive', () => {
     const root = org();
-    new Team(root, 'cloud', { owns: ['netcore'] });
+    new Team(root, 'cloud', { maintains: ['netcore'] });
     new Team(root, 'support', { repositories: { netcore: 'triage' } });
 
     const state = synthesize(root.node.root);
