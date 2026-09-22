@@ -17,6 +17,7 @@ import type {
   CustomRepositoryRoleManifest,
   OrganizationRoleManifest,
   OrgSettingsManifest,
+  RepositoryManifest,
   RulesetManifest,
 } from './governance.ts';
 
@@ -115,14 +116,6 @@ export interface TeamManifest {
    */
   readonly members?: string[];
   /**
-   * Repositories this team maintains, by name. Exclusive: no two teams may
-   * claim one.
-   *
-   * Maintaining carries `maintain`, which is the permission the word names.
-   * These are folded into {@link repositories}, so the reconciler reads one map.
-   */
-  readonly maintains?: readonly string[];
-  /**
    * Repository access grants, absent when the definition does not manage this
    * team's access. Declaring the map, `{}` included, makes the definition own
    * it, and a live grant missing from the map is proposed for removal.
@@ -160,6 +153,11 @@ export interface DesiredState {
   readonly settings?: OrgSettingsManifest;
   /** GitHub Actions permissions, allowlist, and default token scope. */
   readonly actions?: ActionsPolicyManifest;
+  /**
+   * Repositories to create when the organization does not have them. An
+   * existing one is adopted unchanged; nothing here is ever deleted.
+   */
+  readonly repositories?: RepositoryManifest[];
   /** Repository roles this organization defines, keyed by name. */
   readonly customRepositoryRoles?: CustomRepositoryRoleManifest[];
   /** Who holds which organization role. Keyed by role name. */

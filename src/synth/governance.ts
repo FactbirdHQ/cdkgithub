@@ -457,3 +457,22 @@ export interface CustomRepositoryRoleManifest {
   readonly baseRole: string;
   readonly permissions: readonly string[];
 }
+
+/**
+ * A repository to create if the organization does not have one by this name.
+ *
+ * Everything but `name` describes what to create. An existing repository is
+ * adopted unchanged, so none of it is compared against a live one.
+ */
+export interface RepositoryManifest {
+  readonly name: string;
+  readonly description?: string;
+  readonly private?: boolean;
+  readonly allowMergeCommit?: boolean;
+  readonly allowSquashMerge?: boolean;
+  readonly allowRebaseMerge?: boolean;
+  readonly deleteBranchOnMerge?: boolean;
+  readonly hasIssues?: boolean;
+  readonly hasProjects?: boolean;
+  readonly hasWiki?: boolean;
+}

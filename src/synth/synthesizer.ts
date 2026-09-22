@@ -60,6 +60,10 @@ export function synthesize(root: IConstruct): DesiredState {
   assertNoDuplicateGrants(root.node.findAll().filter(isTeam));
 
   const branchProtection = collect(root, BranchProtection, toBranchProtection);
+  const repositories = collect(root, Repository, (r) => ({
+    name: r.repositoryName,
+    ...r.props,
+  }));
   const rulesets = collect(root, Ruleset, toRulesetManifest);
   const customRepositoryRoles = collect(root, CustomRepositoryRole, (r) => ({
     name: r.roleName,
@@ -80,6 +84,7 @@ export function synthesize(root: IConstruct): DesiredState {
     toCustomPropertyManifest,
   );
 
+  assertUniqueNames(repositories, 'repository');
   assertUniqueNames(rulesets, 'ruleset');
   assertUniqueNames(organizationRoles, 'organization role');
   assertUniqueNames(customRepositoryRoles, 'custom repository role');
@@ -92,6 +97,7 @@ export function synthesize(root: IConstruct): DesiredState {
     teams,
     settings: owner.settings,
     actions: singleActionsPolicy(root),
+    repositories,
     rulesets,
     customRepositoryRoles,
     organizationRoles,
@@ -286,17 +292,7 @@ function toManifest(team: Team): TeamManifest {
     // team alone, where an empty one means "nobody, prune the rest".
     maintainers: team.props.maintainers,
     members: team.props.members,
-    maintains: team.props.maintains,
-    // Maintaining carries `maintain`; a line in `repositories` still overrides it.
-    repositories:
-      team.props.maintains || team.props.repositories
-        ? {
-            ...Object.fromEntries(
-              (team.props.maintains ?? []).map((repo) => [repo, 'maintain']),
-            ),
-            ...normalizeGrants(team.props.repositories),
-          }
-        : undefined,
+    repositories: normalizeGrants(team.props.repositories),
     externalGroup,
   };
 }
@@ -379,13 +375,13 @@ function isTeam(c: IConstruct): c is Team {
 }
 
 /**
- * No repository has two maintaining teams.
+ * No repository is maintained by two teams.
  *
- * Maintaining answers "who is answerable for this", and two answers is not a
- * stronger claim than one, it is the absence of one. Access can overlap freely —
- * that is what `repositories` is for — but the maintainer is singular by
- * definition, so a second claim is a mistake to fix rather than a grant to
- * merge.
+ * `maintain` is the permission and the claim: it says a team answers for the
+ * repository, and two answers is not a stronger claim than one, it is the
+ * absence of one. Every other permission may overlap freely, because reading
+ * and writing are not claims about responsibility. Read off the resolved
+ * grants, so it holds for the map form as much as for `maintain("netcore")`.
  *
  * Checked at synth, before anything is read or written, because the conflict is
  * in the definition and has nothing to do with the live organization.
@@ -393,13 +389,16 @@ function isTeam(c: IConstruct): c is Team {
 function assertSingleMaintainer(teams: TeamManifest[]): void {
   const maintainer = new Map<string, string>();
   for (const team of teams) {
-    for (const repository of team.maintains ?? []) {
+    for (const [repository, permission] of Object.entries(
+      team.repositories ?? {},
+    )) {
+      if (permission !== 'maintain') continue;
       const held = maintainer.get(repository);
       if (held !== undefined) {
         throw new Error(
           `Repository "${repository}" is maintained by both "${held}" and ` +
-            `"${team.slug}". A repository has one maintaining team; grant the ` +
-            'other team access through `repositories` instead.',
+            `"${team.slug}". "maintain" says a team answers for a repository, ` +
+            'and one does; grant the other team a lesser permission instead.',
         );
       }
       maintainer.set(repository, team.slug);

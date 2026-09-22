@@ -4,6 +4,7 @@ import type { Change, FieldChange } from './changes.ts';
 import type { LiveState } from './live.ts';
 import { resolveLive } from './live.ts';
 import { planCustomRepositoryRoles } from './plan-custom-roles.ts';
+import { planRepositories } from './plan-repositories.ts';
 import { planGovernance } from './plan-governance.ts';
 import { planOrganizationRoles } from './plan-org-roles.ts';
 import { planTeamAccess } from './plan-team-access.ts';
@@ -75,6 +76,7 @@ export function plan(desired: DesiredState, live: LiveState): Change[] {
     ...links,
     ...deletes,
     ...planGovernance(desired, live),
+    ...planRepositories(desired.repositories, live),
     ...planCustomRepositoryRoles(desired.customRepositoryRoles, live),
     ...planOrganizationRoles(desired.organizationRoles, live),
   ];

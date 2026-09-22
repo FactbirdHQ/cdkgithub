@@ -173,6 +173,15 @@ export function renderPlan(changes: Change[]): string {
         );
         break;
       }
+      case 'create-repository': {
+        const repo = change.repository;
+        lines.push(`  + repository "${repo.name}"`);
+        lines.push(
+          `      private = ${repo.private ?? true}` +
+            (repo.description ? `   "${repo.description}"` : ''),
+        );
+        break;
+      }
       case 'create-repo-role': {
         const role = change.role;
         lines.push(`  + repository role "${role.name}"`);
@@ -246,6 +255,7 @@ const BUCKETS = {
     'create-property',
     'assign-org-role',
     'create-repo-role',
+    'create-repository',
   ],
   update: [
     'update',

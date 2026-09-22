@@ -11,6 +11,7 @@ import type {
   CodeSecurityConfigurationManifest,
   CustomPropertyManifest,
   CustomRepositoryRoleManifest,
+  RepositoryManifest,
   ExternalGroupBinding,
   OrgSettingsManifest,
   RepoPermission,
@@ -260,6 +261,18 @@ export interface DeleteRepositoryRole {
   readonly live: LiveCustomRepositoryRole;
 }
 
+/**
+ * Create a repository the organization does not have.
+ *
+ * There is no update and no delete beside it. An existing repository is adopted
+ * as it stands, and a declaration removed from the definition removes nothing
+ * from GitHub.
+ */
+export interface CreateRepository {
+  readonly kind: 'create-repository';
+  readonly repository: RepositoryManifest;
+}
+
 export type Change =
   | CreateTeam
   | UpdateTeam
@@ -285,6 +298,7 @@ export type Change =
   | SetPropertyValues
   | SetBranchProtection
   | RemoveBranchProtection
+  | CreateRepository
   | CreateRepositoryRole
   | UpdateRepositoryRole
   | DeleteRepositoryRole
