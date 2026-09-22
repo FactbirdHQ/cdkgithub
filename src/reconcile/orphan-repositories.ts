@@ -1,15 +1,15 @@
 /**
- * Repositories the organization has that the definition does not account for.
+ * Repositories the definition does not account for.
  *
  * Deliberately not a change, and reported by `diff` rather than planned by
- * `apply`. An undeclared repository is not drift to correct: it is one nobody
- * has written down, and the answer is to declare it or archive it, never to have
- * a tool decide.
+ * `apply`. Declaring a repository or archiving it is a decision about what the
+ * company still does, and neither is a decision a tool should make.
  *
- * It is worth reporting because the failure is silent. A repository no team
- * grants is a repository nobody is recorded as maintaining, and nothing
- * surfaces that until someone goes looking — which is exactly what `diff` is
- * for.
+ * Two shapes, and the second is the quieter one. A repository nothing mentions
+ * is invisible; a repository that is declared but that no team reaches is
+ * visible, adopted and kept, and still open to nobody but the organization
+ * owners. Declaring the estate fixes the first and says nothing about the
+ * second, so both are worth naming.
  */
 
 import type { LiveRepository } from '../github/client.ts';
@@ -17,11 +17,10 @@ import type { LiveRepository } from '../github/client.ts';
 export interface OrphanRepository {
   readonly name: string;
   /**
-   * No team reaches it at all, which is the quieter half of the problem: the
-   * repository is not just undeclared, it is unreachable except by organization
-   * owners and whatever roles reach everything.
+   * `undeclared`: nothing in the definition mentions it at all.
+   * `unreachable`: declared, so it is adopted and kept, but no team reaches it.
    */
-  readonly unreachable: boolean;
+  readonly reason: 'undeclared' | 'unreachable';
 }
 
 /**
@@ -40,18 +39,17 @@ export function orphanRepositories(
   const lower = (names: Iterable<string>) =>
     new Set([...names].map((n) => n.toLowerCase()));
 
-  // A definition that declares no repositories still grants them, and an
-  // undeclared repository is only orphaned against a definition that claims to
-  // list them. Without that claim, the grants are the whole of what is known.
   const known = declared ? lower(declared) : new Set<string>();
   const reachable = lower(granted);
 
   return live
-    .filter((repository) => {
-      const name = repository.name.toLowerCase();
-      return !known.has(name) && !reachable.has(name);
-    })
-    .map((repository) => ({ name: repository.name, unreachable: true }))
+    .filter((repository) => !reachable.has(repository.name.toLowerCase()))
+    .map((repository) => ({
+      name: repository.name,
+      reason: known.has(repository.name.toLowerCase())
+        ? ('unreachable' as const)
+        : ('undeclared' as const),
+    }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -62,15 +60,33 @@ export function renderOrphans(
 ): string {
   if (orphans.length === 0) return '';
 
-  const lines = [
-    '',
-    `${orphans.length} repositor${orphans.length === 1 ? 'y' : 'ies'} in the ` +
-      'organization that no team reaches and the definition does not declare.',
-    paint.muted(
-      '  Each one has no maintainer written down anywhere. Declare it or archive it.',
-    ),
-    '',
-  ];
-  for (const orphan of orphans) lines.push(`  ${orphan.name}`);
+  const undeclared = orphans.filter((o) => o.reason === 'undeclared');
+  const unreachable = orphans.filter((o) => o.reason === 'unreachable');
+  const lines: string[] = [];
+
+  const plural = (n: number) => (n === 1 ? 'y' : 'ies');
+
+  if (undeclared.length > 0) {
+    lines.push(
+      '',
+      `${undeclared.length} repositor${plural(undeclared.length)} the definition does not mention at all.`,
+      paint.muted('  Declare it or archive it.'),
+      '',
+      ...undeclared.map((o) => `  ${o.name}`),
+    );
+  }
+
+  if (unreachable.length > 0) {
+    lines.push(
+      '',
+      `${unreachable.length} declared repositor${plural(unreachable.length)} that no team reaches.`,
+      paint.muted(
+        '  Adopted and kept, but open to nobody except the organization owners.',
+      ),
+      '',
+      ...unreachable.map((o) => `  ${o.name}`),
+    );
+  }
+
   return lines.join('\n');
 }
