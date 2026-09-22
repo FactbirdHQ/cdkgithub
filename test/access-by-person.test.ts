@@ -322,3 +322,94 @@ describe('where a grant comes from', () => {
     expect(reach?.through).toEqual(['cloud']);
   });
 });
+
+describe('organization roles in the access review', () => {
+  const ROLE = {
+    id: 1,
+    name: 'all_repo_maintain',
+    baseRole: 'maintain',
+    permissions: [],
+    source: 'Predefined',
+  };
+  const ESTATE = [
+    { id: 1, name: 'netcore' },
+    { id: 2, name: 'yarnix' },
+  ];
+  const HELD_BY_DEVOPS = { 1: { teams: ['devops'], users: [] } };
+
+  test('a role assigned to a team reaches every repository, declared or not', async () => {
+    const client = new FakeClient({
+      teams: [liveTeam('devops')],
+      teamMembers: { devops: [{ login: 'vil', role: 'member' }] },
+      repositories: ESTATE,
+      organizationRoles: [ROLE],
+      roleAssignments: HELD_BY_DEVOPS,
+    });
+
+    const vil = accessByPerson(await readLiveTree(client, 'acme')).get('vil');
+
+    // No team grants `yarnix`. The role is the only route to it.
+    expect(vil?.repositories.get('yarnix')?.permission).toBe('maintain');
+    expect(vil?.repositories.get('yarnix')?.through).toEqual([
+      'all_repo_maintain (organization role)',
+    ]);
+  });
+
+  test('moving a repository from a team grant to the role withdraws nothing', async () => {
+    const client = new FakeClient({
+      teams: [liveTeam('devops')],
+      teamMembers: { devops: [{ login: 'vil', role: 'member' }] },
+      teamRepositories: { devops: [{ name: 'yarnix', roleName: 'pull' }] },
+      repositories: ESTATE,
+      organizationRoles: [ROLE],
+      roleAssignments: HELD_BY_DEVOPS,
+    });
+
+    const live = await readLiveTree(client, 'acme');
+    // The definition drops the grant and keeps the role. Read from the teams
+    // alone this is a withdrawal; it is not one.
+    const wanted = desiredTree(
+      {
+        ...manifest([team('devops', { members: ['vil'] })]),
+        organizationRoles: [{ name: 'all_repo_maintain', teams: ['devops'] }],
+      },
+      live.customRoles,
+      live.orgRoles,
+      live.repositories,
+    );
+
+    const vil = diffAccessByPerson(live, wanted).find((p) => p.login === 'vil');
+    expect(vil?.lost).toEqual([]);
+    expect(vil?.after.repositories.get('yarnix')?.permission).toBe('maintain');
+  });
+
+  test('a team granting more than the role keeps both the credit and the level', async () => {
+    const client = new FakeClient({
+      teams: [liveTeam('devops')],
+      teamMembers: { devops: [{ login: 'vil', role: 'member' }] },
+      teamRepositories: { devops: [{ name: 'netcore', roleName: 'admin' }] },
+      repositories: ESTATE,
+      organizationRoles: [ROLE],
+      roleAssignments: HELD_BY_DEVOPS,
+    });
+
+    const vil = accessByPerson(await readLiveTree(client, 'acme')).get('vil');
+    expect(vil?.repositories.get('netcore')?.permission).toBe('admin');
+    expect(vil?.repositories.get('netcore')?.through).toEqual(['devops']);
+  });
+
+  test('a role carrying no base permission reaches nothing', async () => {
+    const client = new FakeClient({
+      teams: [liveTeam('devops')],
+      teamMembers: { devops: [{ login: 'vil', role: 'member' }] },
+      repositories: ESTATE,
+      organizationRoles: [
+        { id: 2, name: 'app_manager', permissions: [], source: 'Predefined' },
+      ],
+      roleAssignments: { 2: { teams: ['devops'], users: [] } },
+    });
+
+    const vil = accessByPerson(await readLiveTree(client, 'acme')).get('vil');
+    expect([...(vil?.repositories.keys() ?? [])]).toEqual([]);
+  });
+});

@@ -28,6 +28,8 @@ import type {
   RepositoryAccess,
   TeamPrivacy,
 } from '../synth/manifest.ts';
+import { assignmentFromLive } from './org-role-access.ts';
+import type { OrgRoleAssignment } from './org-role-access.ts';
 import {
   rankCustomRoles,
   rankOf,
@@ -68,6 +70,14 @@ export interface OrgTree {
   readonly customRoles: readonly LiveCustomRepositoryRole[];
   /** Every repository the organization has, for the orphan report. */
   readonly repositories?: readonly LiveRepository[];
+  /**
+   * Organization roles and who holds them.
+   *
+   * Outside the team tree and wider than any of it: a role carrying a
+   * `base_role` is a permission on every repository at once. The access review
+   * folds it back in, which is the only place the two meet.
+   */
+  readonly orgRoles?: readonly OrgRoleAssignment[];
 }
 
 /** The fields a team carries before its place in the tree is known. */
@@ -101,10 +111,11 @@ export async function readLiveTree(
   // A personal account has no teams, and asking for them 404s.
   if (ownerType === 'user') return buildTree(owner, [], []);
 
-  const [teams, customRoles, repositories] = await Promise.all([
+  const [teams, customRoles, repositories, orgRoles] = await Promise.all([
     client.listTeams(owner),
     readCustomRoles(client, owner),
     client.listRepositories(owner),
+    readOrgRoles(client, owner),
   ]);
   const ranks = rankCustomRoles(customRoles);
 
@@ -121,7 +132,35 @@ export async function readLiveTree(
   return {
     ...buildTree(owner, narrowLiveSeeds(seeds, ranks), customRoles),
     repositories,
+    orgRoles,
   };
+}
+
+/**
+ * Organization roles and who holds them, or none when the token cannot see them.
+ *
+ * Read for the same reason the custom repository roles are: a role carrying a
+ * base permission reaches every repository, so an access review without it
+ * describes a smaller organization than the real one. Not worth failing the
+ * whole diff over, though.
+ */
+async function readOrgRoles(
+  client: GitHubClient,
+  owner: string,
+): Promise<OrgRoleAssignment[]> {
+  try {
+    const roles = await client.listOrganizationRoles(owner);
+    return await Promise.all(
+      roles.map(async (role) =>
+        assignmentFromLive({
+          ...role,
+          ...(await client.readRoleAssignment(owner, role.id)),
+        }),
+      ),
+    );
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -182,6 +221,8 @@ function seedFromLive(
 export function desiredTree(
   desired: DesiredState,
   customRoles: readonly LiveCustomRepositoryRole[] = [],
+  liveOrgRoles: readonly OrgRoleAssignment[] = [],
+  repositories: readonly LiveRepository[] = [],
 ): OrgTree {
   const seeds = desired.teams.map(
     (t) =>
@@ -199,7 +240,21 @@ export function desiredTree(
         idpSynced: t.externalGroup !== undefined,
       }) satisfies TeamSeed,
   );
-  return buildTree(desired.owner, seeds, customRoles);
+  // What a role grants is GitHubs, not the definitions: the manifest says who
+  // holds one, and the live role says what holding it reaches.
+  const reachOf = new Map(liveOrgRoles.map((r) => [r.name, r.baseRole]));
+  const orgRoles = (desired.organizationRoles ?? []).map((r) => ({
+    name: r.name,
+    teams: r.teams ?? [],
+    users: r.users ?? [],
+    baseRole: reachOf.get(r.name),
+  }));
+
+  return {
+    ...buildTree(desired.owner, seeds, customRoles),
+    orgRoles,
+    repositories,
+  };
 }
 
 /**

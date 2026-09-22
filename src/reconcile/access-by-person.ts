@@ -17,7 +17,9 @@
  * added to one repository by hand holds a grant no team records.
  */
 
+import { comparableRoleName } from '../github/client.ts';
 import type { RepoPermission, RepositoryAccess } from '../synth/manifest.ts';
+import { holdersOf } from './org-role-access.ts';
 import { rankOf, strongerPermission } from './permission-rank.ts';
 import type { OrgTree, TeamNode } from './tree.ts';
 
@@ -114,6 +116,45 @@ export function accessByPerson(tree: OrgTree): Map<string, PersonAccess> {
     for (const child of team.children) walk(child);
   };
   for (const root of tree.roots) walk(root);
+
+  // Organization roles, folded in last.
+  //
+  // A role carrying a base permission reaches every repository the
+  // organization has, so it is applied over the whole estate rather than a
+  // list, and only where it beats what the teams already gave. Someone holding
+  // `all_repo_maintain` therefore shows every repository, which is the truth a
+  // team-only report leaves out.
+  const estate = (tree.repositories ?? []).map((r) => r.name);
+  for (const role of tree.orgRoles ?? []) {
+    if (!role.baseRole || estate.length === 0) continue;
+    const permission = comparableRoleName(role.baseRole) as RepoPermission;
+    const holders = holdersOf(role, (slug) => membersBelow(slug, tree));
+    for (const login of holders) {
+      const entry: Accumulator = people.get(login) ?? {
+        teams: [],
+        reach: new Map(),
+      };
+      for (const repository of estate) {
+        const held = entry.reach.get(repository);
+        const strongest = held
+          ? strongerPermission(held.permission, permission, tree.ranks)
+          : permission;
+        // The role is named as the source only when it is what decides the
+        // permission; a team already granting as much keeps the credit.
+        const through =
+          held &&
+          rankOf(held.permission, tree.ranks) >= rankOf(permission, tree.ranks)
+            ? held.through
+            : [...(held?.through ?? []), `${role.name} (organization role)`];
+        entry.reach.set(repository, {
+          repository,
+          permission: strongest,
+          through,
+        });
+      }
+      people.set(login, entry);
+    }
+  }
 
   return new Map(
     [...people.entries()]
@@ -243,6 +284,28 @@ export function diffAccessByPerson(
         gained.length === 0 && lost.length === 0 && changed.length === 0,
     };
   });
+}
+
+/**
+ * Everyone in a team and in every team beneath it.
+ *
+ * An organization role assigned to a team reaches the people below it too,
+ * because a child team's members are members of the parent as far as the
+ * assignment is concerned.
+ */
+function membersBelow(slug: string, tree: OrgTree): string[] {
+  const root = tree.bySlug.get(slug);
+  if (!root) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const walk = (node: TeamNode) => {
+    if (seen.has(node.slug)) return;
+    seen.add(node.slug);
+    out.push(...node.maintainers, ...node.members);
+    for (const child of node.children) walk(child);
+  };
+  walk(root);
+  return out;
 }
 
 /** A person's repositories as a plain map, for a report that wants only that. */
