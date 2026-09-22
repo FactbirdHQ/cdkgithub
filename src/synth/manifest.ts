@@ -86,6 +86,12 @@ export interface TeamManifest {
   readonly slug: string;
   /** Human-readable team name. */
   readonly name: string;
+  /**
+   * The slug the team carries on GitHub today, when {@link slug} is a new one
+   * the rename has not landed yet. The planner matches on {@link slug} first,
+   * so the marker stops mattering the moment the rename applies.
+   */
+  readonly previousSlug?: string;
   readonly description?: string;
   readonly privacy: TeamPrivacy;
   /** Slug of the parent team, if this team is nested. */
