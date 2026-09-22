@@ -10,6 +10,10 @@ import { plan } from './reconcile/planner.ts';
 import { diffAccessByPerson } from './reconcile/access-by-person.ts';
 import { choosePalette } from './reconcile/color.ts';
 import {
+  orphanRepositories,
+  renderOrphans,
+} from './reconcile/orphan-repositories.ts';
+import {
   renderAccessByPerson,
   renderAccessCsv,
 } from './reconcile/render-person.ts';
@@ -239,6 +243,20 @@ async function diffCommand(flags: Flags): Promise<number> {
   );
   console.log(
     renderRedundant(redundantGrants(wanted), { full: flags.full, palette }),
+  );
+
+  // Repositories nobody declares and no team reaches. Reported here rather than
+  // planned: an undeclared repository is one to write down or archive, and
+  // neither is a decision this tool should make.
+  console.log(
+    renderOrphans(
+      orphanRepositories(
+        live.repositories,
+        desired.repositories?.map((r) => r.name),
+        desired.teams.flatMap((t) => Object.keys(t.repositories ?? {})),
+      ),
+      palette,
+    ),
   );
   return 0;
 }

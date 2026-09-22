@@ -16,6 +16,7 @@
 import type {
   GitHubClient,
   LiveCustomRepositoryRole,
+  LiveRepository,
   LiveTeam,
   LiveTeamMember,
   LiveTeamRepository,
@@ -65,6 +66,8 @@ export interface OrgTree {
   readonly ranks: Map<string, number>;
   /** The roles behind that order, to rank the other side the same way. */
   readonly customRoles: readonly LiveCustomRepositoryRole[];
+  /** Every repository the organization has, for the orphan report. */
+  readonly repositories?: readonly LiveRepository[];
 }
 
 /** The fields a team carries before its place in the tree is known. */
@@ -98,9 +101,10 @@ export async function readLiveTree(
   // A personal account has no teams, and asking for them 404s.
   if (ownerType === 'user') return buildTree(owner, [], []);
 
-  const [teams, customRoles] = await Promise.all([
+  const [teams, customRoles, repositories] = await Promise.all([
     client.listTeams(owner),
     readCustomRoles(client, owner),
+    client.listRepositories(owner),
   ]);
   const ranks = rankCustomRoles(customRoles);
 
@@ -114,7 +118,10 @@ export async function readLiveTree(
     }),
   );
 
-  return buildTree(owner, narrowLiveSeeds(seeds, ranks), customRoles);
+  return {
+    ...buildTree(owner, narrowLiveSeeds(seeds, ranks), customRoles),
+    repositories,
+  };
 }
 
 /**

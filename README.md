@@ -245,6 +245,12 @@ Six flags shape the output:
 | `--live` | Print the live org and stop. No manifest is compared. |
 | `--by-person` | Pivot onto people: who can reach what, before and after. |
 | `--csv` | Write `--by-person` as CSV, one row per person per repository. |
+
+Beneath the tree, `diff` names any repository the organization has that no team
+reaches and the definition does not declare. Each one has no maintainer written
+down anywhere, which nothing else surfaces: it is not drift, so `plan` has
+nothing to propose about it, and it stays invisible until someone goes looking.
+Declare it or archive it.
 | `--color` / `--no-color` | Force color on or off. |
 
 ### Who can reach what
