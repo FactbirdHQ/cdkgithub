@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { apply } from '../src/reconcile/applier.ts';
+import { planRepositories } from '../src/reconcile/plan-repositories.ts';
 import type { Change } from '../src/reconcile/changes.ts';
 import { FakeClient } from './fake-client.ts';
 
@@ -100,5 +101,46 @@ describe('a repository is never deleted', () => {
       );
     });
     expect(offenders).toEqual([]);
+  });
+});
+
+/**
+ * An existing repository's visibility is never changed.
+ *
+ * Creating one defaults to the most closed thing that still works, which is the
+ * right instinct for a repository that does not exist yet. Applying that
+ * instinct to one that does would be the opposite of safe: a declaration that
+ * omits `visibility` would quietly close an open repository, and one that says
+ * `public` would quietly open a closed one. Neither is a change anybody asked
+ * for by writing a name in a list.
+ *
+ * So adoption is total. The declaration describes what to create and is ignored
+ * entirely for a repository GitHub already has.
+ */
+describe('an existing repository is never reconfigured', () => {
+  test('the client cannot patch a repository', () => {
+    const client = readFileSync('src/github/client.ts', 'utf8');
+
+    // `updateOrgRuleset` and `updateBranchProtection` live in Octokit's
+    // `repos.*` namespace and touch neither the repository nor its visibility.
+    expect(client).not.toContain('repos.update(');
+    expect(client).not.toContain('repos.edit(');
+    expect(client).not.toMatch(/PATCH \/repos\/\{owner\}\/\{repo\}'/);
+  });
+
+  test('declaring public against a live private repository proposes nothing', () => {
+    const live = { teams: [], repositories: [{ id: 1, name: 'secrets' }] };
+
+    expect(
+      planRepositories([{ name: 'secrets', visibility: 'public' }], live),
+    ).toEqual([]);
+  });
+
+  test('declaring nothing against a live public repository proposes nothing', () => {
+    // The unset default is `internal` or `private`; neither may reach a
+    // repository that already exists and is open on purpose.
+    const live = { teams: [], repositories: [{ id: 1, name: 'the-blog' }] };
+
+    expect(planRepositories([{ name: 'the-blog' }], live)).toEqual([]);
   });
 });
