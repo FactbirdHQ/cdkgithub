@@ -1,9 +1,10 @@
 import { Construct } from 'constructs';
 import type { RepositoryAccess, TeamPrivacy } from '../synth/manifest.ts';
+import type { VocabularyMember } from '../vocabulary.ts';
 import type { RepositoryGrantList } from './grants.ts';
 import type { ExternalGroupProps } from './external-group.ts';
 
-export interface TeamProps<Member extends string = string> {
+export interface TeamProps<Member extends string = VocabularyMember> {
   /**
    * Human-readable team name. Defaults to the construct id.
    * The GitHub slug is derived from this name.
@@ -65,7 +66,7 @@ export interface TeamProps<Member extends string = string> {
  * another `Team` becomes a child (GitHub `parent_team_id`) of that team. A team
  * scoped directly under an `Organization` is top-level.
  */
-export class Team<Member extends string = string> extends Construct {
+export class Team<Member extends string = VocabularyMember> extends Construct {
   /** The team name (falls back to the construct id). */
   public readonly teamName: string;
   /** URL-safe slug GitHub uses to address the team. */

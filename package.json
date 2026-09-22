@@ -8,7 +8,7 @@
     "cdkgithub": "bin/cdkgithub.ts"
   },
   "scripts": {
-    "build": "tsc --noEmit",
+    "build": "tsc --noEmit && tsc --noEmit -p test/vocabulary/tsconfig.json",
     "test": "bun test",
     "synth": "bun bin/cdkgithub.ts synth examples/factbird.ts",
     "diff": "bun bin/cdkgithub.ts diff",

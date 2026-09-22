@@ -11,9 +11,9 @@
  * calls is flattened, which is why `[push('netcore'), triage(...systemII)]` is one
  * list of grants rather than a list of lists.
  *
- * The helpers are generic over the repository name so a definition can narrow
- * them to its own list of repositories and have a misspelling fail where it is
- * written. They deliberately do not check for a repository granted twice in one
+ * The helpers take whatever repository names the definition has declared
+ * through `Vocabulary`, so a misspelling fails where it is written rather than
+ * at `plan`. A definition that declares none keeps the open type. They deliberately do not check for a repository granted twice in one
  * team: a tuple type can be made to detect it, at the cost of an error message
  * nobody can read, so {@link synthesize} asserts it instead and names both.
  */
@@ -22,6 +22,7 @@ import type {
   BuiltInRepoPermission,
   RepoPermission,
 } from '../synth/manifest.ts';
+import type { VocabularyRepository } from '../vocabulary.ts';
 
 /** One repository, at one permission. */
 export interface RepositoryGrant<
@@ -34,7 +35,9 @@ export interface RepositoryGrant<
 
 const at =
   <P extends BuiltInRepoPermission>(permission: P) =>
-  <R extends string>(...repositories: R[]): RepositoryGrant<R, P>[] =>
+  <R extends VocabularyRepository>(
+    ...repositories: R[]
+  ): RepositoryGrant<R, P>[] =>
     repositories.map((repository) => ({ repository, permission }));
 
 /** Read the code, and nothing else. */
@@ -71,7 +74,9 @@ export const admin = at('admin');
  */
 export const role =
   <N extends string>(name: N) =>
-  <R extends string>(...repositories: R[]): RepositoryGrant<R, N>[] =>
+  <R extends VocabularyRepository>(
+    ...repositories: R[]
+  ): RepositoryGrant<R, N>[] =>
     repositories.map((repository) => ({ repository, permission: name }));
 
 /**

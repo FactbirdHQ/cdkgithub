@@ -111,4 +111,9 @@ export {
   BUILT_IN_REPO_PERMISSIONS,
   isBuiltInRepoPermission,
 } from './synth/manifest.ts';
+export type {
+  Vocabulary,
+  VocabularyMember,
+  VocabularyRepository,
+} from './vocabulary.ts';
 export { collectWarnings } from './synth/warnings.ts';
