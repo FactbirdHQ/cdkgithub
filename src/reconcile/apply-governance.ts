@@ -164,6 +164,21 @@ export async function applyGovernanceChange(
       await client.deleteCustomProperty(org, change.live.name);
       return;
 
+    case 'create-repo-role':
+      ctx.log(`Creating repository role "${change.role.name}"`);
+      await client.createCustomRepositoryRole(org, change.role);
+      return;
+
+    case 'update-repo-role':
+      ctx.log(`Updating repository role "${change.role.name}"`);
+      await client.updateCustomRepositoryRole(org, change.id, change.role);
+      return;
+
+    case 'delete-repo-role':
+      ctx.log(`Deleting repository role "${change.live.name}"`);
+      await client.deleteCustomRepositoryRole(org, change.live.id);
+      return;
+
     case 'assign-org-role':
       ctx.log(
         `Granting org role "${change.role}" to ${change.subject} ${change.name}`,

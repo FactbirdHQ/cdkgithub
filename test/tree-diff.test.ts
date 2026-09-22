@@ -93,7 +93,12 @@ describe('reading the live tree', () => {
     const client = new FakeClient({
       teams: [liveTeam('engineering'), liveTeam('cloud', 'engineering')],
       customRepositoryRoles: [
-        { id: 1, name: 'Merge Queue Jumper', baseRole: 'write' },
+        {
+          id: 1,
+          name: 'Merge Queue Jumper',
+          baseRole: 'write',
+          permissions: [],
+        },
       ],
       teamRepositories: {
         engineering: [{ name: 'netcore', roleName: 'Merge Queue Jumper' }],
@@ -237,7 +242,12 @@ describe('diffing the two trees', () => {
     const client = new FakeClient({
       teams: [liveTeam('cloud')],
       customRepositoryRoles: [
-        { id: 1, name: 'Merge Queue Jumper', baseRole: 'write' },
+        {
+          id: 1,
+          name: 'Merge Queue Jumper',
+          baseRole: 'write',
+          permissions: [],
+        },
       ],
       teamRepositories: {
         cloud: [{ name: 'netcore', roleName: 'Merge Queue Jumper' }],

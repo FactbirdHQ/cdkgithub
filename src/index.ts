@@ -22,6 +22,10 @@ export {
   CustomProperty,
   type CustomPropertyProps,
 } from './constructs/custom-property.ts';
+export {
+  CustomRepositoryRole,
+  type CustomRepositoryRoleProps,
+} from './constructs/custom-repository-role.ts';
 export type { ExternalGroupProps } from './constructs/external-group.ts';
 export {
   Organization,
@@ -57,6 +61,7 @@ export type {
   CodeSecurityConfigurationManifest,
   CustomPropertyManifest,
   CustomPropertyValueType,
+  CustomRepositoryRoleManifest,
   DefaultRepositoryPermission,
   DefaultWorkflowPermissions,
   DesiredState,

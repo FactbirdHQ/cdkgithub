@@ -25,6 +25,7 @@ import type {
   AllowedActionsConfig,
   CodeSecurityConfigurationManifest,
   CustomPropertyManifest,
+  CustomRepositoryRoleManifest,
   DefaultWorkflowPermissions,
   EnabledRepositories,
   OrgSettingsManifest,
@@ -249,6 +250,28 @@ export class FakeClient implements GitHubClient {
 
   async listCustomRepositoryRoles(): Promise<LiveCustomRepositoryRole[]> {
     return this.customRepositoryRoles;
+  }
+
+  async createCustomRepositoryRole(
+    _org: string,
+    role: CustomRepositoryRoleManifest,
+  ): Promise<void> {
+    this.record('createCustomRepositoryRole', role);
+  }
+
+  async updateCustomRepositoryRole(
+    _org: string,
+    roleId: number,
+    role: CustomRepositoryRoleManifest,
+  ): Promise<void> {
+    this.record('updateCustomRepositoryRole', { roleId, role });
+  }
+
+  async deleteCustomRepositoryRole(
+    _org: string,
+    roleId: number,
+  ): Promise<void> {
+    this.record('deleteCustomRepositoryRole', { roleId });
   }
 
   async listExternalGroups(): Promise<ExternalIdpGroup[]> {

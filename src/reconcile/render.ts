@@ -173,6 +173,24 @@ export function renderPlan(changes: Change[]): string {
         );
         break;
       }
+      case 'create-repo-role': {
+        const role = change.role;
+        lines.push(`  + repository role "${role.name}"`);
+        lines.push(`      base        = "${role.baseRole}"`);
+        lines.push(`      permissions = ${compact(role.permissions)}`);
+        break;
+      }
+      case 'update-repo-role': {
+        lines.push(`  ~ repository role "${change.role.name}"`);
+        lines.push(...renderFields(change.fields));
+        break;
+      }
+      case 'delete-repo-role': {
+        lines.push(
+          `  - repository role "${change.live.name}"   (requires --allow-delete)`,
+        );
+        break;
+      }
       case 'assign-org-role': {
         lines.push(
           `  + org role "${change.role}" to ${change.subject} ${change.name}`,
@@ -227,6 +245,7 @@ const BUCKETS = {
     'create-security-config',
     'create-property',
     'assign-org-role',
+    'create-repo-role',
   ],
   update: [
     'update',
@@ -235,6 +254,7 @@ const BUCKETS = {
     'update-ruleset',
     'update-security-config',
     'update-property',
+    'update-repo-role',
     'org-settings',
     'actions-policy',
     'default-security-config',
@@ -250,6 +270,7 @@ const BUCKETS = {
     'delete-property',
     'remove-branch-protection',
     'revoke-org-role',
+    'delete-repo-role',
   ],
   link: ['link-group', 'attach-security-config'],
 } as const satisfies Record<string, ReadonlyArray<Change['kind']>>;

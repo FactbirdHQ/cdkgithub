@@ -14,6 +14,7 @@ import type {
   ActionsPolicyManifest,
   CodeSecurityConfigurationManifest,
   CustomPropertyManifest,
+  CustomRepositoryRoleManifest,
   OrganizationRoleManifest,
   OrgSettingsManifest,
   RulesetManifest,
@@ -151,6 +152,8 @@ export interface DesiredState {
   readonly settings?: OrgSettingsManifest;
   /** GitHub Actions permissions, allowlist, and default token scope. */
   readonly actions?: ActionsPolicyManifest;
+  /** Repository roles this organization defines, keyed by name. */
+  readonly customRepositoryRoles?: CustomRepositoryRoleManifest[];
   /** Who holds which organization role. Keyed by role name. */
   readonly organizationRoles?: OrganizationRoleManifest[];
   /** Organization rulesets, keyed by name. */

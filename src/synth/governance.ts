@@ -444,3 +444,16 @@ export interface OrganizationRoleManifest {
   readonly teams?: string[];
   readonly users?: string[];
 }
+
+/**
+ * A repository role the organization defines on top of a built-in.
+ *
+ * `name` is its identity for diffing, and the string a team writes as a
+ * permission to grant through it.
+ */
+export interface CustomRepositoryRoleManifest {
+  readonly name: string;
+  readonly description: string;
+  readonly baseRole: string;
+  readonly permissions: readonly string[];
+}
