@@ -300,6 +300,35 @@ roles, where `plan` reads only the surfaces a team declares. That difference is
 why it is a separate command rather than a flag on `plan`: reading the whole org
 is the point here and would be waste there.
 
+### Who maintains a repository
+
+\`repositories\` says what a team can reach. It cannot say what a team is
+answerable for, and those are different questions: access overlaps by design,
+while "who maintains this" has one answer or none.
+
+\`\`\`ts
+new Team(engineering, "cloud", {
+  maintains: ["nest", "nest-qa", "cloud-ingress"],
+  repositories: { fbctl: "pull" },   // reached, not maintained
+});
+\`\`\`
+
+The word is the permission. Maintaining carries \`maintain\`, and takes no level
+of its own: \`maintain\` is write plus the repository's description, topics,
+Pages and pull-request merge settings, and nothing that deletes, transfers or
+re-permissions it. That is the whole of what answering for a repository needs,
+so choosing it per repository would only invite choosing it wrong. A line in
+\`repositories\` still overrides it where a team needs something else.
+
+Maintaining is exclusive. Two teams claiming one repository fails \`synth\`,
+before anything reads the organization, because the conflict is in the
+definition:
+
+\`\`\`
+Repository "nest" is maintained by both "cloud" and "product". A repository has
+one maintaining team; grant the other team access through \`repositories\` instead.
+\`\`\`
+
 ## Governance and policy
 
 Teams say who exists. Governance says what they can do. Five more surfaces are
