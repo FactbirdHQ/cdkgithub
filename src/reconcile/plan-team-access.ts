@@ -21,15 +21,7 @@ import { isBuiltInRepoPermission } from '../synth/manifest.ts';
 import type { Change, TeamRole } from './changes.ts';
 import type { LiveState } from './live.ts';
 import { declaresAccess, declaresRoster, resolveLive } from './live.ts';
-
-/** Built-in permissions from weakest to strongest. */
-const PERMISSION_RANK: Record<string, number> = {
-  pull: 1,
-  triage: 2,
-  push: 3,
-  maintain: 4,
-  admin: 5,
-};
+import { rankCustomRoles, rankOf } from './permission-rank.ts';
 
 /**
  * Plan the repository grants and rosters of teams that already exist.
@@ -99,22 +91,6 @@ function assertPermissionsResolve(
       );
     }
   }
-}
-
-/** Rank each custom role by the built-in it extends, so it sorts with them. */
-function rankCustomRoles(
-  roles: LiveCustomRepositoryRole[],
-): Map<string, number> {
-  return new Map(
-    roles.map((r) => [
-      r.name,
-      PERMISSION_RANK[comparableRoleName(r.baseRole)] ?? 0,
-    ]),
-  );
-}
-
-function rankOf(permission: string, roles: Map<string, number>): number {
-  return PERMISSION_RANK[permission] ?? roles.get(permission) ?? 0;
 }
 
 function planRepoAccess(

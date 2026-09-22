@@ -26,6 +26,8 @@ define   examples/<org>.ts   new App / Organization / Team (+ externalGroup)
    │
 synth    App.synth()         walk the construct tree → github.out/manifest.json
    │
+diff     tree vs live tree   read-only; prints the org as a tree, marked up
+   │
 plan     diff vs live org    read-only; prints a Terraform-style change preview
    │
 apply    reconcile           create / update / (link) / delete to match desired
@@ -65,16 +67,21 @@ $EDITOR examples/factbird.ts
 # 2. Synthesize the desired-state manifest
 bun bin/cdkgithub.ts synth examples/factbird.ts     # → github.out/manifest.json
 
-# 3. Preview the diff against the live org (read-only)
+# 3. See the org as a tree, with what differs marked up (read-only)
+bun bin/cdkgithub.ts diff
+bun bin/cdkgithub.ts diff --changed-only   # skip the subtrees that match
+bun bin/cdkgithub.ts diff --live           # just the live org, no comparison
+
+# 4. Preview the changes apply would make (read-only)
 bun bin/cdkgithub.ts plan
 
-# 4. Apply. Without --yes this is a dry run.
+# 5. Apply. Without --yes this is a dry run.
 bun bin/cdkgithub.ts apply --yes
 bun bin/cdkgithub.ts apply --yes --allow-delete  # also remove unmanaged teams
 bun bin/cdkgithub.ts apply --yes --enable-scim   # also link Entra groups (see below)
 ```
 
-Scripts are also wired in `package.json`: `bun run synth | plan | apply`,
+Scripts are also wired in `package.json`: `bun run synth | diff | plan | apply`,
 `bun run build` (typecheck), `bun test`.
 
 ## Defining teams
@@ -194,6 +201,66 @@ what lets the inheritance rule above compare it against the others.
 GitHub answers with `read`/`write` where it takes `pull`/`push`. cdkgithub maps
 the reply onto the request, so a grant written as `push` matches a live `write`
 instead of reporting drift forever.
+
+## Reading the org as a tree
+
+`plan` lists the calls `apply` will make. `diff` asks what the organization looks
+like next to what the definition says. It reads the live org whole, renders both
+sides as the same tree, and prints one marked up against the other.
+
+```
+  organization FactbirdHQ
+~   team engineering
+      + repo agent-skills = "push"
+      + member alex-doe
+~     team cloud
+        - member alex-doe
+~       team analytics-platform   (was app-1)
+          name: "App 1" -> "Analytics Platform"
++     team ml-experiments   (9 repos, 8 people)
+-     team legacy-tools   (8 repos, 8 people)
+
+28 teams to change, 2 to add, 1 to remove.
+```
+
+Indentation says where a team sits; the gutter says what happens to it. A team
+that matches is one line, a team that differs expands into what differs, and a
+team being added or removed is summarised rather than listed out. A declaration
+carrying `previousSlug` pairs with the live team of that name, so a rename reads
+as one changed team rather than an addition beside a removal.
+
+Three flags shape the output:
+
+| Flag | Effect |
+| --- | --- |
+| `--changed-only` | Hide every subtree that matches end to end. |
+| `--full` | Expand every team and list every grant, rather than the first eight. |
+| `--live` | Print the live org and stop. No manifest is compared. |
+
+### What it compares
+
+**Repository access, effective rather than declared.** A child team holds
+whatever its ancestors grant, and GitHub reports that inherited access on the
+child as though the child held it. So both sides resolve inheritance the same
+way before they are compared, and a child that re-declares its parent's grant is
+no difference at all. Those re-declarations are worth removing even so, and the
+report under the tree names them: a grant an ancestor already makes at the same
+strength or better, which deleting changes nothing.
+
+**Rosters, direct rather than reported.** GitHub reports a descendant team's
+members as members of every team above it. The live read subtracts them, so each
+team's roster is the people it holds in its own right. The maintainer role is
+not inherited, so that list is taken as it comes. A team bound to an Entra group
+has no roster compared at all, because Entra owns it and the next SCIM push
+would undo whatever the definition said.
+
+**Everything else about a team**: its name, description, privacy, and its place
+in the hierarchy.
+
+`diff` costs two API calls per team plus one for the org's custom repository
+roles, where `plan` reads only the surfaces a team declares. That difference is
+why it is a separate command rather than a flag on `plan`: reading the whole org
+is the point here and would be waste there.
 
 ## Governance and policy
 
@@ -521,14 +588,17 @@ src/
   reconcile/    changes model, live-state reader, planner and applier (teams in
                 planner.ts/applier.ts, policy in plan-governance.ts/
                 apply-governance.ts), subset comparison, render
-  cli.ts        synth | plan | apply
+  reconcile/    tree.ts + tree-diff.ts + render-tree.ts build and compare the
+                org as a tree, which is what `diff` prints
+  cli.ts        synth | diff | plan | apply
 bin/cdkgithub.ts
 examples/factbird.ts   example org definition
 examples/personal.ts   example personal-account definition
 scripts/import-org.ts  dump a live org's teams into a stack definition
 cicd/main.ts           CI/CD workflows (defined with @factbird/cdkactions)
 .github/workflows/     generated — do not edit by hand
-test/                  bun tests for synthesizer, planner, applier, governance
+test/                  bun tests for synthesizer, planner, applier, governance,
+                       tree diff
 ```
 
 ## CI/CD
