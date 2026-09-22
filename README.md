@@ -481,6 +481,56 @@ not. It is recorded on the repositories rather than on the configuration, so
 GitHub's own `global` presets, "GitHub recommended" and its siblings, cannot be
 edited or deleted, so cdkgithub never proposes pruning them.
 
+## Organization roles
+
+Teams grant access to named repositories. Organization roles grant privileges
+across the whole organization, and they are assignable to a team or to a person
+directly:
+
+```ts
+new OrganizationRole(org, 'security_manager', {
+  teams: ['devops'],
+  users: ['a-security-engineer'],
+});
+new OrganizationRole(org, 'ci_cd_admin', { teams: ['devops'] });
+```
+
+The role itself is GitHub's. `security_manager`, `ci_cd_admin`, `app_manager`,
+`open_source_license_manager` and the five `all_repo_*` roles are predefined, so
+what is declared here is who holds one, never what one grants. A name GitHub does
+not define fails the plan rather than being created, because a role that does not
+exist would read as a grant and do nothing.
+
+`teams` and `users` are separate surfaces on the same role. Declaring one and
+leaving the other off owns the first and leaves the second alone, the way every
+optional field here works. An empty list is a declaration that nobody should
+hold it, and revoking is gated behind `--allow-delete`.
+
+### Why this is worth reading even if you declare none
+
+Five predefined roles carry a `base_role`, which is a repository permission on
+**every repository at once**:
+
+| Role | Grants |
+| --- | --- |
+| `all_repo_read` … `all_repo_admin` | That permission on every repository |
+| `security_manager` | `read` on every repository, plus 22 security permissions |
+| `open_source_license_manager` | `read` on every repository, plus licence review |
+
+So a role assignment reaches further than any team grant, and it does it without
+a repository list to keep current. `plan` reads every role whether or not the
+definition mentions one, and prints the assignments nothing accounts for:
+
+```
+Organization roles held outside this definition:
+  all_repo_admin (admin on every repository): some-user
+  ci_cd_admin: another-user, a-third
+```
+
+That report is the point. An assignment nobody wrote down is the widest access
+path in the organization and the least visible, and it is not something a team
+diff can show.
+
 ## Organizations and personal accounts
 
 A definition names one owner, and the owner decides what exists.
@@ -617,7 +667,7 @@ Wiring the Azure-side SCIM push is **future work** (see below).
 ```
 src/
   constructs/   the authoring API: App, Organization, UserAccount, Team,
-                ExternalGroup, Ruleset, ActionsPolicy,
+                ExternalGroup, OrganizationRole, Ruleset, ActionsPolicy,
                 CodeSecurityConfiguration, CustomProperty, Repository,
                 BranchProtection
   synth/        manifest.ts (teams) + governance.ts (org policy) +
@@ -626,7 +676,8 @@ src/
   reconcile/    changes model, live-state reader, planner and applier (teams in
                 planner.ts/applier.ts, policy in plan-governance.ts/
                 apply-governance.ts), subset comparison, render
-  reconcile/    tree.ts + tree-diff.ts + render-tree.ts build and compare the
+  reconcile/    plan-org-roles.ts diffs who holds each organization role;
+                tree.ts + tree-diff.ts + render-tree.ts build and compare the
                 org as a tree, which is what `diff` prints; access-by-person.ts
                 + render-person.ts pivot the same trees onto people; color.ts is
                 the palette and when to use it

@@ -29,6 +29,10 @@ export {
   type OrganizationSettings,
 } from './constructs/organization.ts';
 export {
+  OrganizationRole,
+  type OrganizationRoleProps,
+} from './constructs/organization-role.ts';
+export {
   Repository,
   type RepositoryProps,
 } from './constructs/repository.ts';

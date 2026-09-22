@@ -173,6 +173,19 @@ export function renderPlan(changes: Change[]): string {
         );
         break;
       }
+      case 'assign-org-role': {
+        lines.push(
+          `  + org role "${change.role}" to ${change.subject} ${change.name}`,
+        );
+        break;
+      }
+      case 'revoke-org-role': {
+        lines.push(
+          `  - org role "${change.role}" from ${change.subject} ${change.name}` +
+            `   (requires --allow-delete)`,
+        );
+        break;
+      }
       case 'property-values': {
         lines.push(`  ~ custom property "${change.propertyName}" values`);
         for (const [repo, value] of Object.entries(change.values)) {
@@ -213,6 +226,7 @@ const BUCKETS = {
     'create-ruleset',
     'create-security-config',
     'create-property',
+    'assign-org-role',
   ],
   update: [
     'update',
@@ -235,6 +249,7 @@ const BUCKETS = {
     'delete-security-config',
     'delete-property',
     'remove-branch-protection',
+    'revoke-org-role',
   ],
   link: ['link-group', 'attach-security-config'],
 } as const satisfies Record<string, ReadonlyArray<Change['kind']>>;

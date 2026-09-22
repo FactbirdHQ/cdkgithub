@@ -14,6 +14,7 @@ import type {
   ActionsPolicyManifest,
   CodeSecurityConfigurationManifest,
   CustomPropertyManifest,
+  OrganizationRoleManifest,
   OrgSettingsManifest,
   RulesetManifest,
 } from './governance.ts';
@@ -150,6 +151,8 @@ export interface DesiredState {
   readonly settings?: OrgSettingsManifest;
   /** GitHub Actions permissions, allowlist, and default token scope. */
   readonly actions?: ActionsPolicyManifest;
+  /** Who holds which organization role. Keyed by role name. */
+  readonly organizationRoles?: OrganizationRoleManifest[];
   /** Organization rulesets, keyed by name. */
   readonly rulesets?: RulesetManifest[];
   /** Code security configurations, keyed by name. */

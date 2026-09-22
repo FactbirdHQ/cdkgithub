@@ -6,6 +6,7 @@ import type {
   LiveCodeSecurityConfiguration,
   LiveCustomProperty,
   LiveDefaultSecurityConfiguration,
+  LiveOrganizationRole,
   LiveOrgSettings,
   LiveCustomRepositoryRole,
   LiveRepositoryProperties,
@@ -34,6 +35,14 @@ export interface LiveState {
   readonly teamRepositories?: Map<string, LiveTeamRepository[]>;
   /** Rosters of the teams that declare one, keyed by slug. */
   readonly teamMembers?: Map<string, LiveTeamMember[]>;
+  /**
+   * Every organization role and who holds it, read when the definition names
+   * one. Roles are org-wide, so this is read whole rather than per declaration:
+   * the point of showing it is what is assigned that nobody wrote down.
+   */
+  readonly organizationRoles?: Array<
+    LiveOrganizationRole & { teams: string[]; users: string[] }
+  >;
   /** Only read when a declared permission is not one of the five built-ins. */
   readonly customRepositoryRoles?: LiveCustomRepositoryRole[];
   readonly settings?: LiveOrgSettings;
@@ -86,6 +95,7 @@ export async function readLiveState(
     branchProtection,
     appInstallations,
     customRepositoryRoles,
+    organizationRoles,
   ] = await Promise.all([
     // A personal account has no teams, and asking for them 404s.
     desired.ownerType === 'organization' ? client.listTeams(owner) : [],
@@ -103,6 +113,9 @@ export async function readLiveState(
     readBranchProtection(client, owner, desired),
     namesAnApp ? client.listAppInstallations(owner) : undefined,
     namesCustomRole ? client.listCustomRepositoryRoles(owner) : undefined,
+    desired.organizationRoles
+      ? readOrganizationRoles(client, owner)
+      : undefined,
   ]);
 
   // Per-team reads come second: a team the definition creates this run has no
@@ -128,6 +141,7 @@ export async function readLiveState(
     teamRepositories,
     teamMembers,
     customRepositoryRoles,
+    organizationRoles,
     settings,
     actions,
     rulesets,
@@ -138,6 +152,22 @@ export async function readLiveState(
     branchProtection,
     appInstallations,
   };
+}
+
+/** Every organization role, with who holds it. */
+async function readOrganizationRoles(
+  client: GitHubClient,
+  owner: string,
+): Promise<
+  Array<LiveOrganizationRole & { teams: string[]; users: string[] }> | undefined
+> {
+  const roles = await client.listOrganizationRoles(owner);
+  return Promise.all(
+    roles.map(async (role) => ({
+      ...role,
+      ...(await client.readRoleAssignment(owner, role.id)),
+    })),
+  );
 }
 
 /**
