@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'bun:test';
-import { App, Organization, Team } from '../src/index.ts';
+import {
+  App,
+  maintain,
+  Organization,
+  push,
+  role,
+  Team,
+  triage,
+} from '../src/index.ts';
 import { synthesize } from '../src/synth/synthesizer.ts';
 
 function org() {
@@ -70,5 +78,52 @@ describe('repository maintainership', () => {
     const root = org();
     new Team(root, 'quiet', {});
     expect(synthesize(root.node.root).teams[0]?.repositories).toBeUndefined();
+  });
+});
+
+describe('grants written one repository at a time', () => {
+  test('the list form produces the same manifest as the map', () => {
+    const a = org();
+    new Team(a, 'cloud', { repositories: [push('nest'), maintain('fbctl')] });
+
+    const b = org();
+    new Team(b, 'cloud', { repositories: { nest: 'push', fbctl: 'maintain' } });
+
+    expect(synthesize(a.node.root).teams[0]?.repositories).toEqual(
+      synthesize(b.node.root).teams[0]?.repositories as Record<string, string>,
+    );
+  });
+
+  test('a custom role is granted through role()', () => {
+    const root = org();
+    new Team(root, 'cloud', {
+      repositories: [role('Merge Queue Jumper')('nest')],
+    });
+    expect(synthesize(root.node.root).teams[0]?.repositories).toEqual({
+      nest: 'Merge Queue Jumper',
+    });
+  });
+
+  test('the same repository granted twice fails synthesis', () => {
+    const root = org();
+    new Team(root, 'cloud', {
+      repositories: [push('nest'), triage('fbctl'), maintain('nest')],
+    });
+    expect(() => synthesize(root.node.root)).toThrow(
+      /grants "nest" twice, as "push" and "maintain"/,
+    );
+  });
+
+  test('maintaining and granting the same repository is not a duplicate', () => {
+    // `maintains` is merged first and `repositories` overrides it, which is the
+    // documented way to hold a repository at something other than maintain.
+    const root = org();
+    new Team(root, 'cloud', {
+      maintains: ['nest'],
+      repositories: [push('nest')],
+    });
+    expect(synthesize(root.node.root).teams[0]?.repositories).toEqual({
+      nest: 'push',
+    });
   });
 });

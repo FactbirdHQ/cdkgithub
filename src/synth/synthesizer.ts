@@ -8,6 +8,7 @@ import { CustomRepositoryRole } from '../constructs/custom-repository-role.ts';
 import { OrganizationRole } from '../constructs/organization-role.ts';
 import { Repository } from '../constructs/repository.ts';
 import { Ruleset } from '../constructs/ruleset.ts';
+import type { RepositoryGrant } from '../constructs/grants.ts';
 import { Team } from '../constructs/team.ts';
 import { UserAccount } from '../constructs/user-account.ts';
 import type { BranchProtectionManifest } from './branch-protection.ts';
@@ -19,6 +20,8 @@ import type {
 } from './governance.ts';
 import type {
   DesiredState,
+  RepoPermission,
+  RepositoryAccess,
   ExternalGroupBinding,
   OwnerType,
   TeamManifest,
@@ -51,6 +54,7 @@ export function synthesize(root: IConstruct): DesiredState {
 
   assertUniqueSlugs(teams);
   assertSingleMaintainer(teams);
+  assertNoDuplicateGrants(root.node.findAll().filter(isTeam));
 
   const branchProtection = collect(root, BranchProtection, toBranchProtection);
   const rulesets = collect(root, Ruleset, toRulesetManifest);
@@ -287,11 +291,24 @@ function toManifest(team: Team): TeamManifest {
             ...Object.fromEntries(
               (team.props.maintains ?? []).map((repo) => [repo, 'maintain']),
             ),
-            ...team.props.repositories,
+            ...normalizeGrants(team.props.repositories),
           }
         : undefined,
     externalGroup,
   };
+}
+
+/** The list form and the map form, reduced to the one the manifest carries. */
+function normalizeGrants(
+  grants: RepositoryAccess | readonly RepositoryGrant[] | undefined,
+): RepositoryAccess | undefined {
+  if (!Array.isArray(grants)) return grants as RepositoryAccess | undefined;
+  return Object.fromEntries(
+    (grants as readonly RepositoryGrant[]).map((g) => [
+      g.repository,
+      g.permission,
+    ]),
+  );
 }
 
 function normalizeExternalGroup(team: Team): ExternalGroupBinding | undefined {
@@ -369,6 +386,37 @@ function assertSingleMaintainer(teams: TeamManifest[]): void {
         );
       }
       maintainer.set(repository, team.slug);
+    }
+  }
+}
+
+/**
+ * No repository is granted twice within one team.
+ *
+ * The array form makes a duplicate easy to write and invisible to read: two
+ * `push('nest')` forty lines apart, or a `push` and a `maintain`, and the last
+ * one silently wins. A tuple type can be made to reject it, at the cost of an
+ * error message nobody can act on, so it is asserted here where both grants can
+ * be named.
+ *
+ * The map form cannot express the problem — an object literal with a repeated
+ * key is a different error, already caught by the compiler.
+ */
+function assertNoDuplicateGrants(teams: Team[]): void {
+  for (const team of teams) {
+    const grants = team.props.repositories;
+    if (!Array.isArray(grants)) continue;
+
+    const seen = new Map<string, RepoPermission>();
+    for (const { repository, permission } of grants) {
+      const held = seen.get(repository);
+      if (held !== undefined) {
+        throw new Error(
+          `Team "${team.slug}" grants "${repository}" twice, as "${held}" and ` +
+            `"${permission}". A repository takes one permission per team.`,
+        );
+      }
+      seen.set(repository, permission);
     }
   }
 }
