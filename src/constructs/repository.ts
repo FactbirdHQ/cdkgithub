@@ -22,6 +22,10 @@ export interface RepositoryProps {
    * `public` is never a default and never inferred. GitHub's own API defaults a
    * new repository to public, and a repository opened to the internet by a
    * default nobody read is a decision nobody made.
+   *
+   * All of this applies to creating one. An existing repository keeps the
+   * visibility it has: this is ignored for it, so declaring `public` never
+   * opens a private repository and declaring nothing never closes an open one.
    */
   readonly visibility?: RepositoryVisibility;
 

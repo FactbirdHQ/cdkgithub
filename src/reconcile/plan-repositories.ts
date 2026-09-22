@@ -10,6 +10,13 @@
  * ten seconds; deleting one is not undone at all, and the edit that drops a
  * repository from a definition looks exactly like the edit that drops it from
  * the company.
+ *
+ * Visibility follows the same rule and needs it more. The unset default is the
+ * most closed thing that still works, which is right for a repository that does
+ * not exist and wrong for one that does: applied to a live repository it would
+ * quietly close an open one, and a declaration saying `public` would quietly
+ * open a closed one. Neither is a change anyone asked for by writing a name in
+ * a list, so neither happens.
  */
 
 import type { RepositoryManifest } from '../synth/manifest.ts';
