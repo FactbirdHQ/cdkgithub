@@ -193,6 +193,40 @@ describe('rendering the person view', () => {
     );
   });
 
+  test('--full keeps the marks rather than flattening to a listing', async () => {
+    const client = new FakeClient({
+      teams: [liveTeam('cloud')],
+      teamMembers: { cloud: [{ login: 'dev', role: 'member' }] },
+      teamRepositories: {
+        cloud: [
+          { name: 'legacy', roleName: 'write' },
+          { name: 'steady', roleName: 'read' },
+          { name: 'raised', roleName: 'read' },
+        ],
+      },
+    });
+    const live = await readLiveTree(client, 'acme');
+    const wanted = desiredTree(
+      manifest([
+        team('cloud', {
+          members: ['dev'],
+          repositories: { fresh: 'push', steady: 'pull', raised: 'admin' },
+        }),
+      ]),
+    );
+
+    const output = renderAccessByPerson(diffAccessByPerson(live, wanted), {
+      full: true,
+    });
+
+    expect(output).toContain('+ fresh = "push"   via cloud');
+    expect(output).toContain('- legacy   (had "push" via cloud)');
+    expect(output).toContain('~ raised: "pull" -> "admin"   via cloud');
+    // The one that does not move is the only one left plain.
+    expect(output).toContain('  steady = "pull"   via cloud');
+    expect(output).not.toContain('+ steady');
+  });
+
   test('CSV carries one row per person per repository, both sides', async () => {
     const rows = renderAccessCsv(await people()).split('\n');
     expect(rows[0]).toBe('login,repository,before,after,via');

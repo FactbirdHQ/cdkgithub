@@ -8,9 +8,9 @@
  */
 
 import type {
-  PersonAccess,
   PersonDiff,
   ReachChange,
+  RepositoryReach,
 } from './access-by-person.ts';
 import type { Palette } from './color.ts';
 import { PLAIN } from './color.ts';
@@ -85,7 +85,7 @@ function renderPerson(
     lines.push(
       paint.muted(`${indent}teams: ${person.after.teams.join(', ') || 'none'}`),
     );
-    lines.push(...listAll(person.after, indent, paint));
+    lines.push(...listAll(person, indent, paint));
     return lines;
   }
 
@@ -121,20 +121,49 @@ function changeLines(
   ];
 }
 
-/** Every repository a person holds after the change. */
-function listAll(
-  access: PersonAccess,
-  indent: string,
-  paint: Palette,
-): string[] {
-  if (access.repositories.size === 0) {
+/**
+ * Every repository either side gives this person, each marked with what happens
+ * to it.
+ *
+ * `--full` widens the list; it does not turn the diff back into a listing. A
+ * repository arriving is `+` whether or not the other four hundred lines around
+ * it are unchanged, so the marks are the same ones the sampled view uses and
+ * only a repository that genuinely stays put is left plain.
+ */
+function listAll(person: PersonDiff, indent: string, paint: Palette): string[] {
+  const { before, after } = person;
+  const repositories = [
+    ...new Set([...before.repositories.keys(), ...after.repositories.keys()]),
+  ].sort();
+
+  if (repositories.length === 0) {
     return [paint.muted(`${indent}(no repositories)`)];
   }
-  return [...access.repositories.values()].map((reach) =>
-    paint.muted(
-      `${indent}${reach.repository} = "${reach.permission}"   via ${reach.through.join(', ')}`,
-    ),
-  );
+
+  return repositories.map((repository) => {
+    const from = before.repositories.get(repository);
+    const to = after.repositories.get(repository);
+
+    if (!from && to) {
+      return paint.added(
+        `${indent}+ ${repository} = "${to.permission}"   via ${to.through.join(', ')}`,
+      );
+    }
+    if (from && !to) {
+      return paint.removed(
+        `${indent}- ${repository}   (had "${from.permission}" via ${from.through.join(', ')})`,
+      );
+    }
+    if (from && to && from.permission !== to.permission) {
+      return paint.changed(
+        `${indent}~ ${repository}: "${from.permission}" -> "${to.permission}"   via ${to.through.join(', ')}`,
+      );
+    }
+    const held = (to ?? from) as RepositoryReach;
+    return paint.muted(
+      `${indent}  ${repository} = "${held.permission}"   via ${held.through.join(', ')}`,
+    );
+  });
 }
 
 /** The same data as CSV, for an access review that wants a spreadsheet. */
