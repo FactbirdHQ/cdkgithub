@@ -304,6 +304,62 @@ describe('team roster', () => {
     expect(changes).toEqual([]);
   });
 
+  test('moves a member up from a child in one run without dropping them', () => {
+    // GitHub reports ada on engineering only because she is in cloud, and the
+    // API will not say which. Trusting the report would write nothing here,
+    // cloud would drop her, and she would land in neither team.
+    const changes = plan(
+      desired([
+        manifest('engineering', { members: ['ada'] }),
+        manifest('cloud', { parentSlug: 'engineering', members: [] }),
+      ]),
+      live([team('engineering'), team('cloud', 'engineering')], {
+        teamMembers: members({
+          engineering: [{ login: 'ada', role: 'member' }],
+          cloud: [{ login: 'ada', role: 'member' }],
+        }),
+      }),
+    );
+    expect(changes).toEqual([
+      // Added to the parent before the child lets go of her.
+      {
+        kind: 'set-membership',
+        slug: 'engineering',
+        username: 'ada',
+        role: 'member',
+        from: 'member',
+      },
+      {
+        kind: 'remove-membership',
+        slug: 'cloud',
+        username: 'ada',
+        from: 'member',
+      },
+    ]);
+  });
+
+  test('writes nothing for a member the child below is keeping', () => {
+    // The mirror image of the case above, and the reason inheritance is judged
+    // against the rosters after the run rather than direct membership alone.
+    // Judging it against direct membership would rewrite this every run.
+    const changes = plan(
+      desired([
+        manifest('engineering', { maintainers: ['ada'] }),
+        manifest('cloud', {
+          parentSlug: 'engineering',
+          maintainers: ['ada'],
+        }),
+      ]),
+      live([team('engineering'), team('cloud', 'engineering')], {
+        teamMembers: members({
+          engineering: [{ login: 'ada', role: 'maintainer' }],
+          cloud: [{ login: 'ada', role: 'maintainer' }],
+        }),
+      }),
+    );
+    expect(changes).toEqual([]);
+  });
+
   test('is owned by Entra rather than the definition when the team is synced', () => {
     const changes = plan(
       desired([
