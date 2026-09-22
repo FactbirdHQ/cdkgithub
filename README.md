@@ -353,6 +353,40 @@ behind `--allow-delete` like every other removal.
 Archiving, transferring and deleting stay in GitHub's own hands, where they are
 one deliberate action rather than a consequence of an edit.
 
+### Naming what you have
+
+The interesting names belong to an organization, not to this tool: its
+repositories, its people, the repository roles it defines. So the types leave
+them open, and a misspelling survives until `plan` checks it against the live
+organization — or, for a username, until `apply` quietly invites nobody.
+
+A definition that knows them says so once:
+
+```ts
+export const USERS = ['ana', 'bo'] as const;
+export const REPOSITORIES = ['nest', 'fbctl'] as const;
+
+declare module 'cdkgithub/src/index.ts' {
+  interface Vocabulary {
+    member: (typeof USERS)[number];
+    repository: (typeof REPOSITORIES)[number];
+  }
+}
+```
+
+From then on every roster and every grant is checked against those lists, with
+nothing said at the point of use. `members: ['anna']` and `push('nset')` stop
+compiling. A project that declares nothing keeps the open types and loses
+nothing.
+
+It is global to a compilation unit, which is the trade. One project cannot hold
+two organizations with different vocabularies, and this repository's own test
+suite is the proof: the test that declares one is checked by its own tsconfig,
+because otherwise it narrows every other test to two repositories.
+
+Where that matters, `teamOf<Username>()` binds a vocabulary locally instead and
+returns the same constructor with a narrower parameter type.
+
 ## Governance and policy
 
 Teams say who exists. Governance says what they can do. Five more surfaces are
