@@ -250,3 +250,75 @@ describe('rendering the person view', () => {
     expect(output).toContain('No one’s repository access changes.');
   });
 });
+
+describe('where a grant comes from', () => {
+  test('an inherited grant names the ancestor, not the team joined', () => {
+    const tree = desiredTree(
+      manifest([
+        team('engineering', { repositories: { netcore: 'push' } }),
+        team('cloud', { parentSlug: 'engineering' }),
+        team('connected-operations', {
+          parentSlug: 'cloud',
+          members: ['dev'],
+        }),
+      ]),
+    );
+
+    // `dev` joined the leaf, but nothing there mentions netcore.
+    expect(
+      accessByPerson(tree).get('dev')?.repositories.get('netcore')?.through,
+    ).toEqual(['engineering']);
+  });
+
+  test('a grant the team makes itself names the team', () => {
+    const tree = desiredTree(
+      manifest([
+        team('engineering', { repositories: { netcore: 'push' } }),
+        team('cloud', {
+          parentSlug: 'engineering',
+          members: ['dev'],
+          repositories: { api: 'maintain' },
+        }),
+      ]),
+    );
+
+    const reach = accessByPerson(tree).get('dev')?.repositories;
+    expect(reach?.get('api')?.through).toEqual(['cloud']);
+    expect(reach?.get('netcore')?.through).toEqual(['engineering']);
+  });
+
+  test('a child re-declaring its parent still names the parent', () => {
+    // The child's line changes nothing, so it is not where the grant lives.
+    const tree = desiredTree(
+      manifest([
+        team('engineering', { repositories: { netcore: 'push' } }),
+        team('cloud', {
+          parentSlug: 'engineering',
+          members: ['dev'],
+          repositories: { netcore: 'push' },
+        }),
+      ]),
+    );
+
+    expect(
+      accessByPerson(tree).get('dev')?.repositories.get('netcore')?.through,
+    ).toEqual(['engineering']);
+  });
+
+  test('a child granting more than its parent names the child', () => {
+    const tree = desiredTree(
+      manifest([
+        team('engineering', { repositories: { netcore: 'pull' } }),
+        team('cloud', {
+          parentSlug: 'engineering',
+          members: ['dev'],
+          repositories: { netcore: 'maintain' },
+        }),
+      ]),
+    );
+
+    const reach = accessByPerson(tree).get('dev')?.repositories.get('netcore');
+    expect(reach?.permission).toBe('maintain');
+    expect(reach?.through).toEqual(['cloud']);
+  });
+});
