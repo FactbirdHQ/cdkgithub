@@ -25,7 +25,15 @@ import type { OrgTree, TeamNode } from './tree.ts';
 export interface RepositoryReach {
   readonly repository: string;
   readonly permission: RepoPermission;
-  /** The teams granting it, strongest first, as the reason they have it. */
+  /**
+   * The teams whose own declaration grants it, strongest first.
+   *
+   * Not the team the person belongs to. A child inherits what its ancestors
+   * grant, so most of what someone in a leaf team reaches is written further
+   * up; naming the leaf would say where they joined rather than where the
+   * access comes from, and send anyone trying to change it to a file that does
+   * not mention the repository.
+   */
   readonly through: string[];
 }
 
@@ -76,12 +84,13 @@ export function accessByPerson(tree: OrgTree): Map<string, PersonAccess> {
     for (const [repository, permission] of Object.entries(
       team.effectiveRepositories,
     )) {
+      const source = declaringTeam(team, repository, tree);
       const held = entry.reach.get(repository);
       if (!held) {
         entry.reach.set(repository, {
           repository,
           permission,
-          through: [team.slug],
+          through: [source],
         });
         continue;
       }
@@ -93,7 +102,7 @@ export function accessByPerson(tree: OrgTree): Map<string, PersonAccess> {
       entry.reach.set(repository, {
         repository,
         permission: strongest,
-        through: [...held.through, team.slug],
+        through: [...held.through, source],
       });
     }
     people.set(login, entry);
@@ -130,6 +139,39 @@ export function accessByPerson(tree: OrgTree): Map<string, PersonAccess> {
         },
       ]),
   );
+}
+
+/**
+ * The team whose own declaration produces a repository's effective permission.
+ *
+ * Walks from the team the person belongs to up to the root and takes the
+ * strongest declaration, preferring the shallowest on a tie: that is where the
+ * grant originates, and a child repeating it changes nothing.
+ */
+function declaringTeam(
+  team: TeamNode,
+  repository: string,
+  tree: OrgTree,
+): string {
+  let source = team.slug;
+  let best = -1;
+  let node: TeamNode | undefined = team;
+  const seen = new Set<string>();
+
+  while (node && !seen.has(node.slug)) {
+    seen.add(node.slug);
+    const own = node.repositories[repository];
+    if (own !== undefined) {
+      const rank = rankOf(own, tree.ranks);
+      // `>=` so an ancestor granting the same thing wins: it is the origin.
+      if (rank >= best) {
+        best = rank;
+        source = node.slug;
+      }
+    }
+    node = node.parentSlug ? tree.bySlug.get(node.parentSlug) : undefined;
+  }
+  return source;
 }
 
 /** The teams granting a repository, the one that decides the permission first. */
