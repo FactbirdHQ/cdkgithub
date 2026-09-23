@@ -13,11 +13,12 @@ import { planTeamAccess } from './plan-team-access.ts';
  * Diff desired state against the live org and produce an ordered list of changes.
  *
  * Order: team creates (parents before children, as the manifest is already
- * sorted) → team updates → repository grants and rosters → external-group links
- * → team deletes (children before parents) → governance. This lets `apply` run
- * the list top-to-bottom without violating GitHub's parent/child constraints,
- * and puts the governance surfaces after the teams they may name as ruleset
- * bypass actors.
+ * sorted) → team updates → repository creates and custom repository roles →
+ * repository grants and rosters → external-group links → team deletes
+ * (children before parents) → governance. This lets `apply` run the list
+ * top-to-bottom without violating GitHub's parent/child constraints, puts a
+ * repository and a custom role before the grants that name them, and puts the
+ * governance surfaces after the teams they may name as ruleset bypass actors.
  *
  * Note on membership and access: a team owns neither until it declares one. A
  * team with no `repositories` map keeps the grants it has, and a team with no
@@ -69,15 +70,29 @@ export function plan(desired: DesiredState, live: LiveState): Change[] {
     .sort((a, b) => deleteDepth(b, liveTeams) - deleteDepth(a, liveTeams))
     .map<Change>((t) => ({ kind: 'delete', live: t }));
 
+  // Custom-role creates and updates run before the grants that name them; the
+  // deletes run after the grants have been removed, since a role still granted
+  // through is not deletable.
+  const roleChanges = planCustomRepositoryRoles(
+    desired.customRepositoryRoles,
+    live,
+  );
+  const roleUpserts = roleChanges.filter((c) => c.kind !== 'delete-repo-role');
+  const roleDeletes = roleChanges.filter((c) => c.kind === 'delete-repo-role');
+
   return [
     ...creates,
     ...updates,
+    // Before the team access below and the governance further down: a grant, a
+    // branch protection, or a property value may name a repository or a custom
+    // role this same run creates.
+    ...planRepositories(desired.repositories, live),
+    ...roleUpserts,
     ...planTeamAccess(desired.teams, live),
     ...links,
     ...deletes,
     ...planGovernance(desired, live),
-    ...planRepositories(desired.repositories, live),
-    ...planCustomRepositoryRoles(desired.customRepositoryRoles, live),
+    ...roleDeletes,
     ...planOrganizationRoles(desired.organizationRoles, live),
   ];
 }

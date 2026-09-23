@@ -169,16 +169,22 @@ export function renderPlan(changes: Change[]): string {
       }
       case 'remove-branch-protection': {
         lines.push(
-          `  - branch protection ${change.repository}#${change.branch}`,
+          `  - branch protection ${change.repository}#${change.branch}   (requires --allow-delete)`,
         );
         break;
       }
       case 'create-repository': {
         const repo = change.repository;
         lines.push(`  + repository "${repo.name}"`);
+        // Unset visibility is resolved at apply against the account: internal
+        // under an enterprise, private otherwise. Printing either one here
+        // would claim a decision that has not been made yet.
         lines.push(
-          `      visibility = "${repo.visibility ?? 'private'}"` +
-            (repo.description ? `   "${repo.description}"` : ''),
+          `      visibility = ${
+            repo.visibility
+              ? `"${repo.visibility}"`
+              : '"internal" under an enterprise account, else "private"'
+          }` + (repo.description ? `   "${repo.description}"` : ''),
         );
         break;
       }

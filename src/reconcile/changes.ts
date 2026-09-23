@@ -207,9 +207,9 @@ export interface SetBranchProtection {
 }
 
 /**
- * Remove a branch's legacy protection, from `enabled: false`. This is a
- * deliberate declaration rather than a prune, so it is not gated by
- * `--allow-delete`: the definition asked for the branch to be unprotected.
+ * Remove a branch's legacy protection, from `enabled: false`. The declaration
+ * is deliberate, but the change still removes every rule on the branch in one
+ * call, so it is gated by `--allow-delete` like every other removal.
  */
 export interface RemoveBranchProtection {
   readonly kind: 'remove-branch-protection';
@@ -344,7 +344,29 @@ export const DESTRUCTIVE_KINDS = [
   'delete-ruleset',
   'delete-security-config',
   'delete-property',
+  'remove-branch-protection',
 ] as const satisfies ReadonlyArray<Change['kind']>;
+
+export type DestructiveKind = (typeof DESTRUCTIVE_KINDS)[number];
+
+/**
+ * The names `--allow-delete=<scope,...>` accepts, each covering one destructive
+ * kind. A bare `--allow-delete` covers them all; naming scopes lets a run that
+ * prunes one obsolete team not also authorize revoking an organization role.
+ */
+export const DELETE_SCOPES = {
+  teams: 'delete',
+  members: 'remove-membership',
+  grants: 'remove-repo-access',
+  'org-roles': 'revoke-org-role',
+  'repo-roles': 'delete-repo-role',
+  rulesets: 'delete-ruleset',
+  'security-configs': 'delete-security-config',
+  properties: 'delete-property',
+  'branch-protection': 'remove-branch-protection',
+} as const satisfies Record<string, DestructiveKind>;
+
+export type DeleteScope = keyof typeof DELETE_SCOPES;
 
 export function isDestructive(change: Change): boolean {
   return (DESTRUCTIVE_KINDS as ReadonlyArray<string>).includes(change.kind);

@@ -220,7 +220,7 @@ describe('branch protection applying', () => {
     ]);
   });
 
-  test('removing protection is not gated behind --allow-delete', async () => {
+  test('removing protection is gated behind --allow-delete', async () => {
     const client = new FakeClient();
     const state = live({ branchProtection: [liveProtection()] });
     const changes = plan(
@@ -232,10 +232,18 @@ describe('branch protection applying', () => {
       state,
     );
 
-    // The definition asked for the branch to be unprotected, which is a
-    // declaration rather than a prune of something it never mentioned.
-    const result = await apply(client, 'acme', changes, state, {});
-    expect(result.skipped).toEqual([]);
+    // The declaration is deliberate, but tearing down an enforcement surface
+    // still needs the gate: without it, nothing is deleted and the skip says so.
+    const withoutGate = await apply(client, 'acme', changes, state, {});
+    expect(withoutGate.skipped).toEqual([
+      'remove branch protection from app#main (use --allow-delete)',
+    ]);
+    expect(client.callsTo('deleteBranchProtection')).toEqual([]);
+
+    const withGate = await apply(client, 'acme', changes, state, {
+      allowDelete: true,
+    });
+    expect(withGate.skipped).toEqual([]);
     expect(client.callsTo('deleteBranchProtection')).toEqual([
       { repo: 'app', branch: 'main' },
     ]);
