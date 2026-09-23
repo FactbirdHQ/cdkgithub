@@ -32,11 +32,20 @@ export interface LiveState {
   /** Every repository in the organization, read when the definition names one. */
   readonly repositories?: LiveRepository[];
   /**
-   * Repository grants of the teams that declare an access map, keyed by slug. A
-   * team absent from this map declared none, so its access is left alone.
+   * Repository grants keyed by slug: the teams that declare an access map,
+   * plus their live ancestors. The ancestors are read because GitHub reports
+   * an inherited grant as though it were the team's own; without the
+   * ancestor's listing to explain it, an inherited grant would read as one to
+   * remove. A declaring team's own presence here is what marks the surface
+   * managed; an ancestor's presence is context only.
    */
   readonly teamRepositories?: Map<string, LiveTeamRepository[]>;
-  /** Rosters of the teams that declare one, keyed by slug. */
+  /**
+   * Rosters keyed by slug: the teams that declare one, plus their live
+   * descendants, for the mirrored reason. GitHub reports a parent's members as
+   * including everyone in the teams below it, and only the descendants'
+   * rosters say which of those members are actually someone else's.
+   */
   readonly teamMembers?: Map<string, LiveTeamMember[]>;
   /**
    * Every organization role and who holds it, read when the definition names
@@ -134,13 +143,31 @@ export async function readLiveState(
     const current = resolveLive(team, liveBySlug);
     return current ? [{ team, slug: current.slug }] : [];
   });
+
+  // A declaring team's listing alone cannot be diffed safely: GitHub reports
+  // inherited grants and inherited members as the team's own. The ancestors'
+  // grants and the descendants' rosters are what tell a team's own from what
+  // it merely sees, so they are read alongside, declared or not.
+  const accessSlugs = new Set<string>();
+  const rosterSlugs = new Set<string>();
+  for (const { team, slug } of existing) {
+    if (declaresAccess(team)) {
+      accessSlugs.add(slug);
+      for (const ancestor of ancestorSlugs(slug, liveBySlug)) {
+        accessSlugs.add(ancestor);
+      }
+    }
+    if (declaresRoster(team)) {
+      rosterSlugs.add(slug);
+      for (const descendant of descendantSlugs(slug, teams)) {
+        rosterSlugs.add(descendant);
+      }
+    }
+  }
+
   const [teamRepositories, teamMembers] = await Promise.all([
-    readPerTeam(existing, declaresAccess, (slug) =>
-      client.listTeamRepositories(owner, slug),
-    ),
-    readPerTeam(existing, declaresRoster, (slug) =>
-      client.listTeamMembers(owner, slug),
-    ),
+    readSlugs(accessSlugs, (slug) => client.listTeamRepositories(owner, slug)),
+    readSlugs(rosterSlugs, (slug) => client.listTeamMembers(owner, slug)),
   ]);
 
   return {
@@ -212,22 +239,59 @@ export function declaresRoster(team: TeamManifest): boolean {
 }
 
 /**
- * Read one surface for the teams that declare it, keyed by slug. Returns
- * `undefined` when no team does, which is what keeps the surface unmanaged
- * rather than managed-and-empty.
+ * Read one surface for a set of live slugs. Returns `undefined` when the set
+ * is empty, which is what keeps the surface unmanaged rather than
+ * managed-and-empty.
  */
-async function readPerTeam<T>(
-  teams: Array<{ team: TeamManifest; slug: string }>,
-  declares: (team: TeamManifest) => boolean,
+async function readSlugs<T>(
+  slugs: ReadonlySet<string>,
   read: (slug: string) => Promise<T[]>,
 ): Promise<Map<string, T[]> | undefined> {
-  const wanted = teams.filter((t) => declares(t.team));
-  if (wanted.length === 0) return undefined;
+  if (slugs.size === 0) return undefined;
 
   const entries = await Promise.all(
-    wanted.map(async ({ slug }) => [slug, await read(slug)] as const),
+    [...slugs].map(async (slug) => [slug, await read(slug)] as const),
   );
   return new Map(entries);
+}
+
+/** The live parent chain of `slug`, nearest first, with a cycle guard. */
+function ancestorSlugs(
+  slug: string,
+  liveBySlug: Map<string, LiveTeam>,
+): string[] {
+  const chain: string[] = [];
+  const seen = new Set<string>([slug]);
+  let parent = liveBySlug.get(slug)?.parentSlug ?? null;
+  while (parent && !seen.has(parent)) {
+    chain.push(parent);
+    seen.add(parent);
+    parent = liveBySlug.get(parent)?.parentSlug ?? null;
+  }
+  return chain;
+}
+
+/** Every live team below `slug`, in no particular order. */
+function descendantSlugs(slug: string, teams: LiveTeam[]): string[] {
+  const children = new Map<string, string[]>();
+  for (const team of teams) {
+    if (!team.parentSlug) continue;
+    const siblings = children.get(team.parentSlug) ?? [];
+    siblings.push(team.slug);
+    children.set(team.parentSlug, siblings);
+  }
+
+  const found: string[] = [];
+  const seen = new Set<string>([slug]);
+  const queue = [...(children.get(slug) ?? [])];
+  while (queue.length > 0) {
+    const next = queue.shift();
+    if (next === undefined || seen.has(next)) continue;
+    seen.add(next);
+    found.push(next);
+    queue.push(...(children.get(next) ?? []));
+  }
+  return found;
 }
 
 /**

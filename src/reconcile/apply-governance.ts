@@ -11,10 +11,14 @@ export interface GovernanceContext {
   readonly org: string;
   /** Resolve repository names to ids, reading the org's repositories once. */
   resolveRepositoryIds(names: string[]): Promise<number[]>;
+  /** Remember a repository this run just created, so later changes can name it. */
+  rememberRepositoryId(name: string, id: number): Promise<void>;
   /** Configuration id by name, including configurations created earlier in this run. */
   resolveConfigurationId(name: string): Promise<number>;
   /** Remember the id of a configuration this run just created. */
   rememberConfigurationId(name: string, id: number): void;
+  /** The slug GitHub answers to for a declared team slug, renames included. */
+  resolveTeamSlug(declared: string): string;
   log(message: string): void;
 }
 
@@ -77,10 +81,25 @@ export async function applyGovernanceChange(
       return;
     }
 
-    case 'create-ruleset':
+    case 'create-ruleset': {
+      // GitHub does not make ruleset names unique, so a create retried after a
+      // lost response, or re-run after a partial apply, would enforce twice.
+      // An existing ruleset of this name is adopted and updated instead.
+      const existing = await client.findRulesetIdByName(
+        org,
+        change.ruleset.name,
+      );
+      if (existing !== undefined) {
+        ctx.log(
+          `Ruleset "${change.ruleset.name}" already exists (id ${existing}), updating it`,
+        );
+        await client.updateRuleset(org, existing, change.ruleset);
+        return;
+      }
       ctx.log(`Creating ruleset "${change.ruleset.name}"`);
       await client.createRuleset(org, change.ruleset);
       return;
+    }
 
     case 'update-ruleset':
       ctx.log(
@@ -174,7 +193,13 @@ export async function applyGovernanceChange(
           ? 'internal'
           : 'private');
       ctx.log(`Creating ${visibility} repository "${change.repository.name}"`);
-      await client.createRepository(org, { ...change.repository, visibility });
+      const repository = await client.createRepository(org, {
+        ...change.repository,
+        visibility,
+      });
+      // Grants, attachments and property values later in this run resolve the
+      // repository by name, and the cached listing predates this create.
+      await ctx.rememberRepositoryId(repository.name, repository.id);
       return;
     }
 
@@ -198,7 +223,11 @@ export async function applyGovernanceChange(
         `Granting org role "${change.role}" to ${change.subject} ${change.name}`,
       );
       await (change.subject === 'team'
-        ? client.assignRoleToTeam(org, change.roleId, change.name)
+        ? client.assignRoleToTeam(
+            org,
+            change.roleId,
+            ctx.resolveTeamSlug(change.name),
+          )
         : client.assignRoleToUser(org, change.roleId, change.name));
       return;
 
@@ -207,7 +236,11 @@ export async function applyGovernanceChange(
         `Revoking org role "${change.role}" from ${change.subject} ${change.name}`,
       );
       await (change.subject === 'team'
-        ? client.removeRoleFromTeam(org, change.roleId, change.name)
+        ? client.removeRoleFromTeam(
+            org,
+            change.roleId,
+            ctx.resolveTeamSlug(change.name),
+          )
         : client.removeRoleFromUser(org, change.roleId, change.name));
       return;
 

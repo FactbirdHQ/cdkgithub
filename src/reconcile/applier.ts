@@ -3,15 +3,21 @@ import {
   applyGovernanceChange,
   type GovernanceContext,
 } from './apply-governance.ts';
-import { type Change, isDestructive, isGovernanceChange } from './changes.ts';
+import {
+  type Change,
+  type DestructiveKind,
+  isDestructive,
+  isGovernanceChange,
+} from './changes.ts';
 import type { LiveState } from './live.ts';
 
 export interface ApplyOptions {
   /**
    * Actually delete resources present on GitHub but absent from the desired
-   * state — teams, rulesets, code security configurations, custom properties.
+   * state. `true` permits every destructive kind; a set permits only those
+   * kinds, so a run pruning teams need not also authorize revoking roles.
    */
-  readonly allowDelete?: boolean;
+  readonly allowDelete?: boolean | ReadonlySet<DestructiveKind>;
   /**
    * Perform Entra ID (SCIM) external-group linking. Requires the org to have SCIM
    * provisioning enabled. When false, link changes are skipped and reported.
@@ -19,6 +25,20 @@ export interface ApplyOptions {
   readonly enableScim?: boolean;
   /** Called with a one-line description before each executed change. */
   readonly onProgress?: (message: string) => void;
+  /**
+   * Called after each change is attempted, in order: the journal a partial
+   * apply leaves behind. A failed change is reported and then rethrown, so the
+   * last record of an aborted run names what broke.
+   */
+  readonly onRecord?: (record: ApplyRecord) => void;
+}
+
+/** One journal entry: what was attempted and how it ended. */
+export interface ApplyRecord {
+  readonly kind: Change['kind'];
+  readonly description: string;
+  readonly status: 'applied' | 'failed' | 'skipped';
+  readonly error?: string;
 }
 
 export interface ApplyResult {
@@ -30,6 +50,17 @@ export interface ApplyResult {
   readonly governance: number;
   /** Human-readable descriptions of changes intentionally skipped (gated). */
   readonly skipped: string[];
+}
+
+/** Whether the gate lets this change through. */
+export function deleteAllowed(
+  change: Change,
+  allowDelete: ApplyOptions['allowDelete'],
+): boolean {
+  if (!isDestructive(change)) return true;
+  if (allowDelete === true) return true;
+  if (!allowDelete) return false;
+  return allowDelete.has(change.kind as DestructiveKind);
 }
 
 /**
@@ -45,6 +76,7 @@ export async function apply(
   options: ApplyOptions = {},
 ): Promise<ApplyResult> {
   const log = options.onProgress ?? (() => {});
+  const record = options.onRecord ?? (() => {});
   const idBySlug = new Map<string, number>(
     live.teams.map((t) => [t.slug, t.id]),
   );
@@ -56,7 +88,13 @@ export async function apply(
     const id = idBySlug.get(change.slug);
     if (id !== undefined) idBySlug.set(change.team.slug, id);
   }
-  const governanceContext = createGovernanceContext(client, org, log);
+  // Planned slug to the slug GitHub actually derived, filled in as renames
+  // land. GitHub owns slug derivation; when it disagrees with the local guess,
+  // every later change addressed to the guess would target a team that does
+  // not exist.
+  const aliases = new Map<string, string>();
+  const slugOf = (declared: string) => aliases.get(declared) ?? declared;
+  const governanceContext = createGovernanceContext(client, org, log, slugOf);
 
   let created = 0;
   let updated = 0;
@@ -66,129 +104,170 @@ export async function apply(
   const skipped: string[] = [];
 
   for (const change of changes) {
-    if (isDestructive(change) && !options.allowDelete) {
+    if (!deleteAllowed(change, options.allowDelete)) {
       skipped.push(`${describeDelete(change)} (use --allow-delete)`);
+      record({
+        kind: change.kind,
+        description: describeDelete(change),
+        status: 'skipped',
+      });
+      continue;
+    }
+    if (change.kind === 'link-group' && !options.enableScim) {
+      const ref = change.group.id ?? change.group.name;
+      const description = `link ${change.slug} → Entra group ${ref}`;
+      skipped.push(`${description} (use --enable-scim)`);
+      record({ kind: change.kind, description, status: 'skipped' });
       continue;
     }
 
-    if (isGovernanceChange(change)) {
-      await applyGovernanceChange(change, governanceContext);
-      governance++;
-      continue;
-    }
+    try {
+      if (isGovernanceChange(change)) {
+        await applyGovernanceChange(change, governanceContext);
+        governance++;
+      } else {
+        switch (change.kind) {
+          case 'create': {
+            const t = change.team;
+            log(`Creating team ${t.slug}`);
+            const parentTeamId = t.parentSlug
+              ? idBySlug.get(t.parentSlug)
+              : undefined;
+            const team = await client.createTeam(org, {
+              name: t.name,
+              description: t.description,
+              privacy: t.privacy,
+              parentTeamId,
+            });
+            idBySlug.set(team.slug, team.id);
+            if (team.slug !== t.slug) aliases.set(t.slug, team.slug);
 
-    switch (change.kind) {
-      case 'create': {
-        const t = change.team;
-        log(`Creating team ${t.slug}`);
-        const parentTeamId = t.parentSlug
-          ? idBySlug.get(t.parentSlug)
-          : undefined;
-        const team = await client.createTeam(org, {
-          name: t.name,
-          description: t.description,
-          privacy: t.privacy,
-          parentTeamId,
-        });
-        idBySlug.set(team.slug, team.id);
+            // Written in full here: a team that has just been created has no live
+            // roster or grants to diff, so the planner has nothing to say about it.
+            for (const username of t.maintainers ?? []) {
+              await client.setMembership(org, team.slug, username, 'maintainer');
+            }
+            for (const username of t.members ?? []) {
+              await client.setMembership(org, team.slug, username, 'member');
+            }
+            for (const [repo, permission] of Object.entries(
+              t.repositories ?? {},
+            )) {
+              await client.setRepoPermission(org, team.slug, repo, permission);
+            }
+            created++;
+            break;
+          }
 
-        // Written in full here: a team that has just been created has no live
-        // roster or grants to diff, so the planner has nothing to say about it.
-        for (const username of t.maintainers ?? []) {
-          await client.setMembership(org, team.slug, username, 'maintainer');
+          case 'update': {
+            const renamed = change.team.slug !== change.slug;
+            log(
+              renamed
+                ? `Renaming team ${change.slug} to ${change.team.slug}`
+                : `Updating team ${change.slug}`,
+            );
+            const parentSlug = change.team.parentSlug;
+            // Addressed by the live slug. GitHub derives the new one from the
+            // name and stops answering to the old one; the response says which
+            // slug it actually derived, and that answer, not the local guess,
+            // is what the rest of this run must address.
+            const team = await client.updateTeam(org, change.slug, {
+              name: change.team.name,
+              description: change.team.description ?? '',
+              privacy: change.team.privacy,
+              parentTeamId: parentSlug
+                ? (idBySlug.get(parentSlug) ?? null)
+                : null,
+            });
+            idBySlug.set(team.slug, team.id);
+            if (team.slug !== change.team.slug) {
+              aliases.set(change.team.slug, team.slug);
+              log(
+                `Note: GitHub derived slug ${team.slug}, not ${change.team.slug}; ` +
+                  'addressing the rest of this run to it',
+              );
+            }
+            updated++;
+            break;
+          }
+
+          case 'set-repo-access': {
+            log(
+              `Granting ${change.slug} ${change.permission} on ${change.repository}`,
+            );
+            await client.setRepoPermission(
+              org,
+              slugOf(change.slug),
+              change.repository,
+              change.permission,
+            );
+            updated++;
+            break;
+          }
+
+          case 'remove-repo-access': {
+            log(`Removing ${change.slug} from ${change.repository}`);
+            await client.removeRepoPermission(
+              org,
+              slugOf(change.slug),
+              change.repository,
+            );
+            deleted++;
+            break;
+          }
+
+          case 'set-membership': {
+            log(`Adding ${change.username} to ${change.slug} as ${change.role}`);
+            await client.setMembership(
+              org,
+              slugOf(change.slug),
+              change.username,
+              change.role,
+            );
+            updated++;
+            break;
+          }
+
+          case 'remove-membership': {
+            log(`Removing ${change.username} from ${change.slug}`);
+            await client.removeMembership(
+              org,
+              slugOf(change.slug),
+              change.username,
+            );
+            deleted++;
+            break;
+          }
+
+          case 'link-group': {
+            log(`Linking team ${change.slug} to Entra group`);
+            const groupId = await resolveGroupId(client, org, change);
+            await client.linkExternalGroup(org, slugOf(change.slug), groupId);
+            linked++;
+            break;
+          }
+
+          case 'delete': {
+            log(`Deleting team ${change.live.slug}`);
+            await client.deleteTeam(org, change.live.slug);
+            deleted++;
+            break;
+          }
         }
-        for (const username of t.members ?? []) {
-          await client.setMembership(org, team.slug, username, 'member');
-        }
-        for (const [repo, permission] of Object.entries(t.repositories ?? {})) {
-          await client.setRepoPermission(org, team.slug, repo, permission);
-        }
-        created++;
-        break;
       }
-
-      case 'update': {
-        const renamed = change.team.slug !== change.slug;
-        log(
-          renamed
-            ? `Renaming team ${change.slug} to ${change.team.slug}`
-            : `Updating team ${change.slug}`,
-        );
-        const parentSlug = change.team.parentSlug;
-        // Addressed by the live slug. GitHub derives the new one from the name
-        // and stops answering to the old one, so anything else this run must
-        // already be addressed to the new slug.
-        await client.updateTeam(org, change.slug, {
-          name: change.team.name,
-          description: change.team.description ?? '',
-          privacy: change.team.privacy,
-          parentTeamId: parentSlug ? (idBySlug.get(parentSlug) ?? null) : null,
-        });
-        updated++;
-        break;
-      }
-
-      case 'set-repo-access': {
-        log(
-          `Granting ${change.slug} ${change.permission} on ${change.repository}`,
-        );
-        await client.setRepoPermission(
-          org,
-          change.slug,
-          change.repository,
-          change.permission,
-        );
-        updated++;
-        break;
-      }
-
-      case 'remove-repo-access': {
-        log(`Removing ${change.slug} from ${change.repository}`);
-        await client.removeRepoPermission(org, change.slug, change.repository);
-        deleted++;
-        break;
-      }
-
-      case 'set-membership': {
-        log(`Adding ${change.username} to ${change.slug} as ${change.role}`);
-        await client.setMembership(
-          org,
-          change.slug,
-          change.username,
-          change.role,
-        );
-        updated++;
-        break;
-      }
-
-      case 'remove-membership': {
-        log(`Removing ${change.username} from ${change.slug}`);
-        await client.removeMembership(org, change.slug, change.username);
-        deleted++;
-        break;
-      }
-
-      case 'link-group': {
-        if (!options.enableScim) {
-          const ref = change.group.id ?? change.group.name;
-          skipped.push(
-            `link ${change.slug} → Entra group ${ref} (use --enable-scim)`,
-          );
-          break;
-        }
-        log(`Linking team ${change.slug} to Entra group`);
-        const groupId = await resolveGroupId(client, org, change);
-        await client.linkExternalGroup(org, change.slug, groupId);
-        linked++;
-        break;
-      }
-
-      case 'delete': {
-        log(`Deleting team ${change.live.slug}`);
-        await client.deleteTeam(org, change.live.slug);
-        deleted++;
-        break;
-      }
+      record({
+        kind: change.kind,
+        description: describeChange(change),
+        status: 'applied',
+      });
+    } catch (error) {
+      record({
+        kind: change.kind,
+        description: describeChange(change),
+        status: 'failed',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     }
   }
 
@@ -203,6 +282,7 @@ function createGovernanceContext(
   client: GitHubClient,
   org: string,
   log: (message: string) => void,
+  resolveTeamSlug: (declared: string) => string,
 ): GovernanceContext {
   let repositoryIds: Promise<Map<string, number>> | undefined;
   const configurationIds = new Map<string, number>();
@@ -211,6 +291,7 @@ function createGovernanceContext(
     client,
     org,
     log,
+    resolveTeamSlug,
 
     async resolveRepositoryIds(names) {
       repositoryIds ??= client
@@ -226,6 +307,13 @@ function createGovernanceContext(
         }
         return id;
       });
+    },
+
+    async rememberRepositoryId(name, id) {
+      // A repository created this run joins the cached map, so a grant or an
+      // attachment later in the same run can name it.
+      if (repositoryIds) (await repositoryIds).set(name, id);
+      else repositoryIds = Promise.resolve(new Map([[name, id]]));
     },
 
     rememberConfigurationId(name, id) {
@@ -255,6 +343,57 @@ function createGovernanceContext(
   };
 }
 
+/** A one-line identity for a change, for the journal and the skip report. */
+export function describeChange(change: Change): string {
+  if (isDestructive(change)) return describeDelete(change);
+  switch (change.kind) {
+    case 'create':
+      return `create team ${change.team.slug}`;
+    case 'update':
+      return `update team ${change.slug}`;
+    case 'set-repo-access':
+      return `grant ${change.slug} ${change.permission} on ${change.repository}`;
+    case 'set-membership':
+      return `add ${change.username} to ${change.slug} as ${change.role}`;
+    case 'link-group':
+      return `link ${change.slug} to Entra group ${change.group.id ?? change.group.name}`;
+    case 'org-settings':
+      return 'update organization settings';
+    case 'actions-policy':
+      return 'update the Actions policy';
+    case 'create-ruleset':
+      return `create ruleset "${change.ruleset.name}"`;
+    case 'update-ruleset':
+      return `update ruleset "${change.ruleset.name}"`;
+    case 'create-security-config':
+      return `create code security configuration "${change.config.name}"`;
+    case 'update-security-config':
+      return `update code security configuration "${change.config.name}"`;
+    case 'default-security-config':
+      return `default "${change.configName}" for ${change.scope} new repositories`;
+    case 'attach-security-config':
+      return `attach "${change.configName}" to ${change.scope} repositories`;
+    case 'create-property':
+      return `create custom property "${change.property.name}"`;
+    case 'update-property':
+      return `update custom property "${change.property.name}"`;
+    case 'property-values':
+      return `set custom property "${change.propertyName}" values`;
+    case 'branch-protection':
+      return `protect ${change.protection.repository}#${change.protection.branch}`;
+    case 'create-repository':
+      return `create repository "${change.repository.name}"`;
+    case 'create-repo-role':
+      return `create repository role "${change.role.name}"`;
+    case 'update-repo-role':
+      return `update repository role "${change.role.name}"`;
+    case 'assign-org-role':
+      return `grant org role "${change.role}" to ${change.subject} ${change.name}`;
+    default:
+      return change.kind;
+  }
+}
+
 function describeDelete(change: Change): string {
   switch (change.kind) {
     case 'delete':
@@ -269,6 +408,12 @@ function describeDelete(change: Change): string {
       return `delete code security configuration "${change.live.name}"`;
     case 'delete-property':
       return `delete custom property "${change.live.name}"`;
+    case 'revoke-org-role':
+      return `revoke org role "${change.role}" from ${change.subject} ${change.name}`;
+    case 'delete-repo-role':
+      return `delete repository role "${change.live.name}"`;
+    case 'remove-branch-protection':
+      return `remove branch protection from ${change.repository}#${change.branch}`;
     default:
       return `delete ${change.kind}`;
   }

@@ -158,9 +158,19 @@ async function readOrgRoles(
         }),
       ),
     );
-  } catch {
-    return [];
+  } catch (error) {
+    // Only lack of access is an acceptable non-answer. A rate limit or a 5xx
+    // swallowed here would print an access review missing the widest grants
+    // in the organization, which is worse than no review.
+    if (isAccessDenied(error)) return [];
+    throw error;
   }
+}
+
+/** A 403/404: the token cannot see the surface, which the tree tolerates. */
+function isAccessDenied(error: unknown): boolean {
+  const status = (error as { status?: number } | null)?.status;
+  return status === 403 || status === 404;
 }
 
 /**
@@ -177,8 +187,9 @@ async function readCustomRoles(
 ): Promise<LiveCustomRepositoryRole[]> {
   try {
     return await client.listCustomRepositoryRoles(owner);
-  } catch {
-    return [];
+  } catch (error) {
+    if (isAccessDenied(error)) return [];
+    throw error;
   }
 }
 
