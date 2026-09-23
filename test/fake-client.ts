@@ -200,8 +200,25 @@ export class FakeClient implements GitHubClient {
     _org: string,
     slug: string,
     params: UpdateTeamParams,
-  ): Promise<void> {
+  ): Promise<LiveTeam> {
     this.record('updateTeam', { slug, params });
+    const current = this.teams.find((t) => t.slug === slug);
+    const name = params.name ?? current?.name ?? slug;
+    const updated: LiveTeam = {
+      id: current?.id ?? this.nextId++,
+      // The same naive derivation as createTeam. A test that wants GitHub to
+      // disagree with the planner's guess overrides this method.
+      slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      name,
+      description: params.description ?? current?.description ?? null,
+      privacy: params.privacy ?? current?.privacy ?? 'closed',
+      parentSlug:
+        this.teams.find((t) => t.id === params.parentTeamId)?.slug ?? null,
+    };
+    if (current) {
+      this.teams = this.teams.map((t) => (t.slug === slug ? updated : t));
+    }
+    return updated;
   }
 
   async deleteTeam(_org: string, slug: string): Promise<void> {
@@ -286,9 +303,11 @@ export class FakeClient implements GitHubClient {
   async createRepository(
     _org: string,
     repository: RepositoryManifest,
-  ): Promise<void> {
+  ): Promise<LiveRepository> {
     this.record('createRepository', repository);
-    this.repositories.push({ id: this.nextId++, name: repository.name });
+    const created = { id: this.nextId++, name: repository.name };
+    this.repositories.push(created);
+    return created;
   }
 
   async listExternalGroups(): Promise<ExternalIdpGroup[]> {
@@ -371,6 +390,13 @@ export class FakeClient implements GitHubClient {
 
   async listRulesets(): Promise<LiveRuleset[]> {
     return this.rulesets;
+  }
+
+  async findRulesetIdByName(
+    _org: string,
+    name: string,
+  ): Promise<number | undefined> {
+    return this.rulesets.find((r) => r.name === name)?.id;
   }
 
   async createRuleset(_org: string, ruleset: ResolvedRuleset): Promise<void> {
