@@ -375,9 +375,20 @@ function isTeam(c: IConstruct): c is Team {
 }
 
 /**
- * No repository is maintained by two teams.
+ * The permissions that claim a repository rather than merely reach it.
  *
- * `maintain` is the permission and the claim: it says a team answers for the
+ * `maintain` is the claim, and `admin` is the same claim with more behind it:
+ * a team that can delete, transfer and rename a repository answers for it at
+ * least as much as one that can edit its description. Checking `maintain`
+ * alone left the stronger grant as the way around the rule, which is the wrong
+ * way round for an assertion about responsibility.
+ */
+const OWNING_PERMISSIONS = new Set(['maintain', 'admin']);
+
+/**
+ * No repository is owned by two teams.
+ *
+ * Ownership is the permission and the claim: it says a team answers for the
  * repository, and two answers is not a stronger claim than one, it is the
  * absence of one. Every other permission may overlap freely, because reading
  * and writing are not claims about responsibility. Read off the resolved
@@ -387,21 +398,22 @@ function isTeam(c: IConstruct): c is Team {
  * in the definition and has nothing to do with the live organization.
  */
 function assertSingleMaintainer(teams: TeamManifest[]): void {
-  const maintainer = new Map<string, string>();
+  const owner = new Map<string, { slug: string; permission: string }>();
   for (const team of teams) {
     for (const [repository, permission] of Object.entries(
       team.repositories ?? {},
     )) {
-      if (permission !== 'maintain') continue;
-      const held = maintainer.get(repository);
+      if (!OWNING_PERMISSIONS.has(permission)) continue;
+      const held = owner.get(repository);
       if (held !== undefined) {
         throw new Error(
-          `Repository "${repository}" is maintained by both "${held}" and ` +
-            `"${team.slug}". "maintain" says a team answers for a repository, ` +
-            'and one does; grant the other team a lesser permission instead.',
+          `Repository "${repository}" is owned by both "${held.slug}" ` +
+            `("${held.permission}") and "${team.slug}" ("${permission}"). ` +
+            'Both permissions say a team answers for a repository, and one ' +
+            'does; grant the other team a lesser permission instead.',
         );
       }
-      maintainer.set(repository, team.slug);
+      owner.set(repository, { slug: team.slug, permission });
     }
   }
 }
