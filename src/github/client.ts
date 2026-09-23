@@ -161,6 +161,7 @@ interface RawRunnerGroup {
   name: string;
   visibility?: string;
   default?: boolean;
+  inherited?: boolean;
   allows_public_repositories?: boolean;
   restricted_to_workflows?: boolean;
   selected_workflows?: string[];
@@ -1419,8 +1420,16 @@ export class OctokitGitHubClient implements GitHubClient {
       raw.push(...groups);
       if (groups.length < perPage) break;
     }
+    // An enterprise shares its runner groups into every organization, and the
+    // listing returns them marked `inherited`, possibly under the same name as
+    // a group the organization owns. The org endpoints cannot change or
+    // delete them, so they are not part of the org's own surface: reading
+    // them would make the importer emit two groups with one name and the
+    // planner diff a group no apply could touch.
     return Promise.all(
-      raw.map(async (g) => ({
+      raw
+        .filter((g) => g.inherited !== true)
+        .map(async (g) => ({
         id: g.id,
         name: g.name,
         visibility: (g.visibility ?? 'all') as RunnerGroupVisibility,
