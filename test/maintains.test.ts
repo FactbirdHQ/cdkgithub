@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
   App,
+  admin,
   maintain,
   Organization,
   push,
@@ -35,9 +36,7 @@ describe('repository maintainership', () => {
     new Team(root, 'cloud', { repositories: { netcore: 'maintain' } });
     new Team(root, 'product', { repositories: [maintain('netcore')] });
 
-    expect(() => synthesize(root.node.root)).toThrow(
-      /"netcore" is maintained by both/,
-    );
+    expect(() => synthesize(root.node.root)).toThrow(/"netcore" is owned by both/);
   });
 
   test('two teams claiming one repository fails synthesis', () => {
@@ -46,7 +45,7 @@ describe('repository maintainership', () => {
     new Team(root, 'product', { repositories: [maintain('netcore')] });
 
     expect(() => synthesize(root.node.root)).toThrow(
-      /"netcore" is maintained by both "cloud" and "product"/,
+      /"netcore" is owned by both "cloud" \("maintain"\) and "product"/,
     );
   });
 
@@ -57,7 +56,7 @@ describe('repository maintainership', () => {
     });
     new Team(parent, 'cloud', { repositories: [maintain('fctl')] });
 
-    expect(() => synthesize(root.node.root)).toThrow(/maintained by both/);
+    expect(() => synthesize(root.node.root)).toThrow(/is owned by both/);
   });
 
   test('access may overlap freely; only maintainership is exclusive', () => {
@@ -167,5 +166,49 @@ describe('granting a category', () => {
     expect(() => synthesize(root.node.root)).toThrow(
       /grants "netcore" twice, as "triage" and "push"/,
     );
+  });
+});
+
+describe('admin claims a repository too', () => {
+  test('admin and maintain on one repository conflict', () => {
+    // `admin` was the way around the rule: strictly stronger than `maintain`,
+    // and unchecked, so the two could sit on different teams unnoticed.
+    const root = org();
+    new Team(root, 'iot-firmware', {
+      repositories: [maintain('factory-firmware')],
+    });
+    new Team(root, 'hardware', { repositories: [admin('factory-firmware')] });
+
+    expect(() => synthesize(root.node.root)).toThrow(
+      /"factory-firmware" is owned by both/,
+    );
+  });
+
+  test('two admins conflict', () => {
+    const root = org();
+    new Team(root, 'one', { repositories: [admin('netcore')] });
+    new Team(root, 'two', { repositories: [admin('netcore')] });
+
+    expect(() => synthesize(root.node.root)).toThrow(/is owned by both/);
+  });
+
+  test('the message names which permission each team holds', () => {
+    const root = org();
+    new Team(root, 'cloud', { repositories: [admin('netcore')] });
+    new Team(root, 'product', { repositories: [maintain('netcore')] });
+
+    expect(() => synthesize(root.node.root)).toThrow(
+      /"cloud" \("admin"\) and "product" \("maintain"\)/,
+    );
+  });
+
+  test('admin alongside a lesser permission is fine', () => {
+    // Only ownership is exclusive. Reading and writing overlap freely.
+    const root = org();
+    new Team(root, 'cloud', { repositories: [admin('netcore')] });
+    new Team(root, 'support', { repositories: [triage('netcore')] });
+    new Team(root, 'product', { repositories: [push('netcore')] });
+
+    expect(() => synthesize(root.node.root)).not.toThrow();
   });
 });
