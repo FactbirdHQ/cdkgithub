@@ -3,11 +3,12 @@
 **Declare your GitHub organization in TypeScript. Review it in a pull request.
 Apply it with a plan you have read.**
 
-Teams and their hierarchy, repository access, Entra ID group links, rulesets,
-the Actions policy, code security configurations, custom properties, member
-privileges, and branch protection live in one definition in git. cdkgithub
-diffs that definition against the live organization and applies the
-difference over the GitHub REST API. It is built on
+Teams and their hierarchy, repository access, Entra ID group links, rulesets
+at both the organization and the repository level, the Actions policy, runner
+groups, Actions secrets and variables, code security configurations, custom
+properties, member privileges, and branch protection live in one definition
+in git. cdkgithub diffs that definition against the live organization and
+applies the difference over the GitHub REST API. It is built on
 [`constructs`](https://www.npmjs.com/package/constructs), the library under
 the AWS CDK, cdk8s, and cdktf, and it keeps the CDK's interface: `synth`,
 `diff`, an assembly directory, `--require-approval`.
@@ -43,6 +44,9 @@ Safety is the product:
   that an ordinary apply restores.
 - Repositories are never deleted. No code path exists for it, and a test
   fails the build if one appears.
+- Secret values never touch the definition, the manifest, the plan, or the
+  backups. A secret names the environment variable its value comes from, and
+  `apply` seals it to GitHub's public key in process.
 
 New to the tool? Start with [Getting started](#getting-started). Mid-task?
 [How-to guides](#how-to-guides). Looking up a flag or a field?
@@ -219,12 +223,52 @@ leaving the other off owns the first and leaves the second alone. An empty
 list declares that nobody should hold the role, and revoking is gated behind
 `--allow-delete`. A role name GitHub does not define fails the plan.
 
+### Provision Entra ID groups into GitHub (SCIM)
+
+A team's `externalGroup` binding links a group that already exists on
+GitHub's side; this is how the group gets there. Declare the Entra side once:
+
+```ts
+new ScimProvisioning(org, "entra", {
+  tenantId: "contoso.onmicrosoft.com",
+});
+```
+
+The groups to provision default to every `externalGroup` name the teams
+declare, so a team added with a new group is provisioned on the next run
+without a second edit; pass `groups` to override. Nothing secret enters the
+definition: the GitHub token Entra presents when provisioning is read at run
+time from the environment variable `tokenFrom` names
+(default `GITHUB_SCIM_TOKEN`).
+
+Sign into the declared tenant (`az login`, or export `AZURE_GRAPH_TOKEN`),
+export the token, and run the setup:
+
+```bash
+export GITHUB_SCIM_TOKEN=...   # classic token with admin:org
+bun bin/cdkgithub.ts scim        # read-only plan
+bun bin/cdkgithub.ts scim --yes  # configure Entra
+```
+
+The command is ensure-only and idempotent: it creates the enterprise
+application from GitHub's gallery template when it is missing, creates its
+provisioning job, writes the credentials, assigns the declared groups, and
+starts the job. Reruns propose only what is missing; a group assigned in
+Entra outside the definition is reported and left alone, and exporting the
+token on a later run rotates the stored credential. A run against the wrong
+tenant refuses, naming both tenants.
+
+Two steps stay manual, because no public API covers them: creating the
+GitHub token, and enabling SCIM on the GitHub organization. Once
+provisioning has run (Entra schedules it, up to 40 minutes), the command
+reports which declared groups GitHub can see, and linking below takes over.
+
 ### Link a team to an Entra ID security group
 
-Prerequisites, none of them automated here: GitHub Enterprise Cloud with SCIM
-provisioning or Enterprise Managed Users, Entra ID configured as the IdP, and
-the security group provisioned to GitHub. With Entra ID only security groups
-link, no nested groups and no Microsoft 365 groups
+Prerequisites: GitHub Enterprise Cloud with SCIM provisioning or Enterprise
+Managed Users, Entra ID configured as the IdP, and the security group
+provisioned to GitHub, which `cdkgithub scim` above sets up. With Entra ID
+only security groups link, no nested groups and no Microsoft 365 groups
 ([GitHub docs](https://docs.github.com/en/enterprise-cloud@latest/admin/managing-iam/provisioning-user-accounts-with-scim/managing-team-memberships-with-identity-provider-groups)).
 
 Declare the binding on the team:
@@ -247,18 +291,58 @@ apply time; a group that is not provisioned yet fails with its name in the
 error. This one surface needs a classic token with `admin:org`, because
 GitHub's fine-grained permissions do not cover the external-groups endpoints.
 
+### Declare Actions secrets without their values
+
+A secret's declaration carries its name and who reads it; the value lives in
+the environment, named by `valueFrom` (default: the secret's own name):
+
+```ts
+new ActionsSecret(org, "NPM_TOKEN", { visibility: "private" });
+
+const deck = new Repository(org, "flow-portal");
+new ActionsSecret(deck, "SENTRY_DSN", { valueFrom: "DECK_SENTRY_DSN" });
+```
+
+Export the values before applying:
+
+```bash
+export NPM_TOKEN=... DECK_SENTRY_DSN=...
+bun bin/cdkgithub.ts apply --yes
+```
+
+`apply` checks every needed export before writing anything and refuses with
+the missing names, so a forgotten one never strands a half-applied plan. The
+value is sealed to GitHub's public key in process and pushed when the secret
+is created and again on any update; nothing plaintext reaches the manifest,
+the plan, or the backups.
+
+GitHub cannot report whether a stored value is current, so `plan` diffs a
+secret's existence and visibility only. To rotate a value in place, change
+any declared field, or delete and redeclare the secret.
+
 ### Adopt an organization built by hand
 
 Bootstrap a definition from the live organization instead of writing it from
 scratch:
 
 ```bash
-bun scripts/import-org.ts <org> > examples/<org>.ts
+bun bin/cdkgithub.ts import <org> --output examples/<org>.ts
 ```
 
-The importer reads teams, hierarchy, per-team grants, and rosters. It does
-not read governance, so rulesets, properties, and policies are written by
-hand once. Then iterate: `synth`, `diff`, and trim until the diff is quiet.
+The importer reads the whole team structure (hierarchy, per-team grants,
+direct rosters) and the organization governance: settings, the Actions
+policy, custom repository roles, organization role assignments, rulesets,
+code security configurations, custom properties with their values, runner
+groups, and Actions variables and secrets. A surface the token cannot read is
+skipped and named in the generated header rather than failed on. Secrets come
+back as names only, so each is emitted reading its value from an environment
+variable of the same name.
+
+Repository-scoped surfaces (repository rulesets, repository secrets and
+variables, branch protection) are not imported: GitHub has no listing for
+them short of walking every repository. Declare the ones you manage by hand.
+
+Then iterate: `synth`, `diff`, and trim until the diff is quiet.
 
 ### Lock names down at compile time
 
@@ -367,6 +451,8 @@ to override.
 | `diff` | Read the live organization whole and print it as a tree against the manifest. Read-only. |
 | `plan` | Diff the manifest against the surfaces it declares and print the change list. Read-only. |
 | `apply` | Print the plan, then reconcile the organization to match. Dry run without `--yes`. |
+| `import <org>` | Read the live organization and emit a definition file. Read-only. |
+| `scim` | Configure Entra ID SCIM provisioning to match the manifest's declaration. Dry run without `--yes`. |
 
 `plan` and `apply` validate the manifest on read and print its provenance
 line. A misspelled flag or a stray argument is an error, never silently
@@ -377,7 +463,8 @@ ignored.
 | Option | Commands | Effect |
 | --- | --- | --- |
 | `--manifest <path>` | diff, plan, apply | Manifest to read. Default `github.out/manifest.json`. |
-| `--yes` | apply | Execute changes. Without it, apply prints the plan and stops. |
+| `--output <path>` | import | Where the definition is written. Default: stdout. |
+| `--yes` | apply, scim | Execute changes. Without it, the command prints the plan and stops. |
 | `--allow-delete` | apply | Permit every destructive change kind. |
 | `--allow-delete=<scopes>` | apply | Permit only the named kinds. See the scope table. |
 | `--require-approval <level>` | apply | When to pause for an interactive "y": `never`, `destructive` (default), or `any-change`. Without a terminal, a required approval refuses instead of assuming. |
@@ -402,6 +489,10 @@ Each scope names one destructive change kind for `--allow-delete=<scopes>`:
 | `org-roles` | An organization role assignment. |
 | `repo-roles` | A custom repository role. |
 | `rulesets` | An organization ruleset. |
+| `repo-rulesets` | A repository ruleset, on a repository the definition declares one on. |
+| `runner-groups` | A runner group. GitHub's default group is never a candidate. |
+| `variables` | An Actions variable, from a declared scope. |
+| `secrets` | An Actions secret, from a declared scope. |
 | `security-configs` | A code security configuration. |
 | `properties` | A custom property. |
 | `branch-protection` | A branch's legacy protection, from `enabled: false`. |
@@ -434,11 +525,24 @@ scope; the governance surfaces need `admin:org`; code security configurations
 additionally need the organization to have those features.
 
 Every surface works with a fine-grained token (rulesets, the Actions policy,
-and code security configurations under Administration; custom properties
-under Custom properties; teams under Members) except one: the SCIM
-external-group endpoints behind `--enable-scim` are absent from GitHub's
+and code security configurations under organization Administration; custom
+properties under Custom properties; teams under Members; runner groups under
+Self-hosted runners; organization secrets and variables under the
+organization Secrets and Variables permissions, and their repository-scoped
+counterparts, with repository rulesets, under the matching repository
+permissions) except one: the SCIM external-group endpoints behind
+`--enable-scim` are absent from GitHub's
 [fine-grained permissions index](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens)
 and still want a classic token with `admin:org`.
+
+`scim` talks to Microsoft Graph rather than GitHub. It takes a Graph token
+from `AZURE_GRAPH_TOKEN` and otherwise runs
+`az account get-access-token --resource https://graph.microsoft.com`, bounded
+at ten seconds. The signed-in identity must be allowed to manage enterprise
+applications and their provisioning and to read groups; Entra's Cloud
+Application Administrator role covers it. The GitHub token Entra provisions
+with is read from the environment variable the definition's `tokenFrom`
+names, and no token of either kind is ever written to disk.
 
 ### Rate limits
 
@@ -458,6 +562,10 @@ on:
 - Write no `Ruleset` and the org's rulesets are never read, reported, or
   pruned. Declare one and the definition owns the surface: live rulesets
   missing from it become deletes, gated like everything else.
+- The repository-scoped collections (repository rulesets, and Actions
+  secrets and variables) own one scope at a time. An organization-scoped
+  secret owns the organization's secrets; an entry naming `flow-portal` owns
+  `flow-portal`'s; a repository nothing names is never read or pruned.
 
 Within a resource, only the fields you write are compared. GitHub returns
 every field it knows, defaults included, so `plan` asks whether the live
@@ -593,6 +701,40 @@ fails the plan before anything is written. Pass a number to skip the lookup.
 here has no route for listing repository roles, and guessing at a bypass
 grant is the wrong place to guess.
 
+#### RepositoryRuleset
+
+```ts
+const deck = new Repository(org, "flow-portal");
+
+new RepositoryRuleset(deck, "merge-queue", {
+  conditions: { refName: { include: ["~DEFAULT_BRANCH"] } },
+  rules: [
+    {
+      type: "merge_queue",
+      parameters: {
+        mergeMethod: "SQUASH",
+        groupingStrategy: "ALLGREEN",
+        minEntriesToMerge: 1,
+        maxEntriesToMerge: 5,
+        maxEntriesToBuild: 5,
+        minEntriesToMergeWaitMinutes: 5,
+        checkResponseTimeoutMinutes: 60,
+      },
+    },
+  ],
+});
+```
+
+The same rule union and bypass actors as `Ruleset`, on one repository. The
+differences follow from the scope: `refName` is the only condition, the
+`repository` lifecycle target does not exist here, and org and enterprise
+rulesets visible from the repository are never read as its own, so they are
+never proposed for pruning. Nest it under a `Repository` or pass
+`repository`. An organization ruleset is the stronger tool where either
+would do; this one is for the rule that belongs to a single repository, such
+as a merge queue or a release-tag pattern, and for personal accounts, which
+have no organization to inherit from.
+
 #### CustomProperty
 
 ```ts
@@ -630,6 +772,52 @@ which actions they may run, and what the `GITHUB_TOKEN` starts with. One
 policy per organization; a second fails synthesis. With
 `enabledRepositories: "selected"`, name the repositories in
 `selectedRepositories` and they resolve to ids at apply time.
+
+#### RunnerGroup
+
+```ts
+new RunnerGroup(org, "deploy-runners", {
+  visibility: "selected",
+  selectedRepositories: ["flow-portal"],
+  restrictedToWorkflows: true,
+  selectedWorkflows: ["factbird/flow-portal/.github/workflows/deploy.yaml@main"],
+});
+```
+
+The access boundary around a pool of self-hosted runners: which repositories
+may send jobs to it, and optionally which workflows. Registering the machines
+themselves happens wherever the machines live. `visibility` defaults to
+`all`; `allowsPublicRepositories` defaults off and should stay off for any
+runner holding credentials, because a fork's pull request runs the fork's
+code. GitHub's built-in default group can be declared by name and managed,
+and is never proposed for deletion, because GitHub refuses one.
+
+#### ActionsVariable and ActionsSecret
+
+```ts
+new ActionsVariable(org, "DEPLOY_REGION", {
+  value: "eu-west-1",
+  visibility: "private",
+});
+new ActionsSecret(org, "NPM_TOKEN", { visibility: "private" });
+
+const deck = new Repository(org, "flow-portal");
+new ActionsVariable(deck, "SENTRY_PROJECT", { value: "deck" });
+new ActionsSecret(deck, "SENTRY_DSN", { valueFrom: "DECK_SENTRY_DSN" });
+```
+
+One construct each for both scopes: nested under a `Repository` (or passing
+`repository`) the entry lives on that repository, otherwise on the
+organization. An organization entry must declare `visibility` (`all`,
+`private`, or `selected` with `selectedRepositories`), and a repository
+entry must not, because only its own repository reads it. Names compare
+case-insensitively, the way GitHub stores them.
+
+A variable carries its value in the clear and diffs on it. A secret carries
+no value anywhere: `valueFrom` names the environment variable `apply` reads
+at the moment of writing, and the plan diffs existence and visibility, the
+whole of what GitHub can report back. See
+[Declare Actions secrets without their values](#declare-actions-secrets-without-their-values).
 
 #### CodeSecurityConfiguration
 
@@ -686,6 +874,32 @@ Organization roles held outside this definition:
   all_repo_admin (admin on every repository): some-user
   ci_cd_admin: another-user, a-third
 ```
+
+#### ScimProvisioning
+
+```ts
+new ScimProvisioning(org, "entra", {
+  tenantId: "contoso.onmicrosoft.com",   // or the tenant GUID
+  applicationDisplayName: "GitHub SCIM (factbird)",  // the default
+  tokenFrom: "GITHUB_SCIM_TOKEN",                    // the default
+  groups: ["GH-Everyone"],   // default: every team's externalGroup name
+});
+```
+
+The Entra ID enterprise application that pushes security groups and their
+members into GitHub, reconciled by `cdkgithub scim` rather than by `apply`,
+because it writes to a different provider under different credentials. At
+most one per organization. The application is found by
+`applicationDisplayName` and created from GitHub's gallery template
+(`GitHub Enterprise Cloud - Organization`) when missing, so the name is what
+makes reruns idempotent. Renaming it makes the next run create a second
+application rather than adopt the first.
+
+The setup is ensure-only: it assigns groups and never unassigns them, and it
+deletes nothing. `tokenFrom` names the environment variable holding the
+GitHub token Entra presents when provisioning; the manifest carries the name
+and never a value. See
+[Provision Entra ID groups into GitHub](#provision-entra-id-groups-into-github-scim).
 
 ### The diff tree
 
@@ -766,6 +980,9 @@ A personal account gets neither warning: it has no rulesets to prefer.
 - **Enterprise-level policy** is patchy: some REST, some GraphQL, and the
   fine-grained PAT and GitHub App installation policies are UI only. None of
   it is modelled here.
+- **Enabling SCIM on an organization** is a UI step, as is minting the token
+  Entra provisions with. `cdkgithub scim` configures everything on the Entra
+  side and assumes both.
 - **Outside collaborator invites** have no field on `PATCH /orgs`, despite
   being a member privilege in the UI.
 - **No endpoint lists an organization's protected branches**, which is why
@@ -779,26 +996,32 @@ A personal account gets neither warning: it has no rulesets to prefer.
 ```
 src/
   constructs/   the authoring API: App, Organization, UserAccount, Team,
-                OrganizationRole, CustomRepositoryRole, Ruleset, ActionsPolicy,
-                CodeSecurityConfiguration, CustomProperty, Repository,
-                BranchProtection, and the grant helpers
+                OrganizationRole, CustomRepositoryRole, Ruleset,
+                RepositoryRuleset, ActionsPolicy, RunnerGroup, ActionsVariable,
+                ActionsSecret, ScimProvisioning, CodeSecurityConfiguration,
+                CustomProperty, Repository, BranchProtection, and the grant
+                helpers
   synth/        synthesizer + manifest types (teams in manifest.ts, org policy
-                in governance.ts, branch-protection.ts), manifest validation,
-                warnings
+                in governance.ts, actions-admin.ts, branch-protection.ts),
+                manifest validation, warnings
   github/       Octokit client wrapper (throttled and retrying), key casing,
-                token resolution
+                token resolution, secret sealing
+  entra/        the `scim` command's Microsoft Graph client, token resolution,
+                and the provisioning setup it reconciles
+  import/       the `import` command: live org -> definition file
   reconcile/    the change model, live-state reader, planner and applier
                 (teams in planner.ts/applier.ts, policy in plan-governance.ts/
                 apply-governance.ts), backups and the rollback manifest,
                 subset comparison, plan rendering; tree.ts + tree-diff.ts +
                 render-tree.ts build and compare the org as a tree for `diff`,
                 access-by-person.ts + render-person.ts pivot it onto people,
-                plan-org-roles.ts diffs who holds each organization role
-  cli.ts        synth | diff | plan | apply
+                plan-org-roles.ts diffs who holds each organization role,
+                plan-repo-rulesets.ts + plan-actions-admin.ts diff the
+                repository rulesets, runner groups, secrets, and variables
+  cli.ts        synth | diff | plan | apply | import | scim
 bin/cdkgithub.ts
 examples/factbird.ts   example org definition
 examples/personal.ts   example personal-account definition
-scripts/import-org.ts  dump a live org's teams into a definition
 cicd/main.ts           CI workflow, defined with @factbird/cdkactions
 .github/workflows/     generated, do not edit by hand
 test/                  bun tests against an in-memory GitHub fake
@@ -951,13 +1174,9 @@ throwaway sandbox organization first; once one exists, a manual
 
 ### Not built yet
 
-- The Azure-side SCIM push that provisions groups and users into GitHub. The
-  linkage endpoint is wired; configuring Entra and enabling SCIM on the
-  organization is separate work.
-- Repository-level rulesets, runner groups, and organization or repository
-  secrets and variables. All have REST endpoints and would fit the model.
-- Importing governance. `scripts/import-org.ts` reads teams only, so an
-  organization that already has rulesets writes them down by hand once.
+- Importing the repository-scoped surfaces. `import` covers the team
+  structure and the organization governance; repository rulesets, secrets,
+  and variables have no organization-wide listing to read from.
 - Enterprise-level policy, blocked until GitHub exposes an API that covers it.
 
 ### Non-goals

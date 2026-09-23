@@ -113,6 +113,187 @@ export async function applyGovernanceChange(
       await client.deleteRuleset(org, change.live.id);
       return;
 
+    case 'create-repo-ruleset': {
+      // The same adoption as the org-level create: ruleset names are not
+      // unique, so a create retried after a lost response must update rather
+      // than enforce twice.
+      const existing = await client.findRepositoryRulesetIdByName(
+        org,
+        change.repository,
+        change.ruleset.name,
+      );
+      if (existing !== undefined) {
+        ctx.log(
+          `Ruleset "${change.ruleset.name}" already exists on ${change.repository} (id ${existing}), updating it`,
+        );
+        await client.updateRepositoryRuleset(
+          org,
+          change.repository,
+          existing,
+          change.ruleset,
+        );
+        return;
+      }
+      ctx.log(
+        `Creating ruleset "${change.ruleset.name}" on ${change.repository}`,
+      );
+      await client.createRepositoryRuleset(
+        org,
+        change.repository,
+        change.ruleset,
+      );
+      return;
+    }
+
+    case 'update-repo-ruleset':
+      ctx.log(
+        `Updating ruleset "${change.ruleset.name}" on ${change.repository} (${fieldNames(change.fields)})`,
+      );
+      await client.updateRepositoryRuleset(
+        org,
+        change.repository,
+        change.id,
+        change.ruleset,
+      );
+      return;
+
+    case 'delete-repo-ruleset':
+      ctx.log(
+        `Deleting ruleset "${change.live.name}" from ${change.repository}`,
+      );
+      await client.deleteRepositoryRuleset(
+        org,
+        change.repository,
+        change.live.id,
+      );
+      return;
+
+    case 'create-runner-group': {
+      ctx.log(`Creating runner group "${change.group.name}"`);
+      const ids = change.group.selectedRepositories
+        ? await ctx.resolveRepositoryIds(change.group.selectedRepositories)
+        : undefined;
+      await client.createRunnerGroup(org, change.group, ids);
+      return;
+    }
+
+    case 'update-runner-group': {
+      ctx.log(
+        `Updating runner group "${change.group.name}" (${fieldNames(change.fields)})`,
+      );
+      await client.updateRunnerGroup(org, change.id, change.group);
+      // The repository list has its own endpoint, so it is written only when
+      // it is what differs.
+      if (
+        change.group.selectedRepositories &&
+        change.fields.some((f) => f.field === 'selectedRepositories')
+      ) {
+        await client.setRunnerGroupRepositories(
+          org,
+          change.id,
+          await ctx.resolveRepositoryIds(change.group.selectedRepositories),
+        );
+      }
+      return;
+    }
+
+    case 'delete-runner-group':
+      ctx.log(`Deleting runner group "${change.live.name}"`);
+      await client.deleteRunnerGroup(org, change.live.id);
+      return;
+
+    case 'create-variable':
+    case 'update-variable': {
+      const variable = change.variable;
+      const creating = change.kind === 'create-variable';
+      if (variable.repository) {
+        ctx.log(
+          `${creating ? 'Creating' : 'Updating'} variable ${variable.name} on ${variable.repository}`,
+        );
+        await (creating
+          ? client.createRepositoryVariable(
+              org,
+              variable.repository,
+              variable.name,
+              variable.value,
+            )
+          : client.updateRepositoryVariable(
+              org,
+              variable.repository,
+              variable.name,
+              variable.value,
+            ));
+        return;
+      }
+      ctx.log(
+        `${creating ? 'Creating' : 'Updating'} organization variable ${variable.name}`,
+      );
+      const visibility = requireVisibility(variable.visibility, variable.name);
+      const ids = variable.selectedRepositories
+        ? await ctx.resolveRepositoryIds(variable.selectedRepositories)
+        : undefined;
+      await (creating
+        ? client.createOrgVariable(org, variable.name, variable.value, visibility, ids)
+        : client.updateOrgVariable(org, variable.name, variable.value, visibility, ids));
+      return;
+    }
+
+    case 'delete-variable':
+      ctx.log(
+        change.repository
+          ? `Deleting variable ${change.name} from ${change.repository}`
+          : `Deleting organization variable ${change.name}`,
+      );
+      await (change.repository
+        ? client.deleteRepositoryVariable(org, change.repository, change.name)
+        : client.deleteOrgVariable(org, change.name));
+      return;
+
+    case 'put-secret': {
+      const secret = change.secret;
+      // Read here, at the moment of writing, and never carried on the change:
+      // the change list is what backups and plans serialize.
+      const value = process.env[secret.valueFrom];
+      if (value === undefined) {
+        throw new Error(
+          `Secret "${secret.name}" reads its value from $${secret.valueFrom}, which is not set. ` +
+            'Export it and re-run apply.',
+        );
+      }
+      if (secret.repository) {
+        ctx.log(`Writing secret ${secret.name} on ${secret.repository}`);
+        await client.putRepositorySecret(
+          org,
+          secret.repository,
+          secret.name,
+          value,
+        );
+        return;
+      }
+      ctx.log(`Writing organization secret ${secret.name}`);
+      await client.putOrgSecret(
+        org,
+        secret.name,
+        value,
+        requireVisibility(secret.visibility, secret.name),
+        secret.selectedRepositories
+          ? await ctx.resolveRepositoryIds(secret.selectedRepositories)
+          : undefined,
+      );
+      return;
+    }
+
+    case 'delete-secret':
+      ctx.log(
+        change.repository
+          ? `Deleting secret ${change.name} from ${change.repository}`
+          : `Deleting organization secret ${change.name}`,
+      );
+      await (change.repository
+        ? client.deleteRepositorySecret(org, change.repository, change.name)
+        : client.deleteOrgSecret(org, change.name));
+      return;
+
     case 'create-security-config': {
       ctx.log(`Creating code security configuration "${change.config.name}"`);
       const id = await client.createSecurityConfiguration(org, change.config);
@@ -306,4 +487,22 @@ function groupByValue(
 
 function fieldNames(fields: ReadonlyArray<{ field: string }>): string {
   return fields.map((f) => f.field).join(', ');
+}
+
+/**
+ * The visibility an organization secret or variable must carry. Synthesis
+ * guarantees it, so this only fires on a hand-written manifest, where writing
+ * with a guessed visibility would decide who reads the value.
+ */
+function requireVisibility<T>(
+  visibility: T | undefined,
+  name: string,
+): T {
+  if (visibility === undefined) {
+    throw new Error(
+      `Organization secret or variable "${name}" declares no visibility. ` +
+        'Say who reads it: "all", "private", or "selected".',
+    );
+  }
+  return visibility;
 }

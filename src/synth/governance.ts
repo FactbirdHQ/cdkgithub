@@ -351,6 +351,24 @@ export interface ResolvedRuleset extends Omit<RulesetManifest, 'bypassActors'> {
   readonly bypassActors?: ResolvedBypassActor[];
 }
 
+/** What a repository-level ruleset protects. Repository lifecycle rules are org-only. */
+export type RepositoryRulesetTarget = Exclude<RulesetTarget, 'repository'>;
+
+/**
+ * A ruleset defined on one repository rather than on the organization.
+ *
+ * Same rule union and bypass actors as {@link RulesetManifest}, minus the
+ * repository-targeting conditions: the ruleset already lives on its repository,
+ * so only `refName` selects anything.
+ */
+export interface RepositoryRulesetManifest
+  extends Omit<RulesetManifest, 'target' | 'conditions'> {
+  /** The repository the ruleset lives on. */
+  readonly repository: string;
+  readonly target: RepositoryRulesetTarget;
+  readonly conditions?: Pick<RulesetConditions, 'refName'>;
+}
+
 // ---------------------------------------------------------------------------
 // Code security configurations — /orgs/{org}/code-security/configurations
 // ---------------------------------------------------------------------------

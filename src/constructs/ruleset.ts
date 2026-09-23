@@ -46,9 +46,9 @@ export interface RulesetProps {
  * An organization ruleset — GitHub's replacement for branch protection.
  *
  * Rulesets apply across repositories, selected by name pattern or by custom
- * property, and repository-level rules can only add restrictions on top of them.
- * That is why cdkgithub models the org level and leaves per-repository rulesets
- * to the repositories themselves.
+ * property, and repository-level rules can only add restrictions on top of
+ * them. A rule that belongs to a single repository is a
+ * {@link RepositoryRuleset}.
  *
  * ```ts
  * new Ruleset(org, 'protect-default-branch', {

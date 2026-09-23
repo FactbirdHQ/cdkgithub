@@ -3,10 +3,12 @@ import type { DesiredState, TeamManifest } from '../synth/manifest.ts';
 import type { Change, FieldChange } from './changes.ts';
 import type { LiveState } from './live.ts';
 import { resolveLive } from './live.ts';
+import { planActionsAdmin } from './plan-actions-admin.ts';
 import { planCustomRepositoryRoles } from './plan-custom-roles.ts';
 import { planRepositories } from './plan-repositories.ts';
 import { planGovernance } from './plan-governance.ts';
 import { planOrganizationRoles } from './plan-org-roles.ts';
+import { planRepositoryRulesets } from './plan-repo-rulesets.ts';
 import { planTeamAccess } from './plan-team-access.ts';
 
 /**
@@ -92,6 +94,10 @@ export function plan(desired: DesiredState, live: LiveState): Change[] {
     ...links,
     ...deletes,
     ...planGovernance(desired, live),
+    // After the repository creates above, so a ruleset, a variable, or a
+    // secret declared on a repository this run creates lands on it.
+    ...planRepositoryRulesets(desired, live),
+    ...planActionsAdmin(desired, live),
     ...roleDeletes,
     ...planOrganizationRoles(desired.organizationRoles, live),
   ];

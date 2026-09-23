@@ -365,6 +365,28 @@ export function describeChange(change: Change): string {
       return `create ruleset "${change.ruleset.name}"`;
     case 'update-ruleset':
       return `update ruleset "${change.ruleset.name}"`;
+    case 'create-repo-ruleset':
+      return `create ruleset "${change.ruleset.name}" on ${change.repository}`;
+    case 'update-repo-ruleset':
+      return `update ruleset "${change.ruleset.name}" on ${change.repository}`;
+    case 'create-runner-group':
+      return `create runner group "${change.group.name}"`;
+    case 'update-runner-group':
+      return `update runner group "${change.group.name}"`;
+    case 'create-variable':
+    case 'update-variable': {
+      const verb = change.kind === 'create-variable' ? 'create' : 'update';
+      const where = change.variable.repository
+        ? ` on ${change.variable.repository}`
+        : '';
+      return `${verb} variable ${change.variable.name}${where}`;
+    }
+    case 'put-secret': {
+      const where = change.secret.repository
+        ? ` on ${change.secret.repository}`
+        : '';
+      return `write secret ${change.secret.name}${where}`;
+    }
     case 'create-security-config':
       return `create code security configuration "${change.config.name}"`;
     case 'update-security-config':
@@ -404,6 +426,18 @@ function describeDelete(change: Change): string {
       return `remove ${change.username} from ${change.slug}`;
     case 'delete-ruleset':
       return `delete ruleset "${change.live.name}"`;
+    case 'delete-repo-ruleset':
+      return `delete ruleset "${change.live.name}" from ${change.repository}`;
+    case 'delete-runner-group':
+      return `delete runner group "${change.live.name}"`;
+    case 'delete-variable':
+      return change.repository
+        ? `delete variable ${change.name} from ${change.repository}`
+        : `delete organization variable ${change.name}`;
+    case 'delete-secret':
+      return change.repository
+        ? `delete secret ${change.name} from ${change.repository}`
+        : `delete organization secret ${change.name}`;
     case 'delete-security-config':
       return `delete code security configuration "${change.live.name}"`;
     case 'delete-property':

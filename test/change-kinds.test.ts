@@ -108,6 +108,95 @@ const SAMPLES: Record<Change['kind'], Change> = {
       sourceType: 'Organization',
     },
   },
+  'create-repo-ruleset': {
+    kind: 'create-repo-ruleset',
+    repository: 'app',
+    ruleset: {
+      name: 'merge-queue',
+      target: 'branch',
+      enforcement: 'active',
+      rules: [{ type: 'deletion' }],
+    },
+  },
+  'update-repo-ruleset': {
+    kind: 'update-repo-ruleset',
+    repository: 'app',
+    id: 8,
+    ruleset: {
+      name: 'merge-queue',
+      target: 'branch',
+      enforcement: 'active',
+      rules: [],
+    },
+    fields: [{ field: 'enforcement', from: 'evaluate', to: 'active' }],
+  },
+  'delete-repo-ruleset': {
+    kind: 'delete-repo-ruleset',
+    repository: 'app',
+    live: {
+      id: 8,
+      name: 'merge-queue',
+      target: 'branch',
+      enforcement: 'active',
+      rules: [],
+      bypassActors: [],
+      sourceType: 'Repository',
+    },
+  },
+  'create-runner-group': {
+    kind: 'create-runner-group',
+    group: {
+      name: 'deploy-runners',
+      visibility: 'selected',
+      selectedRepositories: ['app'],
+    },
+  },
+  'update-runner-group': {
+    kind: 'update-runner-group',
+    id: 5,
+    group: { name: 'deploy-runners', visibility: 'private' },
+    fields: [{ field: 'visibility', from: 'all', to: 'private' }],
+  },
+  'delete-runner-group': {
+    kind: 'delete-runner-group',
+    live: {
+      id: 5,
+      name: 'deploy-runners',
+      visibility: 'all',
+      isDefault: false,
+      allowsPublicRepositories: false,
+      restrictedToWorkflows: false,
+      selectedWorkflows: [],
+    },
+  },
+  'create-variable': {
+    kind: 'create-variable',
+    variable: { name: 'REGION', value: 'eu-west-1', visibility: 'all' },
+  },
+  'update-variable': {
+    kind: 'update-variable',
+    variable: { name: 'REGION', value: 'eu-west-1', repository: 'app' },
+    fields: [{ field: 'value', from: 'us-east-1', to: 'eu-west-1' }],
+  },
+  'delete-variable': {
+    kind: 'delete-variable',
+    name: 'REGION',
+    repository: 'app',
+  },
+  'put-secret': {
+    kind: 'put-secret',
+    secret: {
+      name: 'NPM_TOKEN',
+      valueFrom: 'CDKGITHUB_TEST_SECRET',
+      visibility: 'private',
+    },
+    fields: [],
+    exists: false,
+  },
+  'delete-secret': {
+    kind: 'delete-secret',
+    name: 'NPM_TOKEN',
+  },
   'create-security-config': {
     kind: 'create-security-config',
     config: { name: 'baseline', description: 'Baseline' },
@@ -205,6 +294,10 @@ const SAMPLES: Record<Change['kind'], Change> = {
 };
 
 const ALL_CHANGES = Object.values(SAMPLES);
+
+// The put-secret sample reads its value from the environment at apply time,
+// which is the design under test: the value exists nowhere in the change.
+process.env.CDKGITHUB_TEST_SECRET = 'shh';
 
 /** State that lets every sample execute against the fake. */
 function stateForApply(): FakeClientState {

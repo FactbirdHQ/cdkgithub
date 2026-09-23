@@ -9,9 +9,12 @@ import type {
   LiveCustomProperty,
   LiveCustomRepositoryRole,
   LiveDefaultSecurityConfiguration,
+  LiveOrgSecret,
   LiveOrgSettings,
+  LiveOrgVariable,
   LiveRepository,
   LiveRepositoryProperties,
+  LiveRunnerGroup,
   LiveRuleset,
   LiveOrganizationRole,
   LiveTeam,
@@ -29,9 +32,11 @@ import type {
   RepositoryManifest,
   DefaultWorkflowPermissions,
   EnabledRepositories,
+  OrgConfigVisibility,
   OrgSettingsManifest,
   RepoPermission,
   ResolvedRuleset,
+  RunnerGroupManifest,
   SecurityAttachScope,
   SecurityDefaultScope,
 } from '../src/synth/manifest.ts';
@@ -58,6 +63,15 @@ export interface FakeClientState {
   customProperties?: LiveCustomProperty[];
   repositoryProperties?: LiveRepositoryProperties[];
   branchProtection?: LiveBranchProtection[];
+  /** Repository rulesets keyed by repository name. */
+  repositoryRulesets?: Record<string, LiveRuleset[]>;
+  runnerGroups?: LiveRunnerGroup[];
+  orgVariables?: LiveOrgVariable[];
+  orgSecrets?: LiveOrgSecret[];
+  /** Repository variables keyed by repository name. */
+  repositoryVariables?: Record<string, Array<{ name: string; value: string }>>;
+  /** Repository secret names keyed by repository name. */
+  repositorySecrets?: Record<string, Array<{ name: string }>>;
 }
 
 /**
@@ -86,6 +100,12 @@ export class FakeClient implements GitHubClient {
   customProperties: LiveCustomProperty[];
   repositoryProperties: LiveRepositoryProperties[];
   branchProtection: LiveBranchProtection[];
+  repositoryRulesets: Record<string, LiveRuleset[]>;
+  runnerGroups: LiveRunnerGroup[];
+  orgVariables: LiveOrgVariable[];
+  orgSecrets: LiveOrgSecret[];
+  repositoryVariables: Record<string, Array<{ name: string; value: string }>>;
+  repositorySecrets: Record<string, Array<{ name: string }>>;
 
   links: Array<{ slug: string; groupId: number }> = [];
   memberships: Array<{ slug: string; username: string; role: string }> = [];
@@ -119,6 +139,12 @@ export class FakeClient implements GitHubClient {
     this.customProperties = state.customProperties ?? [];
     this.repositoryProperties = state.repositoryProperties ?? [];
     this.branchProtection = state.branchProtection ?? [];
+    this.repositoryRulesets = state.repositoryRulesets ?? {};
+    this.runnerGroups = state.runnerGroups ?? [];
+    this.orgVariables = state.orgVariables ?? [];
+    this.orgSecrets = state.orgSecrets ?? [];
+    this.repositoryVariables = state.repositoryVariables ?? {};
+    this.repositorySecrets = state.repositorySecrets ?? {};
   }
 
   /** Every recorded call to one method, in order. */
@@ -414,6 +440,205 @@ export class FakeClient implements GitHubClient {
   async deleteRuleset(_org: string, id: number): Promise<void> {
     this.record('deleteRuleset', id);
     this.rulesets = this.rulesets.filter((r) => r.id !== id);
+  }
+
+  // ---- repository rulesets -------------------------------------------------
+
+  async listRepositoryRulesets(
+    _owner: string,
+    repo: string,
+  ): Promise<LiveRuleset[]> {
+    return this.repositoryRulesets[repo] ?? [];
+  }
+
+  async findRepositoryRulesetIdByName(
+    _owner: string,
+    repo: string,
+    name: string,
+  ): Promise<number | undefined> {
+    return (this.repositoryRulesets[repo] ?? []).find((r) => r.name === name)
+      ?.id;
+  }
+
+  async createRepositoryRuleset(
+    _owner: string,
+    repo: string,
+    ruleset: ResolvedRuleset,
+  ): Promise<void> {
+    this.record('createRepositoryRuleset', { repo, ruleset });
+  }
+
+  async updateRepositoryRuleset(
+    _owner: string,
+    repo: string,
+    id: number,
+    ruleset: ResolvedRuleset,
+  ): Promise<void> {
+    this.record('updateRepositoryRuleset', { repo, id, ruleset });
+  }
+
+  async deleteRepositoryRuleset(
+    _owner: string,
+    repo: string,
+    id: number,
+  ): Promise<void> {
+    this.record('deleteRepositoryRuleset', { repo, id });
+  }
+
+  // ---- runner groups -------------------------------------------------------
+
+  async listRunnerGroups(): Promise<LiveRunnerGroup[]> {
+    return this.runnerGroups;
+  }
+
+  async createRunnerGroup(
+    _org: string,
+    group: RunnerGroupManifest,
+    selectedRepositoryIds?: number[],
+  ): Promise<void> {
+    this.record('createRunnerGroup', { group, selectedRepositoryIds });
+  }
+
+  async updateRunnerGroup(
+    _org: string,
+    id: number,
+    group: RunnerGroupManifest,
+  ): Promise<void> {
+    this.record('updateRunnerGroup', { id, group });
+  }
+
+  async setRunnerGroupRepositories(
+    _org: string,
+    id: number,
+    repositoryIds: number[],
+  ): Promise<void> {
+    this.record('setRunnerGroupRepositories', { id, repositoryIds });
+  }
+
+  async deleteRunnerGroup(_org: string, id: number): Promise<void> {
+    this.record('deleteRunnerGroup', { id });
+  }
+
+  // ---- actions variables ---------------------------------------------------
+
+  async listOrgVariables(): Promise<LiveOrgVariable[]> {
+    return this.orgVariables;
+  }
+
+  async createOrgVariable(
+    _org: string,
+    name: string,
+    value: string,
+    visibility: OrgConfigVisibility,
+    selectedRepositoryIds?: number[],
+  ): Promise<void> {
+    this.record('createOrgVariable', {
+      name,
+      value,
+      visibility,
+      selectedRepositoryIds,
+    });
+  }
+
+  async updateOrgVariable(
+    _org: string,
+    name: string,
+    value: string,
+    visibility: OrgConfigVisibility,
+    selectedRepositoryIds?: number[],
+  ): Promise<void> {
+    this.record('updateOrgVariable', {
+      name,
+      value,
+      visibility,
+      selectedRepositoryIds,
+    });
+  }
+
+  async deleteOrgVariable(_org: string, name: string): Promise<void> {
+    this.record('deleteOrgVariable', name);
+  }
+
+  async listRepositoryVariables(
+    _owner: string,
+    repo: string,
+  ): Promise<Array<{ name: string; value: string }>> {
+    return this.repositoryVariables[repo] ?? [];
+  }
+
+  async createRepositoryVariable(
+    _owner: string,
+    repo: string,
+    name: string,
+    value: string,
+  ): Promise<void> {
+    this.record('createRepositoryVariable', { repo, name, value });
+  }
+
+  async updateRepositoryVariable(
+    _owner: string,
+    repo: string,
+    name: string,
+    value: string,
+  ): Promise<void> {
+    this.record('updateRepositoryVariable', { repo, name, value });
+  }
+
+  async deleteRepositoryVariable(
+    _owner: string,
+    repo: string,
+    name: string,
+  ): Promise<void> {
+    this.record('deleteRepositoryVariable', { repo, name });
+  }
+
+  // ---- actions secrets -----------------------------------------------------
+
+  async listOrgSecrets(): Promise<LiveOrgSecret[]> {
+    return this.orgSecrets;
+  }
+
+  async putOrgSecret(
+    _org: string,
+    name: string,
+    value: string,
+    visibility: OrgConfigVisibility,
+    selectedRepositoryIds?: number[],
+  ): Promise<void> {
+    this.record('putOrgSecret', {
+      name,
+      value,
+      visibility,
+      selectedRepositoryIds,
+    });
+  }
+
+  async deleteOrgSecret(_org: string, name: string): Promise<void> {
+    this.record('deleteOrgSecret', name);
+  }
+
+  async listRepositorySecrets(
+    _owner: string,
+    repo: string,
+  ): Promise<Array<{ name: string }>> {
+    return this.repositorySecrets[repo] ?? [];
+  }
+
+  async putRepositorySecret(
+    _owner: string,
+    repo: string,
+    name: string,
+    value: string,
+  ): Promise<void> {
+    this.record('putRepositorySecret', { repo, name, value });
+  }
+
+  async deleteRepositorySecret(
+    _owner: string,
+    repo: string,
+    name: string,
+  ): Promise<void> {
+    this.record('deleteRepositorySecret', { repo, name });
   }
 
   // ---- code security -------------------------------------------------------
