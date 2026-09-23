@@ -1,4 +1,6 @@
 import { Octokit, type RestEndpointMethodTypes } from '@octokit/rest';
+import { retry } from '@octokit/plugin-retry';
+import { throttling } from '@octokit/plugin-throttling';
 import type {
   ActorRestriction,
   AllowedActions,
@@ -264,11 +266,16 @@ export interface LiveRepositoryProperties {
 export interface GitHubClient {
   listTeams(org: string): Promise<LiveTeam[]>;
   createTeam(org: string, params: CreateTeamParams): Promise<LiveTeam>;
+  /**
+   * Update a team, addressed by the slug GitHub answers to now. Returns the
+   * team as GitHub stores it afterwards: on a rename, the returned slug is the
+   * one GitHub actually derived, which is the only trustworthy version of it.
+   */
   updateTeam(
     org: string,
     slug: string,
     params: UpdateTeamParams,
-  ): Promise<void>;
+  ): Promise<LiveTeam>;
   deleteTeam(org: string, slug: string): Promise<void>;
   setMembership(
     org: string,
@@ -337,7 +344,10 @@ export interface GitHubClient {
    * it: an existing repository is adopted as it stands, and nothing here
    * removes one.
    */
-  createRepository(org: string, repository: RepositoryManifest): Promise<void>;
+  createRepository(
+    org: string,
+    repository: RepositoryManifest,
+  ): Promise<LiveRepository>;
 
   /**
    * Whether this organization can have internal repositories, which is true
@@ -376,6 +386,12 @@ export interface GitHubClient {
 
   // Rulesets — /orgs/{org}/rulesets
   listRulesets(org: string): Promise<LiveRuleset[]>;
+  /**
+   * The id of the org ruleset with this exact name, or undefined. GitHub does
+   * not make ruleset names unique, so a create that ran once already must be
+   * found and turned into an update rather than enforced twice.
+   */
+  findRulesetIdByName(org: string, name: string): Promise<number | undefined>;
   createRuleset(org: string, ruleset: ResolvedRuleset): Promise<void>;
   updateRuleset(
     org: string,
@@ -458,12 +474,47 @@ type UpdateRulesetParams =
 type CreateSecurityConfigParams =
   RestEndpointMethodTypes['codeSecurity']['createConfiguration']['parameters'];
 
+/**
+ * Octokit with GitHub's own throttling and retry best practices: requests are
+ * queued rather than fired unbounded, a primary or secondary rate limit is
+ * waited out and retried a few times, and transient 5xx/network failures are
+ * retried. Without this, one 403 mid-apply leaves the organization half
+ * reconciled.
+ */
+const ThrottledOctokit = Octokit.plugin(retry, throttling);
+
+/** How many times a rate-limited request is retried before giving up. */
+const RATE_LIMIT_RETRIES = 3;
+
+function createOctokit(token: string, baseUrl?: string): Octokit {
+  return new ThrottledOctokit({
+    auth: token,
+    baseUrl,
+    throttle: {
+      onRateLimit: (retryAfter, options, _octokit, retryCount) => {
+        console.error(
+          `warning: rate limited on ${options.method} ${options.url}, ` +
+            `retrying in ${retryAfter}s`,
+        );
+        return retryCount < RATE_LIMIT_RETRIES;
+      },
+      onSecondaryRateLimit: (retryAfter, options, _octokit, retryCount) => {
+        console.error(
+          `warning: secondary rate limit on ${options.method} ${options.url}, ` +
+            `retrying in ${retryAfter}s`,
+        );
+        return retryCount < RATE_LIMIT_RETRIES;
+      },
+    },
+  });
+}
+
 /** Default {@link GitHubClient} backed by Octokit against api.github.com. */
 export class OctokitGitHubClient implements GitHubClient {
   private readonly octokit: Octokit;
 
-  constructor(token: string, baseUrl?: string) {
-    this.octokit = new Octokit({ auth: token, baseUrl });
+  constructor(token: string, baseUrl?: string, octokit?: Octokit) {
+    this.octokit = octokit ?? createOctokit(token, baseUrl);
   }
 
   async listTeams(org: string): Promise<LiveTeam[]> {
@@ -503,8 +554,8 @@ export class OctokitGitHubClient implements GitHubClient {
     org: string,
     slug: string,
     params: UpdateTeamParams,
-  ): Promise<void> {
-    await this.octokit.rest.teams.updateInOrg({
+  ): Promise<LiveTeam> {
+    const { data } = await this.octokit.rest.teams.updateInOrg({
       org,
       team_slug: slug,
       name: params.name,
@@ -512,6 +563,14 @@ export class OctokitGitHubClient implements GitHubClient {
       privacy: params.privacy,
       parent_team_id: params.parentTeamId,
     });
+    return {
+      id: data.id,
+      slug: data.slug,
+      name: data.name,
+      description: data.description ?? null,
+      privacy: (data.privacy as TeamPrivacy) ?? 'closed',
+      parentSlug: data.parent?.slug ?? null,
+    };
   }
 
   async deleteTeam(org: string, slug: string): Promise<void> {
@@ -612,7 +671,11 @@ export class OctokitGitHubClient implements GitHubClient {
       'GET /orgs/{org}/custom-repository-roles',
       { org },
     );
-    const roles = (data as CustomRepositoryRolesResponse).custom_roles ?? [];
+    const roles = expectArray(
+      (data as CustomRepositoryRolesResponse).custom_roles,
+      'GET /orgs/{org}/custom-repository-roles',
+      'custom_roles',
+    );
     return roles.map((r) => ({
       id: r.id,
       name: r.name,
@@ -635,7 +698,11 @@ export class OctokitGitHubClient implements GitHubClient {
       'GET /orgs/{org}/organization-roles',
       { org },
     );
-    const roles = (data as OrganizationRolesResponse).roles ?? [];
+    const roles = expectArray(
+      (data as OrganizationRolesResponse).roles,
+      'GET /orgs/{org}/organization-roles',
+      'roles',
+    );
     return roles.map((r) => ({
       id: r.id,
       name: r.name,
@@ -760,8 +827,8 @@ export class OctokitGitHubClient implements GitHubClient {
   async createRepository(
     org: string,
     repository: RepositoryManifest,
-  ): Promise<void> {
-    await this.octokit.request('POST /orgs/{org}/repos', {
+  ): Promise<LiveRepository> {
+    const { data } = await this.octokit.request('POST /orgs/{org}/repos', {
       org,
       name: repository.name,
       description: repository.description,
@@ -780,15 +847,31 @@ export class OctokitGitHubClient implements GitHubClient {
       has_projects: repository.hasProjects,
       has_wiki: repository.hasWiki,
     });
+    const created = data as { id: number; name: string };
+    return { id: created.id, name: created.name };
   }
 
   async listExternalGroups(org: string): Promise<ExternalIdpGroup[]> {
-    const { data } = await this.octokit.request(
-      'GET /orgs/{org}/external-groups',
-      { org },
-    );
-    const groups = (data as ExternalGroupsResponse).groups ?? [];
-    return groups.map((g) => ({ id: Number(g.group_id), name: g.group_name }));
+    // Paginated by hand: the endpoint pages at 30 by default, and its body
+    // wraps the array in `{groups}`, which defeats `octokit.paginate`. Reading
+    // only the first page would make every group past it "not provisioned".
+    const all: ExternalIdpGroup[] = [];
+    const perPage = 100;
+    for (let page = 1; ; page++) {
+      const { data } = await this.octokit.request(
+        'GET /orgs/{org}/external-groups',
+        { org, per_page: perPage, page },
+      );
+      const groups = expectArray(
+        (data as ExternalGroupsResponse).groups,
+        'GET /orgs/{org}/external-groups',
+        'groups',
+      );
+      all.push(
+        ...groups.map((g) => ({ id: Number(g.group_id), name: g.group_name })),
+      );
+      if (groups.length < perPage) return all;
+    }
   }
 
   async linkExternalGroup(
@@ -978,6 +1061,17 @@ export class OctokitGitHubClient implements GitHubClient {
   }
 
   // ---- Rulesets ------------------------------------------------------------
+
+  async findRulesetIdByName(
+    org: string,
+    name: string,
+  ): Promise<number | undefined> {
+    const summaries = await this.octokit.paginate(
+      this.octokit.rest.repos.getOrgRulesets,
+      { org, per_page: 100 },
+    );
+    return summaries.find((s) => s.name === name)?.id;
+  }
 
   async listRulesets(org: string): Promise<LiveRuleset[]> {
     const summaries = await this.octokit.paginate(
@@ -1207,10 +1301,26 @@ export class OctokitGitHubClient implements GitHubClient {
         branch,
       }));
     } catch (error) {
-      // An unprotected branch is a 404 here, which is an answer rather than a
-      // failure: the branch simply has no protection to compare against.
-      if (isNotFound(error))
+      // An unprotected branch is a 404 here, but so is a repository that does
+      // not exist, a branch that does not exist, and a repository the token
+      // cannot see (GitHub masks those as 404 too). Only the first is an
+      // answer; the rest must fail, or a typo or a permissions gap reads as
+      // "unprotected" and the plan writes protection from scratch over
+      // settings it never saw.
+      if (isNotFound(error)) {
+        try {
+          await this.octokit.rest.repos.getBranch({ owner, repo, branch });
+        } catch (branchError) {
+          if (isNotFound(branchError)) {
+            throw new Error(
+              `Cannot read branch protection for ${repo}#${branch}: the ` +
+                'repository or branch does not exist, or the token cannot see it.',
+            );
+          }
+          throw branchError;
+        }
         return { repository: repo, branch, enabled: false };
+      }
       throw error;
     }
 
@@ -1379,6 +1489,25 @@ function toActors(
     teams: names(restriction.teams, 'slug'),
     apps: names(restriction.apps, 'slug'),
   };
+}
+
+/**
+ * The array a wrapped list response must carry. A body without it is a failure
+ * to surface, not an empty organization: defaulting to `[]` here would read as
+ * "nothing exists" and cascade into creates and deletes computed against a
+ * world emptier than the real one.
+ */
+function expectArray<T>(
+  value: T[] | undefined,
+  endpoint: string,
+  key: string,
+): T[] {
+  if (!Array.isArray(value)) {
+    throw new Error(
+      `Unexpected response from ${endpoint}: expected an array under "${key}".`,
+    );
+  }
+  return value;
 }
 
 function isNotFound(error: unknown): boolean {
