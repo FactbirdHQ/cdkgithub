@@ -3,8 +3,12 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { pathToFileURL } from 'node:url';
+import { MsGraphEntraClient } from './entra/graph.ts';
+import { setUpScimProvisioning } from './entra/scim-setup.ts';
+import { resolveGraphToken } from './entra/token.ts';
 import { OctokitGitHubClient } from './github/client.ts';
 import { resolveToken } from './github/token.ts';
+import { importOrganization } from './import/import-org.ts';
 import { apply, deleteAllowed } from './reconcile/applier.ts';
 import { writeBackup } from './reconcile/backup.ts';
 import {
@@ -50,8 +54,13 @@ Usage:
   cdkgithub diff  [options]        Compare the live org tree against the manifest
   cdkgithub plan  [options]        Diff the manifest against the live org (read-only)
   cdkgithub apply [options]        Reconcile the live org to match the manifest
+  cdkgithub import <org>           Read a live org and emit a definition (read-only)
+  cdkgithub scim  [options]        Configure Entra ID SCIM provisioning to match
+                                   the manifest's ScimProvisioning declaration.
+                                   Dry run without --yes.
 
 Options:
+  --output <path>     Where import writes the definition (default: stdout)
   --manifest <path>   Manifest to read for plan/apply (default: github.out/manifest.json)
   --yes               Actually execute changes (apply). Without it, apply is a dry run.
   --allow-delete[=scopes]
@@ -79,7 +88,10 @@ when applied with --manifest, the plan, and a journal of each change.
 
 Auth: uses GITHUB_TOKEN/GH_TOKEN, else falls back to \`gh auth token\`. Managing
 teams needs org-admin scope; the governance surfaces additionally need admin:org,
-and code security configurations need the org to have those features available.`;
+and code security configurations need the org to have those features available.
+\`scim\` additionally talks to Microsoft Graph: it uses AZURE_GRAPH_TOKEN, else
+falls back to \`az account get-access-token\`, and reads the GitHub token Entra
+will provision with from the environment variable the definition names.`;
 
 export async function main(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
@@ -103,6 +115,10 @@ export async function main(argv: string[]): Promise<number> {
       return planCommand(flags);
     case 'apply':
       return applyCommand(flags);
+    case 'import':
+      return importCommand(flags);
+    case 'scim':
+      return scimCommand(flags);
     case '-h':
     case '--help':
     case undefined:
@@ -166,6 +182,118 @@ function gitState(): { commit?: string; dirty?: boolean } {
     commit: head.stdout.trim(),
     dirty: status.status === 0 ? status.stdout.trim() !== '' : undefined,
   };
+}
+
+/**
+ * Read a live organization and emit a definition file: the inverse of `synth`,
+ * for adopting an organization built by hand. Read-only, like `plan`.
+ */
+async function importCommand(flags: Flags): Promise<number> {
+  const org = flags.positional;
+  if (!org) {
+    console.error(
+      'import requires an organization login, e.g. `cdkgithub import factbird`',
+    );
+    return 1;
+  }
+  const client = new OctokitGitHubClient(resolveToken());
+  const definition = await importOrganization(client, org);
+  if (flags.output) {
+    writeFileSync(flags.output, definition);
+    console.error(`Definition written to ${flags.output}`);
+    return 0;
+  }
+  console.log(definition);
+  return 0;
+}
+
+/**
+ * Configure the Entra side of SCIM provisioning to match the declaration.
+ *
+ * A separate command rather than part of `apply`, because it writes to a
+ * different provider under different credentials: `apply --enable-scim`
+ * remains the GitHub half, linking teams to groups this command provisions.
+ * Like `apply`, it is a dry run until `--yes`.
+ */
+async function scimCommand(flags: Flags): Promise<number> {
+  const desired = readManifest(flags.manifest);
+  const scim = desired.scim;
+  if (!scim) {
+    console.error(
+      'The manifest declares no SCIM provisioning. Add a ScimProvisioning ' +
+        'construct to the definition and re-run `cdkgithub synth`.',
+    );
+    return 1;
+  }
+
+  printProvenance(desired);
+  const entra = new MsGraphEntraClient(resolveGraphToken());
+
+  let result;
+  try {
+    result = await setUpScimProvisioning(entra, desired.owner, scim, {
+      yes: flags.yes,
+      env: process.env,
+      log: (line) => console.log(`  ${line}`),
+    });
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
+  }
+
+  if (result.actions.length === 0) {
+    console.log('Entra already matches the declaration.');
+  } else if (flags.yes) {
+    console.log(
+      `\nConfigured: ${result.actions.length} action${result.actions.length === 1 ? '' : 's'}.`,
+    );
+  } else {
+    console.log(`SCIM setup for organization "${desired.owner}":\n`);
+    for (const action of result.actions) console.log(`  + ${action}`);
+  }
+  for (const note of result.notes) console.log(`  note: ${note}`);
+
+  await reportProvisionedGroups(desired.owner, scim.groups);
+
+  if (!flags.yes && result.actions.length > 0) {
+    console.log('\nDry run. Re-run with --yes to configure Entra.');
+  }
+  return 0;
+}
+
+/**
+ * Which declared groups GitHub can already see, so an operator knows when the
+ * push has landed and `apply --enable-scim` will link. Advisory: a missing
+ * GitHub token degrades to a note, not a failure, because the Entra half of
+ * the run is complete either way.
+ */
+async function reportProvisionedGroups(
+  owner: string,
+  groups: readonly string[],
+): Promise<void> {
+  try {
+    const client = new OctokitGitHubClient(resolveToken());
+    const visible = new Set(
+      (await client.listExternalGroups(owner)).map((g) => g.name),
+    );
+    const there = groups.filter((g) => visible.has(g));
+    const pending = groups.filter((g) => !visible.has(g));
+    if (there.length > 0) {
+      console.log(
+        `\nVisible in GitHub already: ${there.join(', ')}. Link with \`apply --enable-scim\`.`,
+      );
+    }
+    if (pending.length > 0) {
+      console.log(
+        `${there.length > 0 ? '' : '\n'}Not visible in GitHub yet: ${pending.join(', ')}. ` +
+          'Provisioning runs on Entra\'s schedule (up to 40 minutes).',
+      );
+    }
+  } catch (error) {
+    console.error(
+      `note: could not check GitHub's external groups (${error instanceof Error ? error.message : String(error)})`,
+    );
+  }
 }
 
 async function planCommand(flags: Flags): Promise<number> {
@@ -239,6 +367,16 @@ async function applyCommand(flags: Flags): Promise<number> {
     return 1;
   }
 
+  const missingSecrets = missingSecretValues(executable, process.env);
+  if (missingSecrets.length > 0) {
+    console.error(
+      `This plan writes secrets whose values are not in the environment: ` +
+        `${missingSecrets.map((name) => `$${name}`).join(', ')}. ` +
+        'Export them and re-run apply. Nothing was changed.',
+    );
+    return 1;
+  }
+
   if (!(await approved(executable, flags.requireApproval))) return 1;
 
   const backup = writeBackup('github.out', desired, live, executable);
@@ -278,6 +416,25 @@ function resolveAllowDelete(
 ): boolean | ReadonlySet<DestructiveKind> {
   if (typeof value === 'boolean') return value;
   return new Set(value.map((scope) => DELETE_SCOPES[scope]));
+}
+
+/**
+ * The environment variables the plan's secret writes read from, minus the ones
+ * that are set. Checked whole before anything is written or approved: failing
+ * on the second secret mid-apply would leave the organization partially
+ * reconciled over a missing export.
+ */
+export function missingSecretValues(
+  executable: Change[],
+  env: Record<string, string | undefined>,
+): string[] {
+  const missing = new Set<string>();
+  for (const change of executable) {
+    if (change.kind === 'put-secret' && env[change.secret.valueFrom] === undefined) {
+      missing.add(change.secret.valueFrom);
+    }
+  }
+  return [...missing];
 }
 
 /**
@@ -489,6 +646,10 @@ interface Flags {
   byPerson: boolean;
   csv: boolean;
   color?: 'always' | 'never';
+  /** Where `import` writes the definition; stdout when absent. */
+  output?: string;
+  /** The command's positional argument, for the commands that take one. */
+  positional?: string;
 }
 
 export function parseFlags(args: string[], command?: string): Flags {
@@ -505,8 +666,8 @@ export function parseFlags(args: string[], command?: string): Flags {
     byPerson: false,
     csv: false,
   };
-  // `synth` takes a positional config path; the other commands take none.
-  const positionalsAllowed = command === 'synth' ? 1 : 0;
+  // `synth` takes a config path and `import` an org login; the rest take none.
+  const positionalsAllowed = command === 'synth' || command === 'import' ? 1 : 0;
   let positionals = 0;
 
   for (let i = 0; i < args.length; i++) {
@@ -569,6 +730,14 @@ export function parseFlags(args: string[], command?: string): Flags {
         flags.csv = true;
         flags.byPerson = true;
         break;
+      case '--output': {
+        const value = args[++i];
+        if (value === undefined || value.startsWith('--')) {
+          throw new Error('--output needs a path.');
+        }
+        flags.output = value;
+        break;
+      }
       default: {
         if (arg.startsWith('--allow-delete=')) {
           flags.allowDelete = parseDeleteScopes(
@@ -581,6 +750,7 @@ export function parseFlags(args: string[], command?: string): Flags {
         if (++positionals > positionalsAllowed) {
           throw new Error(`Unexpected argument: ${arg}`);
         }
+        flags.positional = arg;
         break;
       }
     }

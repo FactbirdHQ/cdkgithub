@@ -69,6 +69,35 @@ export function validateManifest(value: unknown, path: string): DesiredState {
     }
   }
 
+  // `scim` is what the scim command dereferences, so its fields are pinned
+  // here the way the team fields are.
+  if (state.scim !== undefined) {
+    if (
+      typeof state.scim !== 'object' ||
+      state.scim === null ||
+      Array.isArray(state.scim)
+    ) {
+      fail('"scim" must be an object when present.');
+    }
+    const scim = state.scim as Record<string, unknown>;
+    for (const field of [
+      'tenantId',
+      'applicationDisplayName',
+      'tokenFrom',
+    ] as const) {
+      if (typeof scim[field] !== 'string' || scim[field] === '') {
+        fail(`"scim" needs a non-empty "${field}".`);
+      }
+    }
+    if (
+      !Array.isArray(scim.groups) ||
+      scim.groups.length === 0 ||
+      scim.groups.some((g) => typeof g !== 'string')
+    ) {
+      fail('"scim" needs "groups": a non-empty array of group names.');
+    }
+  }
+
   // The governance collections are arrays when present; their per-entry shapes
   // are diffed field-by-field and fail loudly on their own.
   for (const collection of [
@@ -76,6 +105,10 @@ export function validateManifest(value: unknown, path: string): DesiredState {
     'customRepositoryRoles',
     'organizationRoles',
     'rulesets',
+    'repositoryRulesets',
+    'runnerGroups',
+    'actionsVariables',
+    'actionsSecrets',
     'codeSecurityConfigurations',
     'customProperties',
     'branchProtection',

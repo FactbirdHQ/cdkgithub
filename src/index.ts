@@ -9,6 +9,14 @@ export {
   ActionsPolicy,
   type ActionsPolicyProps,
 } from './constructs/actions-policy.ts';
+export {
+  ActionsSecret,
+  type ActionsSecretProps,
+} from './constructs/actions-secret.ts';
+export {
+  ActionsVariable,
+  type ActionsVariableProps,
+} from './constructs/actions-variable.ts';
 export { App, type AppProps } from './constructs/app.ts';
 export {
   BranchProtection,
@@ -49,7 +57,19 @@ export {
   Repository,
   type RepositoryProps,
 } from './constructs/repository.ts';
+export {
+  RepositoryRuleset,
+  type RepositoryRulesetProps,
+} from './constructs/repository-ruleset.ts';
+export {
+  RunnerGroup,
+  type RunnerGroupProps,
+} from './constructs/runner-group.ts';
 export { Ruleset, type RulesetProps } from './constructs/ruleset.ts';
+export {
+  ScimProvisioning,
+  type ScimProvisioningProps,
+} from './constructs/scim-provisioning.ts';
 export { Team, teamOf, type TeamProps } from './constructs/team.ts';
 export {
   UserAccount,
@@ -57,6 +77,8 @@ export {
 } from './constructs/user-account.ts';
 export type {
   ActionsPolicyManifest,
+  ActionsSecretManifest,
+  ActionsVariableManifest,
   ActorRestriction,
   AllowedActions,
   AllowedActionsConfig,
@@ -76,6 +98,7 @@ export type {
   DesiredState,
   EnabledRepositories,
   ExternalGroupBinding,
+  OrgConfigVisibility,
   OrganizationRoleManifest,
   OrgSettingsManifest,
   OwnerType,
@@ -84,8 +107,13 @@ export type {
   OrganizationAdminBypass,
   RepoPermission,
   RepositoryAccess,
+  RepositoryRulesetManifest,
+  RepositoryRulesetTarget,
   RepositoryVisibility,
   RepositoryRoleBypass,
+  RunnerGroupManifest,
+  RunnerGroupVisibility,
+  ScimProvisioningManifest,
   RequiredPullRequestReviews,
   RequiredStatusChecks,
   ResolvedBypassActor,

@@ -2,11 +2,14 @@ import type {
   LiveCodeSecurityConfiguration,
   LiveCustomProperty,
   LiveCustomRepositoryRole,
+  LiveRunnerGroup,
   LiveRuleset,
   LiveTeam,
 } from '../github/client.ts';
 import type {
   ActionsPolicyManifest,
+  ActionsSecretManifest,
+  ActionsVariableManifest,
   BranchProtectionManifest,
   CodeSecurityConfigurationManifest,
   CustomPropertyManifest,
@@ -16,6 +19,7 @@ import type {
   OrgSettingsManifest,
   RepoPermission,
   ResolvedRuleset,
+  RunnerGroupManifest,
   TeamManifest,
 } from '../synth/manifest.ts';
 
@@ -131,6 +135,95 @@ export interface UpdateRuleset {
 export interface DeleteRuleset {
   readonly kind: 'delete-ruleset';
   readonly live: LiveRuleset;
+}
+
+export interface CreateRepositoryRuleset {
+  readonly kind: 'create-repo-ruleset';
+  readonly repository: string;
+  readonly ruleset: ResolvedRuleset;
+}
+
+export interface UpdateRepositoryRuleset {
+  readonly kind: 'update-repo-ruleset';
+  readonly repository: string;
+  readonly id: number;
+  readonly ruleset: ResolvedRuleset;
+  readonly fields: FieldChange[];
+}
+
+/**
+ * A ruleset on a declared repository that the definition does not carry. Gated
+ * by --allow-delete, and only ever proposed for repositories the definition
+ * declares rulesets on.
+ */
+export interface DeleteRepositoryRuleset {
+  readonly kind: 'delete-repo-ruleset';
+  readonly repository: string;
+  readonly live: LiveRuleset;
+}
+
+export interface CreateRunnerGroup {
+  readonly kind: 'create-runner-group';
+  readonly group: RunnerGroupManifest;
+}
+
+export interface UpdateRunnerGroup {
+  readonly kind: 'update-runner-group';
+  readonly id: number;
+  readonly group: RunnerGroupManifest;
+  readonly fields: FieldChange[];
+}
+
+/**
+ * A runner group absent from the definition. Gated by --allow-delete: the
+ * repositories using it lose their runners. GitHub's default group is never a
+ * candidate, because GitHub refuses to delete it.
+ */
+export interface DeleteRunnerGroup {
+  readonly kind: 'delete-runner-group';
+  readonly live: LiveRunnerGroup;
+}
+
+export interface CreateVariable {
+  readonly kind: 'create-variable';
+  readonly variable: ActionsVariableManifest;
+}
+
+export interface UpdateVariable {
+  readonly kind: 'update-variable';
+  readonly variable: ActionsVariableManifest;
+  readonly fields: FieldChange[];
+}
+
+/** A variable absent from a declared scope. Gated by --allow-delete. */
+export interface DeleteVariable {
+  readonly kind: 'delete-variable';
+  readonly name: string;
+  /** Absent for an organization variable. */
+  readonly repository?: string;
+}
+
+/**
+ * Write a secret: create it, or bring an existing one's visibility in line.
+ * Either way the value is read from the declared environment variable and
+ * pushed, because GitHub takes the two together and cannot say whether the
+ * value it holds is current.
+ */
+export interface PutSecret {
+  readonly kind: 'put-secret';
+  readonly secret: ActionsSecretManifest;
+  /** Empty on a create; on an update, what differs. */
+  readonly fields: FieldChange[];
+  /** Whether the secret exists on GitHub already. */
+  readonly exists: boolean;
+}
+
+/** A secret absent from a declared scope. Gated by --allow-delete. */
+export interface DeleteSecret {
+  readonly kind: 'delete-secret';
+  readonly name: string;
+  /** Absent for an organization secret. */
+  readonly repository?: string;
 }
 
 export interface CreateSecurityConfiguration {
@@ -287,6 +380,17 @@ export type Change =
   | CreateRuleset
   | UpdateRuleset
   | DeleteRuleset
+  | CreateRepositoryRuleset
+  | UpdateRepositoryRuleset
+  | DeleteRepositoryRuleset
+  | CreateRunnerGroup
+  | UpdateRunnerGroup
+  | DeleteRunnerGroup
+  | CreateVariable
+  | UpdateVariable
+  | DeleteVariable
+  | PutSecret
+  | DeleteSecret
   | CreateSecurityConfiguration
   | UpdateSecurityConfiguration
   | DeleteSecurityConfiguration
@@ -342,6 +446,10 @@ export const DESTRUCTIVE_KINDS = [
   'remove-repo-access',
   'remove-membership',
   'delete-ruleset',
+  'delete-repo-ruleset',
+  'delete-runner-group',
+  'delete-variable',
+  'delete-secret',
   'delete-security-config',
   'delete-property',
   'remove-branch-protection',
@@ -361,6 +469,10 @@ export const DELETE_SCOPES = {
   'org-roles': 'revoke-org-role',
   'repo-roles': 'delete-repo-role',
   rulesets: 'delete-ruleset',
+  'repo-rulesets': 'delete-repo-ruleset',
+  'runner-groups': 'delete-runner-group',
+  variables: 'delete-variable',
+  secrets: 'delete-secret',
   'security-configs': 'delete-security-config',
   properties: 'delete-property',
   'branch-protection': 'remove-branch-protection',

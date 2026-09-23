@@ -1,5 +1,7 @@
 import type { IConstruct } from 'constructs';
 import { ActionsPolicy } from '../constructs/actions-policy.ts';
+import { ActionsSecret } from '../constructs/actions-secret.ts';
+import { ActionsVariable } from '../constructs/actions-variable.ts';
 import { BranchProtection } from '../constructs/branch-protection.ts';
 import { CodeSecurityConfiguration } from '../constructs/code-security.ts';
 import { CustomProperty } from '../constructs/custom-property.ts';
@@ -7,20 +9,29 @@ import { Organization } from '../constructs/organization.ts';
 import { CustomRepositoryRole } from '../constructs/custom-repository-role.ts';
 import { OrganizationRole } from '../constructs/organization-role.ts';
 import { Repository } from '../constructs/repository.ts';
+import { RepositoryRuleset } from '../constructs/repository-ruleset.ts';
+import { RunnerGroup } from '../constructs/runner-group.ts';
 import { Ruleset } from '../constructs/ruleset.ts';
+import { ScimProvisioning } from '../constructs/scim-provisioning.ts';
 import type {
   RepositoryGrant,
   RepositoryGrantList,
 } from '../constructs/grants.ts';
 import { Team } from '../constructs/team.ts';
 import { UserAccount } from '../constructs/user-account.ts';
+import type {
+  ActionsSecretManifest,
+  ActionsVariableManifest,
+} from './actions-admin.ts';
 import type { BranchProtectionManifest } from './branch-protection.ts';
 import type {
   ActionsPolicyManifest,
   CodeSecurityConfigurationManifest,
   CustomPropertyManifest,
+  RepositoryRulesetManifest,
   RulesetManifest,
 } from './governance.ts';
+import type { ScimProvisioningManifest } from './scim.ts';
 import type {
   DesiredState,
   RepoPermission,
@@ -83,6 +94,17 @@ export function synthesize(root: IConstruct): DesiredState {
     CustomProperty,
     toCustomPropertyManifest,
   );
+  const repositoryRulesets = collect(
+    root,
+    RepositoryRuleset,
+    toRepositoryRulesetManifest,
+  );
+  const runnerGroups = collect(root, RunnerGroup, (g) => ({
+    name: g.groupName,
+    ...g.props,
+  }));
+  const actionsVariables = collect(root, ActionsVariable, toVariableManifest);
+  const actionsSecrets = collect(root, ActionsSecret, toSecretManifest);
 
   assertUniqueNames(repositories, 'repository');
   assertUniqueNames(rulesets, 'ruleset');
@@ -90,6 +112,10 @@ export function synthesize(root: IConstruct): DesiredState {
   assertUniqueNames(customRepositoryRoles, 'custom repository role');
   assertUniqueNames(codeSecurityConfigurations, 'code security configuration');
   assertUniqueNames(customProperties, 'custom property');
+  assertUniqueNames(runnerGroups, 'runner group');
+  assertUniquePerRepository(repositoryRulesets, 'repository ruleset', false);
+  assertUniquePerRepository(actionsVariables, 'variable');
+  assertUniquePerRepository(actionsSecrets, 'secret');
 
   const state: DesiredState = {
     owner: owner.login,
@@ -104,6 +130,11 @@ export function synthesize(root: IConstruct): DesiredState {
     codeSecurityConfigurations,
     customProperties,
     branchProtection,
+    repositoryRulesets,
+    runnerGroups,
+    actionsVariables,
+    actionsSecrets,
+    scim: singleScimProvisioning(root, owner.login, teams),
   };
 
   if (owner.type === 'user') assertNothingOrgWide(state);
@@ -157,6 +188,18 @@ function assertNothingOrgWide(state: DesiredState): void {
     ['Ruleset', state.rulesets],
     ['CodeSecurityConfiguration', state.codeSecurityConfigurations],
     ['CustomProperty', state.customProperties],
+    ['RunnerGroup', state.runnerGroups],
+    // The repository-scoped entries work on a personal account's repositories;
+    // only the organization-scoped ones have nothing to live on.
+    [
+      'organization ActionsVariable',
+      state.actionsVariables?.some((v) => !v.repository) || undefined,
+    ],
+    [
+      'organization ActionsSecret',
+      state.actionsSecrets?.some((s) => !s.repository) || undefined,
+    ],
+    ['ScimProvisioning', state.scim],
   ];
 
   const declared = orgOnly
@@ -212,6 +255,54 @@ function collect<C extends IConstruct, M>(
   return found.length > 0 ? found.map(toManifest) : undefined;
 }
 
+/**
+ * Resolve the single SCIM provisioning declaration, defaulting its group list
+ * from the definition itself: every group name a team's `externalGroup`
+ * binds. Deriving the list is the point of declaring both in one place, so a
+ * team added with a new group is provisioned by the next `scim` run without
+ * a second edit. A declaration that resolves to no groups would configure an
+ * application that pushes nothing, which is a mistake, not a choice.
+ */
+function singleScimProvisioning(
+  root: IConstruct,
+  login: string,
+  teams: TeamManifest[],
+): ScimProvisioningManifest | undefined {
+  const declarations = root.node
+    .findAll()
+    .filter((c): c is ScimProvisioning => c instanceof ScimProvisioning);
+  if (declarations.length === 0) return undefined;
+  if (declarations.length > 1) {
+    throw new Error(
+      `Expected at most one ScimProvisioning, found ${declarations.length}. One application provisions the organization.`,
+    );
+  }
+
+  const { props } = declarations[0]!;
+  const groups =
+    props.groups ??
+    [
+      ...new Set(
+        teams.flatMap((t) =>
+          t.externalGroup?.name ? [t.externalGroup.name] : [],
+        ),
+      ),
+    ].sort();
+  if (groups.length === 0) {
+    throw new Error(
+      'ScimProvisioning resolves to no groups: no team declares an externalGroup name, and no `groups` were passed.',
+    );
+  }
+
+  return {
+    tenantId: props.tenantId,
+    applicationDisplayName:
+      props.applicationDisplayName ?? `GitHub SCIM (${login})`,
+    tokenFrom: props.tokenFrom ?? 'GITHUB_SCIM_TOKEN',
+    groups,
+  };
+}
+
 function singleActionsPolicy(
   root: IConstruct,
 ): ActionsPolicyManifest | undefined {
@@ -261,6 +352,121 @@ function toCustomPropertyManifest(
     );
   }
   return { ...props, name: property.propertyName };
+}
+
+/** The repository a repository-scoped construct lives on, by nesting or by name. */
+function resolveRepository(
+  construct: IConstruct,
+  declared: string | undefined,
+  what: string,
+): string {
+  const repository = declared ?? nearestRepository(construct)?.repositoryName;
+  if (!repository) {
+    throw new Error(
+      `${what} names no repository. Nest it under a Repository, or pass \`repository\`.`,
+    );
+  }
+  return repository;
+}
+
+function toRepositoryRulesetManifest(
+  ruleset: RepositoryRuleset,
+): RepositoryRulesetManifest {
+  const { repository: declared, ...props } = ruleset.props;
+  const repository = resolveRepository(
+    ruleset,
+    declared,
+    `RepositoryRuleset "${ruleset.rulesetName}"`,
+  );
+  return {
+    ...props,
+    name: ruleset.rulesetName,
+    repository,
+    target: props.target ?? 'branch',
+    enforcement: props.enforcement ?? 'active',
+  };
+}
+
+/**
+ * Visibility belongs to exactly one scope: an organization entry must say who
+ * reads it, and a repository entry is read by its own repository and nobody
+ * else. Both mistakes are declarations that would silently mean something
+ * other than what they say, so both fail here.
+ */
+function assertScopedVisibility(
+  what: string,
+  repository: string | undefined,
+  visibility: string | undefined,
+): void {
+  if (repository === undefined && visibility === undefined) {
+    throw new Error(
+      `Organization ${what} declares no visibility. Say who reads it: "all", "private", or "selected".`,
+    );
+  }
+  if (repository !== undefined && visibility !== undefined) {
+    throw new Error(
+      `${what} on repository "${repository}" declares a visibility, but only its own repository reads it.`,
+    );
+  }
+}
+
+function toVariableManifest(
+  variable: ActionsVariable,
+): ActionsVariableManifest {
+  const repository =
+    variable.props.repository ?? nearestRepository(variable)?.repositoryName;
+  assertScopedVisibility(
+    `variable "${variable.variableName}"`,
+    repository,
+    variable.props.visibility,
+  );
+  return {
+    ...variable.props,
+    name: variable.variableName,
+    repository,
+  };
+}
+
+function toSecretManifest(secret: ActionsSecret): ActionsSecretManifest {
+  const repository =
+    secret.props.repository ?? nearestRepository(secret)?.repositoryName;
+  assertScopedVisibility(
+    `secret "${secret.secretName}"`,
+    repository,
+    secret.props.visibility,
+  );
+  return {
+    ...secret.props,
+    name: secret.secretName,
+    valueFrom: secret.props.valueFrom ?? secret.secretName,
+    repository,
+  };
+}
+
+/**
+ * Uniqueness within each scope, for the collections whose entries live on a
+ * repository (or on the organization when they name none). GitHub compares
+ * secret and variable names case-insensitively, so `token` and `TOKEN` are the
+ * same entry and collide here rather than at apply; ruleset names it stores as
+ * written.
+ */
+function assertUniquePerRepository(
+  items: Array<{ name: string; repository?: string }> | undefined,
+  kind: string,
+  caseInsensitive = true,
+): void {
+  const seen = new Set<string>();
+  for (const item of items ?? []) {
+    const name = caseInsensitive ? item.name.toUpperCase() : item.name;
+    const key = `${item.repository ?? ''} ${name}`;
+    if (seen.has(key)) {
+      const where = item.repository
+        ? `repository "${item.repository}"`
+        : 'the organization';
+      throw new Error(`Duplicate ${kind} "${item.name}" on ${where}.`);
+    }
+    seen.add(key);
+  }
 }
 
 function assertUniqueNames(

@@ -368,7 +368,8 @@ function planRulesets(desired: DesiredState, live: LiveState): Change[] {
   return changes;
 }
 
-function diffRuleset(
+/** Shared with the repository-ruleset planner, which diffs the same shape. */
+export function diffRuleset(
   desired: ResolvedRuleset,
   live: LiveRuleset,
 ): FieldChange[] {
@@ -414,7 +415,7 @@ function diffRuleset(
  * at a time so the plan can name what changes. Nested objects are walked and
  * reported with dotted paths; arrays are compared whole, order-insensitively.
  */
-function diffDeclared(
+export function diffDeclared(
   desired: object,
   live: object,
   prefix = '',

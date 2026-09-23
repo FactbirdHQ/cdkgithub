@@ -9,7 +9,13 @@
  * custom properties) live in `./governance.ts` and are re-exported here.
  */
 
+import type {
+  ActionsSecretManifest,
+  ActionsVariableManifest,
+  RunnerGroupManifest,
+} from './actions-admin.ts';
 import type { BranchProtectionManifest } from './branch-protection.ts';
+import type { ScimProvisioningManifest } from './scim.ts';
 import type {
   ActionsPolicyManifest,
   CodeSecurityConfigurationManifest,
@@ -18,11 +24,14 @@ import type {
   OrganizationRoleManifest,
   OrgSettingsManifest,
   RepositoryManifest,
+  RepositoryRulesetManifest,
   RulesetManifest,
 } from './governance.ts';
 
+export * from './actions-admin.ts';
 export * from './branch-protection.ts';
 export * from './governance.ts';
+export * from './scim.ts';
 
 /** GitHub team visibility. `closed` = visible to all org members; `secret` = hidden. */
 export type TeamPrivacy = 'closed' | 'secret';
@@ -182,6 +191,29 @@ export interface DesiredState {
   readonly organizationRoles?: OrganizationRoleManifest[];
   /** Organization rulesets, keyed by name. */
   readonly rulesets?: RulesetManifest[];
+  /**
+   * Repository-level rulesets, keyed by repository and name. Ownership is per
+   * repository: a repository that appears here has its own rulesets read and
+   * pruned, and one that does not is never touched.
+   */
+  readonly repositoryRulesets?: RepositoryRulesetManifest[];
+  /** Self-hosted runner groups, keyed by name. */
+  readonly runnerGroups?: RunnerGroupManifest[];
+  /**
+   * Actions variables, organization- and repository-scoped in one list. Each
+   * scope that appears is owned: declaring an organization variable owns the
+   * organization's variables, and naming a repository owns that repository's.
+   */
+  readonly actionsVariables?: ActionsVariableManifest[];
+  /** Actions secrets, scoped the same way. Values live in the environment, never here. */
+  readonly actionsSecrets?: ActionsSecretManifest[];
+  /**
+   * The Entra ID enterprise application that provisions security groups into
+   * GitHub. Reconciled by `cdkgithub scim`, not by `apply`: it writes to
+   * Entra over Microsoft Graph, a different provider under different
+   * credentials.
+   */
+  readonly scim?: ScimProvisioningManifest;
   /** Code security configurations, keyed by name. */
   readonly codeSecurityConfigurations?: CodeSecurityConfigurationManifest[];
   /** Repository custom properties, keyed by name. */

@@ -12,6 +12,7 @@ import type {
   RepositoryManifest,
   DefaultWorkflowPermissions,
   EnabledRepositories,
+  OrgConfigVisibility,
   OrgSettingsManifest,
   RepoPermission,
   ResolvedBypassActor,
@@ -20,11 +21,14 @@ import type {
   RulesetManifest,
   RulesetRule,
   RulesetTarget,
+  RunnerGroupManifest,
+  RunnerGroupVisibility,
   SecurityAttachScope,
   SecurityDefaultScope,
   TeamPrivacy,
 } from '../synth/manifest.ts';
 import { toCamelCaseKeys, toSnakeCaseKeys } from './casing.ts';
+import { sealSecretValue } from './seal.ts';
 
 /** Live representation of a team as read back from GitHub. */
 export interface LiveTeam {
@@ -151,6 +155,17 @@ interface ExternalGroupsResponse {
   groups?: Array<{ group_id: number | string; group_name: string }>;
 }
 
+/** One entry of `GET /orgs/{org}/actions/runner-groups` (not a typed Octokit method). */
+interface RawRunnerGroup {
+  id: number;
+  name: string;
+  visibility?: string;
+  default?: boolean;
+  allows_public_repositories?: boolean;
+  restricted_to_workflows?: boolean;
+  selected_workflows?: string[];
+}
+
 export interface CreateTeamParams {
   readonly name: string;
   readonly description?: string;
@@ -257,6 +272,55 @@ export type LiveBranchProtection = Omit<BranchProtectionManifest, 'enabled'> & {
 export interface LiveRepositoryProperties {
   readonly repository: string;
   readonly properties: Record<string, string | string[] | null>;
+}
+
+/** A ruleset that lives on one repository, as read back for diffing. */
+export interface LiveRepositoryRuleset extends LiveRuleset {
+  readonly repository: string;
+}
+
+/** A self-hosted runner group, as GitHub reports it. */
+export interface LiveRunnerGroup {
+  readonly id: number;
+  readonly name: string;
+  readonly visibility: RunnerGroupVisibility;
+  /** GitHub's built-in group. It can be reconfigured but never deleted. */
+  readonly isDefault: boolean;
+  readonly allowsPublicRepositories: boolean;
+  readonly restrictedToWorkflows: boolean;
+  readonly selectedWorkflows: string[];
+  /** Repository names, read only when the visibility is `selected`. */
+  readonly selectedRepositories?: string[];
+}
+
+/** An organization Actions variable. Values are plain and come back whole. */
+export interface LiveOrgVariable {
+  readonly name: string;
+  readonly value: string;
+  readonly visibility: OrgConfigVisibility;
+  /** Repository names, read only when the visibility is `selected`. */
+  readonly selectedRepositories?: string[];
+}
+
+/** One repository's Actions variable. */
+export interface LiveRepoVariable {
+  readonly repository: string;
+  readonly name: string;
+  readonly value: string;
+}
+
+/** An organization Actions secret. GitHub never returns the value. */
+export interface LiveOrgSecret {
+  readonly name: string;
+  readonly visibility: OrgConfigVisibility;
+  /** Repository names, read only when the visibility is `selected`. */
+  readonly selectedRepositories?: string[];
+}
+
+/** One repository's Actions secret: a name and nothing more. */
+export interface LiveRepoSecret {
+  readonly repository: string;
+  readonly name: string;
 }
 
 /**
@@ -399,6 +463,120 @@ export interface GitHubClient {
     ruleset: ResolvedRuleset,
   ): Promise<void>;
   deleteRuleset(org: string, id: number): Promise<void>;
+
+  // Repository rulesets — /repos/{owner}/{repo}/rulesets
+  /** Only the rulesets the repository itself defines, never inherited ones. */
+  listRepositoryRulesets(owner: string, repo: string): Promise<LiveRuleset[]>;
+  /** Same reason as {@link findRulesetIdByName}: names are not unique, creates must adopt. */
+  findRepositoryRulesetIdByName(
+    owner: string,
+    repo: string,
+    name: string,
+  ): Promise<number | undefined>;
+  createRepositoryRuleset(
+    owner: string,
+    repo: string,
+    ruleset: ResolvedRuleset,
+  ): Promise<void>;
+  updateRepositoryRuleset(
+    owner: string,
+    repo: string,
+    id: number,
+    ruleset: ResolvedRuleset,
+  ): Promise<void>;
+  deleteRepositoryRuleset(
+    owner: string,
+    repo: string,
+    id: number,
+  ): Promise<void>;
+
+  // Runner groups — /orgs/{org}/actions/runner-groups
+  listRunnerGroups(org: string): Promise<LiveRunnerGroup[]>;
+  createRunnerGroup(
+    org: string,
+    group: RunnerGroupManifest,
+    selectedRepositoryIds?: number[],
+  ): Promise<void>;
+  /** Updates everything but the repository list, which has its own endpoint. */
+  updateRunnerGroup(
+    org: string,
+    id: number,
+    group: RunnerGroupManifest,
+  ): Promise<void>;
+  setRunnerGroupRepositories(
+    org: string,
+    id: number,
+    repositoryIds: number[],
+  ): Promise<void>;
+  deleteRunnerGroup(org: string, id: number): Promise<void>;
+
+  // Actions variables — /orgs/{org}/actions/variables and per repository
+  listOrgVariables(org: string): Promise<LiveOrgVariable[]>;
+  createOrgVariable(
+    org: string,
+    name: string,
+    value: string,
+    visibility: OrgConfigVisibility,
+    selectedRepositoryIds?: number[],
+  ): Promise<void>;
+  updateOrgVariable(
+    org: string,
+    name: string,
+    value: string,
+    visibility: OrgConfigVisibility,
+    selectedRepositoryIds?: number[],
+  ): Promise<void>;
+  deleteOrgVariable(org: string, name: string): Promise<void>;
+  listRepositoryVariables(
+    owner: string,
+    repo: string,
+  ): Promise<Array<{ name: string; value: string }>>;
+  createRepositoryVariable(
+    owner: string,
+    repo: string,
+    name: string,
+    value: string,
+  ): Promise<void>;
+  updateRepositoryVariable(
+    owner: string,
+    repo: string,
+    name: string,
+    value: string,
+  ): Promise<void>;
+  deleteRepositoryVariable(
+    owner: string,
+    repo: string,
+    name: string,
+  ): Promise<void>;
+
+  // Actions secrets — /orgs/{org}/actions/secrets and per repository.
+  // The put methods take the plaintext and seal it to the right public key
+  // before anything leaves the process; there is no method that sends a value
+  // unencrypted, and none that reads one back, because GitHub has neither.
+  listOrgSecrets(org: string): Promise<LiveOrgSecret[]>;
+  putOrgSecret(
+    org: string,
+    name: string,
+    value: string,
+    visibility: OrgConfigVisibility,
+    selectedRepositoryIds?: number[],
+  ): Promise<void>;
+  deleteOrgSecret(org: string, name: string): Promise<void>;
+  listRepositorySecrets(
+    owner: string,
+    repo: string,
+  ): Promise<Array<{ name: string }>>;
+  putRepositorySecret(
+    owner: string,
+    repo: string,
+    name: string,
+    value: string,
+  ): Promise<void>;
+  deleteRepositorySecret(
+    owner: string,
+    repo: string,
+    name: string,
+  ): Promise<void>;
 
   // Code security — /orgs/{org}/code-security/configurations
   listSecurityConfigurations(
@@ -1127,6 +1305,412 @@ export class OctokitGitHubClient implements GitHubClient {
     await this.octokit.rest.repos.deleteOrgRuleset({ org, ruleset_id: id });
   }
 
+  // ---- Repository rulesets -------------------------------------------------
+
+  async listRepositoryRulesets(
+    owner: string,
+    repo: string,
+  ): Promise<LiveRuleset[]> {
+    // `includes_parents: false` keeps org and enterprise rulesets out: they
+    // are visible from the repository but owned elsewhere, and a pruning pass
+    // that saw them would propose deleting policy it does not manage.
+    const summaries = await this.octokit.paginate(
+      this.octokit.rest.repos.getRepoRulesets,
+      { owner, repo, per_page: 100, includes_parents: false },
+    );
+    const rulesets: LiveRuleset[] = [];
+    for (const summary of summaries) {
+      const { data } = await this.octokit.rest.repos.getRepoRuleset({
+        owner,
+        repo,
+        ruleset_id: summary.id,
+        includes_parents: false,
+      });
+      rulesets.push({
+        id: data.id,
+        name: data.name,
+        target: (data.target ?? 'branch') as RulesetTarget,
+        enforcement: data.enforcement,
+        conditions: data.conditions
+          ? toCamelCaseKeys<RulesetConditions>(data.conditions)
+          : undefined,
+        rules: toCamelCaseKeys<RulesetRule[]>(data.rules ?? []),
+        bypassActors: toCamelCaseKeys<ResolvedBypassActor[]>(
+          data.bypass_actors ?? [],
+        ),
+        sourceType: data.source_type ?? 'Repository',
+      });
+    }
+    return rulesets;
+  }
+
+  async findRepositoryRulesetIdByName(
+    owner: string,
+    repo: string,
+    name: string,
+  ): Promise<number | undefined> {
+    const summaries = await this.octokit.paginate(
+      this.octokit.rest.repos.getRepoRulesets,
+      { owner, repo, per_page: 100, includes_parents: false },
+    );
+    return summaries.find((s) => s.name === name)?.id;
+  }
+
+  async createRepositoryRuleset(
+    owner: string,
+    repo: string,
+    ruleset: ResolvedRuleset,
+  ): Promise<void> {
+    await this.octokit.rest.repos.createRepoRuleset({
+      owner,
+      repo,
+      ...rulesetPayload(ruleset),
+    } as RestEndpointMethodTypes['repos']['createRepoRuleset']['parameters']);
+  }
+
+  async updateRepositoryRuleset(
+    owner: string,
+    repo: string,
+    id: number,
+    ruleset: ResolvedRuleset,
+  ): Promise<void> {
+    await this.octokit.rest.repos.updateRepoRuleset({
+      owner,
+      repo,
+      ruleset_id: id,
+      ...rulesetPayload(ruleset),
+    } as RestEndpointMethodTypes['repos']['updateRepoRuleset']['parameters']);
+  }
+
+  async deleteRepositoryRuleset(
+    owner: string,
+    repo: string,
+    id: number,
+  ): Promise<void> {
+    await this.octokit.rest.repos.deleteRepoRuleset({
+      owner,
+      repo,
+      ruleset_id: id,
+    });
+  }
+
+  // ---- Runner groups ---------------------------------------------------------
+
+  // The runner-group endpoints are not in Octokit's generated typed methods at
+  // the pinned version, so they go through the raw request route with the
+  // responses typed here, like the organization-roles endpoints above. Both
+  // list bodies wrap their array, which defeats `octokit.paginate`, so they
+  // page by hand the way listExternalGroups does.
+  // See https://docs.github.com/en/rest/actions/self-hosted-runner-groups
+
+  async listRunnerGroups(org: string): Promise<LiveRunnerGroup[]> {
+    const raw: RawRunnerGroup[] = [];
+    const perPage = 100;
+    for (let page = 1; ; page++) {
+      const { data } = await this.octokit.request(
+        'GET /orgs/{org}/actions/runner-groups',
+        { org, per_page: perPage, page },
+      );
+      const groups = expectArray(
+        (data as { runner_groups?: RawRunnerGroup[] }).runner_groups,
+        'GET /orgs/{org}/actions/runner-groups',
+        'runner_groups',
+      );
+      raw.push(...groups);
+      if (groups.length < perPage) break;
+    }
+    return Promise.all(
+      raw.map(async (g) => ({
+        id: g.id,
+        name: g.name,
+        visibility: (g.visibility ?? 'all') as RunnerGroupVisibility,
+        isDefault: g.default === true,
+        allowsPublicRepositories: g.allows_public_repositories === true,
+        restrictedToWorkflows: g.restricted_to_workflows === true,
+        selectedWorkflows: g.selected_workflows ?? [],
+        selectedRepositories:
+          g.visibility === 'selected'
+            ? await this.listRunnerGroupRepositories(org, g.id)
+            : undefined,
+      })),
+    );
+  }
+
+  private async listRunnerGroupRepositories(
+    org: string,
+    id: number,
+  ): Promise<string[]> {
+    const names: string[] = [];
+    const perPage = 100;
+    for (let page = 1; ; page++) {
+      const { data } = await this.octokit.request(
+        'GET /orgs/{org}/actions/runner-groups/{runner_group_id}/repositories',
+        { org, runner_group_id: id, per_page: perPage, page },
+      );
+      const repos = expectArray(
+        (data as { repositories?: Array<{ name: string }> }).repositories,
+        'GET /orgs/{org}/actions/runner-groups/{runner_group_id}/repositories',
+        'repositories',
+      );
+      names.push(...repos.map((r) => r.name));
+      if (repos.length < perPage) return names;
+    }
+  }
+
+  async createRunnerGroup(
+    org: string,
+    group: RunnerGroupManifest,
+    selectedRepositoryIds?: number[],
+  ): Promise<void> {
+    await this.octokit.request('POST /orgs/{org}/actions/runner-groups', {
+      org,
+      ...runnerGroupPayload(group),
+      selected_repository_ids: selectedRepositoryIds,
+    });
+  }
+
+  async updateRunnerGroup(
+    org: string,
+    id: number,
+    group: RunnerGroupManifest,
+  ): Promise<void> {
+    await this.octokit.request(
+      'PATCH /orgs/{org}/actions/runner-groups/{runner_group_id}',
+      { org, runner_group_id: id, ...runnerGroupPayload(group) },
+    );
+  }
+
+  async setRunnerGroupRepositories(
+    org: string,
+    id: number,
+    repositoryIds: number[],
+  ): Promise<void> {
+    await this.octokit.request(
+      'PUT /orgs/{org}/actions/runner-groups/{runner_group_id}/repositories',
+      { org, runner_group_id: id, selected_repository_ids: repositoryIds },
+    );
+  }
+
+  async deleteRunnerGroup(org: string, id: number): Promise<void> {
+    await this.octokit.request(
+      'DELETE /orgs/{org}/actions/runner-groups/{runner_group_id}',
+      { org, runner_group_id: id },
+    );
+  }
+
+  // ---- Actions variables -----------------------------------------------------
+
+  async listOrgVariables(org: string): Promise<LiveOrgVariable[]> {
+    const variables = await this.octokit.paginate(
+      this.octokit.rest.actions.listOrgVariables,
+      { org, per_page: 100 },
+    );
+    return Promise.all(
+      variables.map(async (v) => ({
+        name: v.name,
+        value: v.value,
+        visibility: v.visibility as OrgConfigVisibility,
+        selectedRepositories:
+          v.visibility === 'selected'
+            ? await this.listOrgVariableRepositories(org, v.name)
+            : undefined,
+      })),
+    );
+  }
+
+  private async listOrgVariableRepositories(
+    org: string,
+    name: string,
+  ): Promise<string[]> {
+    const repos = await this.octokit.paginate(
+      this.octokit.rest.actions.listSelectedReposForOrgVariable,
+      { org, name, per_page: 100 },
+    );
+    return repos.map((r) => r.name);
+  }
+
+  async createOrgVariable(
+    org: string,
+    name: string,
+    value: string,
+    visibility: OrgConfigVisibility,
+    selectedRepositoryIds?: number[],
+  ): Promise<void> {
+    await this.octokit.rest.actions.createOrgVariable({
+      org,
+      name,
+      value,
+      visibility,
+      selected_repository_ids: selectedRepositoryIds,
+    });
+  }
+
+  async updateOrgVariable(
+    org: string,
+    name: string,
+    value: string,
+    visibility: OrgConfigVisibility,
+    selectedRepositoryIds?: number[],
+  ): Promise<void> {
+    await this.octokit.rest.actions.updateOrgVariable({
+      org,
+      name,
+      value,
+      visibility,
+      selected_repository_ids: selectedRepositoryIds,
+    });
+  }
+
+  async deleteOrgVariable(org: string, name: string): Promise<void> {
+    await this.octokit.rest.actions.deleteOrgVariable({ org, name });
+  }
+
+  async listRepositoryVariables(
+    owner: string,
+    repo: string,
+  ): Promise<Array<{ name: string; value: string }>> {
+    const variables = await this.octokit.paginate(
+      this.octokit.rest.actions.listRepoVariables,
+      { owner, repo, per_page: 100 },
+    );
+    return variables.map((v) => ({ name: v.name, value: v.value }));
+  }
+
+  async createRepositoryVariable(
+    owner: string,
+    repo: string,
+    name: string,
+    value: string,
+  ): Promise<void> {
+    await this.octokit.rest.actions.createRepoVariable({
+      owner,
+      repo,
+      name,
+      value,
+    });
+  }
+
+  async updateRepositoryVariable(
+    owner: string,
+    repo: string,
+    name: string,
+    value: string,
+  ): Promise<void> {
+    await this.octokit.rest.actions.updateRepoVariable({
+      owner,
+      repo,
+      name,
+      value,
+    });
+  }
+
+  async deleteRepositoryVariable(
+    owner: string,
+    repo: string,
+    name: string,
+  ): Promise<void> {
+    await this.octokit.rest.actions.deleteRepoVariable({ owner, repo, name });
+  }
+
+  // ---- Actions secrets ---------------------------------------------------------
+
+  async listOrgSecrets(org: string): Promise<LiveOrgSecret[]> {
+    const secrets = await this.octokit.paginate(
+      this.octokit.rest.actions.listOrgSecrets,
+      { org, per_page: 100 },
+    );
+    return Promise.all(
+      secrets.map(async (s) => ({
+        name: s.name,
+        visibility: s.visibility as OrgConfigVisibility,
+        selectedRepositories:
+          s.visibility === 'selected'
+            ? await this.listOrgSecretRepositories(org, s.name)
+            : undefined,
+      })),
+    );
+  }
+
+  private async listOrgSecretRepositories(
+    org: string,
+    name: string,
+  ): Promise<string[]> {
+    const repos = await this.octokit.paginate(
+      this.octokit.rest.actions.listSelectedReposForOrgSecret,
+      { org, secret_name: name, per_page: 100 },
+    );
+    return repos.map((r) => r.name);
+  }
+
+  async putOrgSecret(
+    org: string,
+    name: string,
+    value: string,
+    visibility: OrgConfigVisibility,
+    selectedRepositoryIds?: number[],
+  ): Promise<void> {
+    const { data: key } = await this.octokit.rest.actions.getOrgPublicKey({
+      org,
+    });
+    await this.octokit.rest.actions.createOrUpdateOrgSecret({
+      org,
+      secret_name: name,
+      encrypted_value: await sealSecretValue(key.key, value),
+      key_id: key.key_id,
+      visibility,
+      selected_repository_ids: selectedRepositoryIds,
+    });
+  }
+
+  async deleteOrgSecret(org: string, name: string): Promise<void> {
+    await this.octokit.rest.actions.deleteOrgSecret({
+      org,
+      secret_name: name,
+    });
+  }
+
+  async listRepositorySecrets(
+    owner: string,
+    repo: string,
+  ): Promise<Array<{ name: string }>> {
+    const secrets = await this.octokit.paginate(
+      this.octokit.rest.actions.listRepoSecrets,
+      { owner, repo, per_page: 100 },
+    );
+    return secrets.map((s) => ({ name: s.name }));
+  }
+
+  async putRepositorySecret(
+    owner: string,
+    repo: string,
+    name: string,
+    value: string,
+  ): Promise<void> {
+    const { data: key } = await this.octokit.rest.actions.getRepoPublicKey({
+      owner,
+      repo,
+    });
+    await this.octokit.rest.actions.createOrUpdateRepoSecret({
+      owner,
+      repo,
+      secret_name: name,
+      encrypted_value: await sealSecretValue(key.key, value),
+      key_id: key.key_id,
+    });
+  }
+
+  async deleteRepositorySecret(
+    owner: string,
+    repo: string,
+    name: string,
+  ): Promise<void> {
+    await this.octokit.rest.actions.deleteRepoSecret({
+      owner,
+      repo,
+      secret_name: name,
+    });
+  }
+
   // ---- Code security configurations ---------------------------------------
 
   async listSecurityConfigurations(
@@ -1517,6 +2101,28 @@ function isNotFound(error: unknown): boolean {
     'status' in error &&
     (error as { status?: number }).status === 404
   );
+}
+
+/**
+ * The write payload for a runner group, minus the repository list: create
+ * takes it inline, update does not, so the caller supplies it where it can.
+ */
+function runnerGroupPayload(group: RunnerGroupManifest): {
+  name: string;
+  visibility?: RunnerGroupVisibility;
+  allows_public_repositories?: boolean;
+  restricted_to_workflows?: boolean;
+  selected_workflows?: string[];
+} {
+  return {
+    name: group.name,
+    visibility: group.visibility,
+    allows_public_repositories: group.allowsPublicRepositories,
+    restricted_to_workflows: group.restrictedToWorkflows,
+    selected_workflows: group.selectedWorkflows
+      ? [...group.selectedWorkflows]
+      : undefined,
+  };
 }
 
 /** The write payload for a ruleset: the manifest, minus its name-as-identity, in GitHub's casing. */

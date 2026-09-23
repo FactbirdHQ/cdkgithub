@@ -7,10 +7,16 @@ import type {
   LiveCustomProperty,
   LiveDefaultSecurityConfiguration,
   LiveOrganizationRole,
+  LiveOrgSecret,
   LiveOrgSettings,
+  LiveOrgVariable,
   LiveCustomRepositoryRole,
+  LiveRepoSecret,
+  LiveRepoVariable,
   LiveRepository,
   LiveRepositoryProperties,
+  LiveRepositoryRuleset,
+  LiveRunnerGroup,
   LiveRuleset,
   LiveTeam,
   LiveTeamMember,
@@ -60,6 +66,17 @@ export interface LiveState {
   readonly settings?: LiveOrgSettings;
   readonly actions?: LiveActionsPolicy;
   readonly rulesets?: LiveRuleset[];
+  /** Rulesets of the repositories the definition declares rulesets on, and no others. */
+  readonly repositoryRulesets?: LiveRepositoryRuleset[];
+  readonly runnerGroups?: LiveRunnerGroup[];
+  /** Read only when the definition declares an organization-scoped variable. */
+  readonly actionsVariables?: LiveOrgVariable[];
+  /** Read only when the definition declares an organization-scoped secret. */
+  readonly actionsSecrets?: LiveOrgSecret[];
+  /** Variables of the repositories the definition declares variables on. */
+  readonly repositoryVariables?: LiveRepoVariable[];
+  /** Secret names of the repositories the definition declares secrets on. */
+  readonly repositorySecrets?: LiveRepoSecret[];
   readonly securityConfigurations?: LiveCodeSecurityConfiguration[];
   readonly defaultSecurityConfigurations?: LiveDefaultSecurityConfiguration[];
   readonly customProperties?: LiveCustomProperty[];
@@ -81,10 +98,25 @@ export async function readLiveState(
   );
   // Resolving a bypass actor by app slug is the only thing that needs the org's
   // installations, so the call is skipped unless one is named.
-  const namesAnApp = (desired.rulesets ?? []).some((r) =>
+  const namesAnApp = [
+    ...(desired.rulesets ?? []),
+    ...(desired.repositoryRulesets ?? []),
+  ].some((r) =>
     (r.bypassActors ?? []).some(
       (a) => a.actorType === 'Integration' && typeof a.app === 'string',
     ),
+  );
+
+  // A declaration on a repository this same run creates has nothing to read
+  // yet, so a 404 on one of these is an empty surface rather than a failure.
+  const beingCreated = new Set(
+    (desired.repositories ?? []).map((r) => r.name),
+  );
+  const declaresOrgVariables = (desired.actionsVariables ?? []).some(
+    (v) => v.repository === undefined,
+  );
+  const declaresOrgSecrets = (desired.actionsSecrets ?? []).some(
+    (s) => s.repository === undefined,
   );
 
   // A team is read back only for the surface it declares, so a definition that
@@ -109,6 +141,12 @@ export async function readLiveState(
     repositories,
     customRepositoryRoles,
     organizationRoles,
+    repositoryRulesets,
+    runnerGroups,
+    actionsVariables,
+    actionsSecrets,
+    repositoryVariables,
+    repositorySecrets,
   ] = await Promise.all([
     // A personal account has no teams, and asking for them 404s.
     desired.ownerType === 'organization' ? client.listTeams(owner) : [],
@@ -132,6 +170,36 @@ export async function readLiveState(
     desired.organizationRoles
       ? readOrganizationRoles(client, owner)
       : undefined,
+    readPerRepository(
+      desired.repositoryRulesets,
+      beingCreated,
+      async (repository) =>
+        (await client.listRepositoryRulesets(owner, repository)).map((r) => ({
+          ...r,
+          repository,
+        })),
+    ),
+    desired.runnerGroups ? client.listRunnerGroups(owner) : undefined,
+    declaresOrgVariables ? client.listOrgVariables(owner) : undefined,
+    declaresOrgSecrets ? client.listOrgSecrets(owner) : undefined,
+    readPerRepository(
+      desired.actionsVariables,
+      beingCreated,
+      async (repository) =>
+        (await client.listRepositoryVariables(owner, repository)).map((v) => ({
+          ...v,
+          repository,
+        })),
+    ),
+    readPerRepository(
+      desired.actionsSecrets,
+      beingCreated,
+      async (repository) =>
+        (await client.listRepositorySecrets(owner, repository)).map((s) => ({
+          ...s,
+          repository,
+        })),
+    ),
   ]);
 
   // Per-team reads come second: a team the definition creates this run has no
@@ -186,7 +254,63 @@ export async function readLiveState(
     repositoryProperties,
     branchProtection,
     appInstallations,
+    repositoryRulesets,
+    runnerGroups,
+    actionsVariables,
+    actionsSecrets,
+    repositoryVariables,
+    repositorySecrets,
   };
+}
+
+/**
+ * Read one repository-scoped surface for every repository the declarations
+ * name. Absent declarations leave the surface unread, and a repository nobody
+ * names is never touched, which is what scopes the pruning below to the
+ * repositories the definition speaks for.
+ *
+ * A 404 on a repository this run is about to create is an empty surface; on
+ * any other it is a typo or a permissions gap, and reading it as empty would
+ * turn every declaration into a create against a repository that is not there.
+ */
+async function readPerRepository<T>(
+  declared: ReadonlyArray<{ repository?: string }> | undefined,
+  beingCreated: ReadonlySet<string>,
+  read: (repository: string) => Promise<T[]>,
+): Promise<T[] | undefined> {
+  if (!declared) return undefined;
+  const repositories = [
+    ...new Set(
+      declared.flatMap((d) => (d.repository ? [d.repository] : [])),
+    ),
+  ];
+  if (repositories.length === 0) return undefined;
+
+  const results = await Promise.all(
+    repositories.map(async (repository) => {
+      try {
+        return await read(repository);
+      } catch (error) {
+        if (isNotFound(error) && beingCreated.has(repository)) return [];
+        if (isNotFound(error)) {
+          throw new Error(
+            `Repository "${repository}" was not found: it does not exist, or the token cannot see it.`,
+          );
+        }
+        throw error;
+      }
+    }),
+  );
+  return results.flat();
+}
+
+function isNotFound(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'status' in error &&
+    (error as { status?: number }).status === 404
+  );
 }
 
 /** Every organization role, with who holds it. */

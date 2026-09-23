@@ -111,6 +111,92 @@ export function renderPlan(changes: Change[]): string {
         break;
       }
 
+      case 'create-repo-ruleset': {
+        const r = change.ruleset;
+        lines.push(`  + ruleset "${r.name}" on ${change.repository}`);
+        lines.push(`      target      = "${r.target}"`);
+        lines.push(`      enforcement = "${r.enforcement}"`);
+        for (const rule of r.rules) lines.push(`      rule ${rule.type}`);
+        if (r.conditions)
+          lines.push(`      conditions  = ${compact(r.conditions)}`);
+        break;
+      }
+      case 'update-repo-ruleset': {
+        lines.push(
+          `  ~ ruleset "${change.ruleset.name}" on ${change.repository}`,
+        );
+        lines.push(...renderFields(change.fields));
+        break;
+      }
+      case 'delete-repo-ruleset': {
+        lines.push(
+          `  - ruleset "${change.live.name}" on ${change.repository}   (requires --allow-delete)`,
+        );
+        break;
+      }
+
+      case 'create-runner-group': {
+        const g = change.group;
+        lines.push(`  + runner group "${g.name}"`);
+        lines.push(`      visibility = "${g.visibility ?? 'all'}"`);
+        if (g.selectedRepositories?.length)
+          lines.push(`      repos      = ${compact(g.selectedRepositories)}`);
+        if (g.restrictedToWorkflows)
+          lines.push(`      workflows  = ${compact(g.selectedWorkflows ?? [])}`);
+        break;
+      }
+      case 'update-runner-group': {
+        lines.push(`  ~ runner group "${change.group.name}"`);
+        lines.push(...renderFields(change.fields));
+        break;
+      }
+      case 'delete-runner-group': {
+        lines.push(
+          `  - runner group "${change.live.name}"   (requires --allow-delete)`,
+        );
+        break;
+      }
+
+      case 'create-variable': {
+        const v = change.variable;
+        const scope = v.repository ? `${v.repository} ` : '';
+        lines.push(`  + ${scope}variable ${v.name} = ${compact(v.value, 80)}`);
+        break;
+      }
+      case 'update-variable': {
+        const v = change.variable;
+        const scope = v.repository ? `${v.repository} ` : '';
+        lines.push(`  ~ ${scope}variable ${v.name}`);
+        lines.push(...renderFields(change.fields));
+        break;
+      }
+      case 'delete-variable': {
+        const scope = change.repository ? `${change.repository} ` : '';
+        lines.push(
+          `  - ${scope}variable ${change.name}   (requires --allow-delete)`,
+        );
+        break;
+      }
+
+      case 'put-secret': {
+        // The value is a name pointing into the environment, and stays one.
+        const s = change.secret;
+        const scope = s.repository ? `${s.repository} ` : '';
+        const mark = change.exists ? '~' : '+';
+        lines.push(
+          `  ${mark} ${scope}secret ${s.name}   (value from $${s.valueFrom})`,
+        );
+        lines.push(...renderFields(change.fields));
+        break;
+      }
+      case 'delete-secret': {
+        const scope = change.repository ? `${change.repository} ` : '';
+        lines.push(
+          `  - ${scope}secret ${change.name}   (requires --allow-delete)`,
+        );
+        break;
+      }
+
       case 'create-security-config': {
         lines.push(`  + code security configuration "${change.config.name}"`);
         lines.push(`      description = "${change.config.description}"`);
@@ -257,6 +343,9 @@ const BUCKETS = {
   create: [
     'create',
     'create-ruleset',
+    'create-repo-ruleset',
+    'create-runner-group',
+    'create-variable',
     'create-security-config',
     'create-property',
     'assign-org-role',
@@ -268,6 +357,10 @@ const BUCKETS = {
     'set-repo-access',
     'set-membership',
     'update-ruleset',
+    'update-repo-ruleset',
+    'update-runner-group',
+    'update-variable',
+    'put-secret',
     'update-security-config',
     'update-property',
     'update-repo-role',
@@ -282,6 +375,10 @@ const BUCKETS = {
     'remove-repo-access',
     'remove-membership',
     'delete-ruleset',
+    'delete-repo-ruleset',
+    'delete-runner-group',
+    'delete-variable',
+    'delete-secret',
     'delete-security-config',
     'delete-property',
     'remove-branch-protection',

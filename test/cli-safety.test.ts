@@ -27,6 +27,19 @@ describe('flag parsing', () => {
     );
   });
 
+  test('import takes one org and an optional --output path', () => {
+    expect(parseFlags(['acme'], 'import').positional).toBe('acme');
+    expect(
+      parseFlags(['--output', 'examples/acme.ts', 'acme'], 'import'),
+    ).toMatchObject({ positional: 'acme', output: 'examples/acme.ts' });
+    expect(() => parseFlags(['acme', 'other'], 'import')).toThrow(
+      'Unexpected argument',
+    );
+    expect(() => parseFlags(['--output'], 'import')).toThrow(
+      '--output needs a path',
+    );
+  });
+
   test('--allow-delete: bare permits everything, scopes narrow it', () => {
     expect(parseFlags([], 'apply').allowDelete).toBe(false);
     expect(parseFlags(['--allow-delete'], 'apply').allowDelete).toBe(true);
