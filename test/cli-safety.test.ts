@@ -27,6 +27,17 @@ describe('flag parsing', () => {
     );
   });
 
+  test('--repositories: bare walks everything, names narrow it', () => {
+    expect(parseFlags([], 'import').repositories).toBe(false);
+    expect(parseFlags(['--repositories'], 'import').repositories).toBe(true);
+    expect(
+      parseFlags(['--repositories=nest,flight-deck'], 'import').repositories,
+    ).toEqual(['nest', 'flight-deck']);
+    expect(() => parseFlags(['--repositories='], 'import')).toThrow(
+      'at least one repository name',
+    );
+  });
+
   test('import takes one org and an optional --output path', () => {
     expect(parseFlags(['acme'], 'import').positional).toBe('acme');
     expect(

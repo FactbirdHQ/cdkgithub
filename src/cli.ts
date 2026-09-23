@@ -61,6 +61,10 @@ Usage:
 
 Options:
   --output <path>     Where import writes the definition (default: stdout)
+  --repositories[=names]
+                      Make import walk repositories and read their rulesets,
+                      variables, and secrets too. Bare, every repository; with
+                      names, only those. One round of requests per repository.
   --manifest <path>   Manifest to read for plan/apply (default: github.out/manifest.json)
   --yes               Actually execute changes (apply). Without it, apply is a dry run.
   --allow-delete[=scopes]
@@ -197,7 +201,9 @@ async function importCommand(flags: Flags): Promise<number> {
     return 1;
   }
   const client = new OctokitGitHubClient(resolveToken());
-  const definition = await importOrganization(client, org);
+  const definition = await importOrganization(client, org, {
+    repositories: flags.repositories,
+  });
   if (flags.output) {
     writeFileSync(flags.output, definition);
     console.error(`Definition written to ${flags.output}`);
@@ -648,6 +654,8 @@ interface Flags {
   color?: 'always' | 'never';
   /** Where `import` writes the definition; stdout when absent. */
   output?: string;
+  /** `import` walks repositories: `true` = all of them, a list = only those. */
+  repositories: boolean | string[];
   /** The command's positional argument, for the commands that take one. */
   positional?: string;
 }
@@ -665,6 +673,7 @@ export function parseFlags(args: string[], command?: string): Flags {
     live: false,
     byPerson: false,
     csv: false,
+    repositories: false,
   };
   // `synth` takes a config path and `import` an org login; the rest take none.
   const positionalsAllowed = command === 'synth' || command === 'import' ? 1 : 0;
@@ -738,11 +747,27 @@ export function parseFlags(args: string[], command?: string): Flags {
         flags.output = value;
         break;
       }
+      case '--repositories':
+        flags.repositories = true;
+        break;
       default: {
         if (arg.startsWith('--allow-delete=')) {
           flags.allowDelete = parseDeleteScopes(
             arg.slice('--allow-delete='.length),
           );
+          break;
+        }
+        if (arg.startsWith('--repositories=')) {
+          const names = arg
+            .slice('--repositories='.length)
+            .split(',')
+            .filter((name) => name !== '');
+          if (names.length === 0) {
+            throw new Error(
+              '--repositories= needs at least one repository name.',
+            );
+          }
+          flags.repositories = names;
           break;
         }
         // A misspelled flag must not silently change what an apply does.
