@@ -1,164 +1,139 @@
 # cdkgithub
 
-Define your **GitHub organization as Infrastructure-as-Code**, in the spirit of
-[AWS CDK](https://aws.amazon.com/cdk/). Teams and their hierarchy, repo access,
-Entra ID security group links, rulesets, the Actions policy, code security
-configurations, custom properties, member privileges, and legacy branch
-protection are declared in TypeScript; the tool diffs that desired state against
-the live account and applies the difference. Personal accounts work too, with
-the organization-only surfaces rejected rather than silently ignored.
+**Declare your GitHub organization in TypeScript. Review it in a pull request.
+Apply it with a plan you have read.**
 
-Built on the [`constructs`](https://www.npmjs.com/package/constructs) programming
-model — the same standalone library that underpins `cdk8s` and `cdktf` — with a
-custom synthesizer that targets the **GitHub REST API** (via Octokit) instead of
-CloudFormation.
-
-## Why
-
-Team structure and org policy managed by hand in the GitHub UI drift and aren't
-reviewable. Here they live in git: the org is code, changes go through pull
-requests, and `plan` shows exactly what will happen before anything is touched.
-
-## How it works
-
-```
-define   examples/<org>.ts   new App / Organization / Team (+ externalGroup)
-   │
-synth    App.synth()         walk the construct tree → github.out/manifest.json
-   │
-diff     tree vs live tree   read-only; prints the org as a tree, marked up
-   │
-plan     diff vs live org    read-only; prints a Terraform-style change preview
-   │
-apply    reconcile           create / update / (link) / delete to match desired
-```
-
-- **Nesting is the construct tree.** A `Team` scoped under another `Team` becomes
-  a child team (GitHub `parent_team_id`); a team under the `Organization` is
-  top-level.
-- **Team identity is the slug** derived from its name, so a new name is a new
-  team unless you say otherwise. `previousSlug` is how you say otherwise. See
-  [Renaming a team](#renaming-a-team).
-- **Deletes are gated** behind `--allow-delete` so unmanaged teams, repository
-  grants, team members, org roles, rulesets, configurations, properties, and
-  branch protection aren't wiped by accident. The bare flag permits every kind;
-  `--allow-delete=teams,grants` permits only the kinds named, so pruning a team
-  does not also authorize revoking an org role. **SCIM linking is gated**
-  behind `--enable-scim`.
-- **Apply asks before it writes.** With destructive changes in the plan, `apply
-  --yes` pauses for an interactive `y` the way `cdk deploy` does; tune it with
-  `--require-approval <never|destructive|any-change>`. A run that would delete
-  most of the org's teams refuses without `--force`, because that plan is
-  usually a stale manifest rather than a decision.
-- **Every apply writes a backup first** under `github.out/backups/<time>/`: the
-  live state it read, a rollback manifest that restores the team structure, the
-  plan, and a journal that grows one line per change. See
-  [Backups and rollback](#backups-and-rollback).
-- **A governance surface is unmanaged until you declare it.** See
-  [Governance and policy](#governance-and-policy).
-
-## Requirements
-
-- [Bun](https://bun.sh) (package manager + runtime + test runner) — or use the
-  [devenv](https://devenv.sh) shell, which provides it (see [Development](#development)).
-- A GitHub token: `GITHUB_TOKEN`/`GH_TOKEN`, or just be logged in with
-  `gh auth login` (the CLI falls back to `gh auth token`). Needs org-admin scope
-  to manage teams, and `admin:org` for the governance surfaces. Code security
-  configurations additionally need the org to have those features available.
-
-## Usage
-
-```bash
-bun install
-
-# 1. Edit your org definition
-$EDITOR examples/factbird.ts
-
-# 2. Synthesize the desired-state manifest
-bun bin/cdkgithub.ts synth examples/factbird.ts     # → github.out/manifest.json
-
-# 3. See the org as a tree, with what differs marked up (read-only)
-bun bin/cdkgithub.ts diff
-bun bin/cdkgithub.ts diff --changed-only   # skip the subtrees that match
-bun bin/cdkgithub.ts diff --live           # just the live org, no comparison
-
-# 4. Preview the changes apply would make (read-only)
-bun bin/cdkgithub.ts plan
-
-# 5. Apply. Without --yes this is a dry run. With it, destructive changes still
-#    pause for an interactive "y"; automation that reviewed the plan already
-#    skips the prompt with --require-approval never.
-bun bin/cdkgithub.ts apply --yes
-bun bin/cdkgithub.ts apply --yes --allow-delete         # also remove what's unmanaged
-bun bin/cdkgithub.ts apply --yes --allow-delete=teams   # ...but only teams
-bun bin/cdkgithub.ts apply --yes --enable-scim          # also link Entra groups (see below)
-```
-
-Scripts are also wired in `package.json`: `bun run synth | diff | plan | apply`,
-`bun run build` (typecheck), `bun test`.
-
-## Backups and rollback
-
-Before its first write, every `apply --yes` saves what it is about to change
-under `github.out/backups/<timestamp>/`:
-
-- `live-state.json` is the organization as this run read it, before anything
-  was touched.
-- `rollback-manifest.json` is a manifest that restores the team structure to
-  that state: teams, hierarchy, and every roster and grant the run had read.
-  Reverting is an ordinary apply:
-  `cdkgithub apply --manifest github.out/backups/<timestamp>/rollback-manifest.json --yes`.
-  Governance surfaces revert the declarative way instead: revert the definition
-  commit, synth, apply.
-- `plan.json` is the change list that was approved.
-- `journal.jsonl` grows one line per attempted change, written as the run goes,
-  so an aborted apply says exactly what landed and what never ran. Re-running
-  `apply` continues from live state; nothing needs the journal to resume.
-
-`synth` also stamps the manifest with its origin: the definition file, the git
-commit, and whether the working tree was dirty. `plan` and `apply` print that
-line, so a review can tell a freshly synthesized manifest from a stale one.
-`plan` and `apply` validate the manifest on read, and refuse a plan that would
-delete most of the org's teams unless `--force` says it is intended.
-
-A rate limit does not kill the run. The client queues requests under GitHub's
-own throttling rules and waits out a primary or secondary limit, so a large
-organization plans slowly instead of failing halfway through an apply.
-
-## Defining teams
+Teams and their hierarchy, repository access, Entra ID group links, rulesets,
+the Actions policy, code security configurations, custom properties, member
+privileges, and branch protection live in one definition in git. cdkgithub
+diffs that definition against the live organization and applies the
+difference over the GitHub REST API. It is built on
+[`constructs`](https://www.npmjs.com/package/constructs), the library under
+the AWS CDK, cdk8s, and cdktf, and it keeps the CDK's interface: `synth`,
+`diff`, an assembly directory, `--require-approval`.
 
 ```ts
-// examples/factbird.ts
-import { App, Organization, Team } from "../src/index.ts";
-
-const app = new App();
 const org = new Organization(app, "factbird", { login: "factbird" });
 
 const engineering = new Team(org, "engineering", {
-  description: "All engineers",
-  privacy: "closed",
-  externalGroup: { name: "GH-Engineering" }, // Entra security group (SCIM)
+  externalGroup: { name: "GH-Engineering" },   // roster driven by Entra ID
 });
 
-new Team(engineering, "platform", {          // nested → child of engineering
-  description: "Platform & infrastructure",
-  repositories: { "flow-portal": "maintain" },
+new Team(engineering, "platform", {            // nested, so a child team
+  repositories: [maintain("flow-portal")],
 });
-
-new Team(org, "security", {                  // not IdP-synced; members managed here
-  privacy: "secret",
-  maintainers: ["mj"],
-});
-
-app.synth();
 ```
 
-### Renaming a team
+```
+Plan for organization "factbird":
 
-GitHub derives a team's slug from its name and addresses the team by that slug,
-so changing the name changes the address. cdkgithub keys identity on the slug
-too, which means a new name reads as one team gone and another arrived. Name the
-old slug and it becomes a rename instead:
+  + team platform (under engineering)
+  ~ team cloud on netcore: "push" -> "maintain"
+  - team legacy-tools   (requires --allow-delete)
+```
+
+Safety is the product:
+
+- `apply` is a dry run until `--yes`, and even then it pauses for an
+  interactive "y" while the plan holds destructive changes.
+- Nothing is deleted without `--allow-delete`, and the flag scopes down to
+  the kinds you name, so pruning a team does not also authorize revoking an
+  organization role.
+- Every apply that writes saves a backup first, including a rollback manifest
+  that an ordinary apply restores.
+- Repositories are never deleted. No code path exists for it, and a test
+  fails the build if one appears.
+
+New to the tool? Start with [Getting started](#getting-started). Mid-task?
+[How-to guides](#how-to-guides). Looking up a flag or a field?
+[Reference](#reference). Wondering why it behaves the way it does?
+[Design notes](#design-notes).
+
+## Getting started
+
+This walkthrough goes from a fresh checkout to a first applied change: two
+teams, one nested under the other, on an organization you administer. Nothing
+before the last step writes to GitHub.
+
+Install [Bun](https://bun.sh) and the [GitHub CLI](https://cli.github.com)
+first. With [devenv](https://devenv.sh), `devenv shell` provides both.
+
+1. Install dependencies and authenticate:
+
+   ```bash
+   bun install
+   gh auth login
+   ```
+
+2. Create `examples/my-org.ts`, replacing both `my-org`s with your
+   organization's login:
+
+   ```ts
+   import { App, Organization, Team } from "../src/index.ts";
+
+   const app = new App();
+   const org = new Organization(app, "my-org", { login: "my-org" });
+
+   const engineering = new Team(org, "engineering", {
+     description: "All engineers",
+   });
+
+   new Team(engineering, "platform", {
+     description: "Platform and infrastructure",
+   });
+
+   app.synth();
+   ```
+
+3. Synthesize the desired-state manifest:
+
+   ```bash
+   bun bin/cdkgithub.ts synth examples/my-org.ts
+   ```
+
+   This writes `github.out/manifest.json` and prints nothing when the
+   definition is clean.
+
+4. Compare the definition against the live organization, read-only:
+
+   ```bash
+   bun bin/cdkgithub.ts diff
+   ```
+
+   The output is your organization as a tree. The two new teams appear with a
+   `+` in the gutter; teams the definition does not mention are listed
+   unmarked.
+
+5. Preview the exact changes an apply would make, still read-only:
+
+   ```bash
+   bun bin/cdkgithub.ts plan
+   ```
+
+   Expect two lines, `+ team engineering` and
+   `+ team platform (under engineering)`, and a summary saying two creates.
+
+6. Apply:
+
+   ```bash
+   bun bin/cdkgithub.ts apply --yes
+   ```
+
+   The plan prints again, a backup directory is announced, and the two teams
+   are created. Creating is not destructive, so there is no prompt. Run
+   `bun bin/cdkgithub.ts plan` once more and it reports that the organization
+   matches the desired state.
+
+7. Commit `examples/my-org.ts`. The definition is now the reviewable record
+   of your team structure, and every later change starts as an edit to it.
+
+## How-to guides
+
+### Rename a team
+
+GitHub derives a team's slug from its name and addresses the team by that
+slug, and cdkgithub keys identity on the slug too, so a bare rename reads as
+one team deleted and another created. Name the old slug to make it a rename:
 
 ```ts
 new Team(cloud, 'tech-council', {
@@ -167,87 +142,552 @@ new Team(cloud, 'tech-council', {
 });
 ```
 
-The team keeps its id, its members, its grants and its history, because the
-whole operation is the `PATCH` GitHub offers for exactly this. The plan shows
-both the slug and the name moving, and nothing is deleted.
+The team keeps its id, members, grants, and history, because the operation is
+the `PATCH` GitHub offers for exactly this. The plan shows the slug and the
+name moving, and nothing is deleted.
 
-`previousSlug` is looked up only when nothing matches the derived slug, so the
-line goes inert the moment the rename lands and can be deleted whenever you next
-touch the team. Leaving it is harmless: it will not grab a team someone later
-creates under the freed-up name.
+`previousSlug` is looked up only when nothing matches the derived slug, so
+the line goes inert the moment the rename lands and can be deleted whenever
+you next touch the team. Leaving it is harmless: it will not grab a team
+someone later creates under the freed-up name.
 
-What a rename does not fix is everything outside GitHub's team API that spells
-the slug out. `CODEOWNERS` is the one that bites, since `@org/old-slug` silently
-stops matching anyone. Grep for the old slug before renaming.
+Before renaming, grep for the old slug outside the definition. `CODEOWNERS`
+is the file that bites, since `@org/old-slug` silently stops matching anyone.
 
-### Rosters and repository access
+### Own a team's roster and repository access
 
-`repositories`, `members` and `maintainers` follow the same rule as the
-governance surfaces below: a team owns nothing it does not declare. Leave the
-access map off and cdkgithub never reads the team's repositories, never reports
-them, and never prunes them, so a definition that only describes the team tree
-runs on a token that only reaches teams. Write the map and the definition owns
-it, including `{}`: a live grant missing from it becomes a remove, gated behind
-`--allow-delete`. The two lists work the same way, and declaring either one
-makes the definition own the whole roster, so the list you left off reads as
-empty rather than as unmanaged.
-
-An IdP-synced team is the exception. A team with an `externalGroup` has its
-membership driven by Entra, so its roster is never diffed whatever it declares.
-Reconciling it here would only fight the next SCIM push.
+A team owns nothing it does not declare. To put a roster or the repository
+grants under the definition's control, declare them:
 
 ```ts
 new Team(org, "cloud", {
-  members: ["ada"],                            // owns the roster
-  repositories: { netcore: "push" },              // owns the access
+  members: ["ada"],                       // owns the roster
+  repositories: { netcore: "push" },         // owns the access
 });
 
 new Team(org, "security", {
-  externalGroup: { name: "GH-Security" },      // roster owned by Entra
-  repositories: {},                            // owns the access, and grants none
+  externalGroup: { name: "GH-Security" }, // roster owned by Entra
+  repositories: {},                       // owns the access, and grants none
 });
 ```
 
-#### Inherited access is reported but not removable
+Declaring either roster list owns the whole roster, so the list you leave off
+reads as empty rather than as unmanaged. Declaring `repositories` owns the
+access map, `{}` included: a live grant missing from it becomes a removal,
+gated behind `--allow-delete`. A team with an `externalGroup` is the
+exception: Entra drives its membership, so its roster is never diffed
+whatever it declares.
 
-GitHub reports a child team's repositories as including everything its ancestors
-reach, and a parent team's members as including everyone in its descendants.
-Neither is removable where it is reported. So cdkgithub proposes a removal only
-when the team tree does not already explain what it found: a grant a parent
-gives at the same level or higher is left alone, and so is a member who belongs
-to a team below. Without that, a faithful definition would propose the same
-impossible deletions on every run.
-
-Additions and permission changes need no such care. They compare the declaration
-against the access the team effectively has, which is the thing that matters.
-
-#### Custom repository roles
-
-A permission is one of the five built-ins, `pull`, `triage`, `push`, `maintain`,
-`admin`, or the display name of a custom repository role the organization
-defines:
+The map form takes a permission per repository. The list form reads
+permission-first and spreads groups:
 
 ```ts
-new Team(org, "cloud", {
-  repositories: { netcore: "Merge Queue Jumper" },
+repositories: [maintain("netcore", "netcore-qa"), triage(...systemII)],
+```
+
+### Grant access through a custom repository role
+
+A permission is one of the five built-ins or the display name of a custom
+repository role the organization defines. Bind the role name once and grant
+through the binding, so a typo fails the compiler instead of reaching `plan`:
+
+```ts
+// roles.ts, beside the CustomRepositoryRole that declares it
+export const mergeQueueJumper = role('Merge Queue Jumper');
+
+// wherever it is granted
+repositories: [mergeQueueJumper('netcore'), push('fctl')],
+```
+
+`plan` resolves every non-built-in name against the organization's custom
+repository roles and fails on one that matches nothing, before anything is
+written.
+
+### Assign organization roles
+
+Declare who holds a role; the role itself is GitHub's:
+
+```ts
+new OrganizationRole(org, 'security_manager', {
+  teams: ['devops'],
+  users: ['a-security-engineer'],
 });
 ```
 
-`plan` resolves every name that is not a built-in against
-`GET /orgs/{org}/custom-repository-roles` and fails on one that matches nothing,
-before anything is written. A typo is caught as a typo rather than granted as a
-role nobody defined. A custom role ranks as the built-in it extends, which is
-what lets the inheritance rule above compare it against the others.
+`teams` and `users` are separate surfaces on the same role. Declaring one and
+leaving the other off owns the first and leaves the second alone. An empty
+list declares that nobody should hold the role, and revoking is gated behind
+`--allow-delete`. A role name GitHub does not define fails the plan.
 
-GitHub answers with `read`/`write` where it takes `pull`/`push`. cdkgithub maps
-the reply onto the request, so a grant written as `push` matches a live `write`
-instead of reporting drift forever.
+### Link a team to an Entra ID security group
 
-## Reading the org as a tree
+Prerequisites, none of them automated here: GitHub Enterprise Cloud with SCIM
+provisioning or Enterprise Managed Users, Entra ID configured as the IdP, and
+the security group provisioned to GitHub. With Entra ID only security groups
+link, no nested groups and no Microsoft 365 groups
+([GitHub docs](https://docs.github.com/en/enterprise-cloud@latest/admin/managing-iam/provisioning-user-accounts-with-scim/managing-team-memberships-with-identity-provider-groups)).
 
-`plan` lists the calls `apply` will make. `diff` asks what the organization looks
-like next to what the definition says. It reads the live org whole, renders both
-sides as the same tree, and prints one marked up against the other.
+Declare the binding on the team:
+
+```ts
+new Team(org, "security", {
+  externalGroup: { name: "GH-Security" },  // or { id: 123 } to skip the lookup
+});
+```
+
+Then apply with the SCIM gate open:
+
+```bash
+bun bin/cdkgithub.ts apply --yes --enable-scim
+```
+
+Without `--enable-scim`, the link is planned, skipped, and reported, so the
+rest of the definition still applies. The group name resolves to its id at
+apply time; a group that is not provisioned yet fails with its name in the
+error. This one surface needs a classic token with `admin:org`, because
+GitHub's fine-grained permissions do not cover the external-groups endpoints.
+
+### Adopt an organization built by hand
+
+Bootstrap a definition from the live organization instead of writing it from
+scratch:
+
+```bash
+bun scripts/import-org.ts <org> > examples/<org>.ts
+```
+
+The importer reads teams, hierarchy, per-team grants, and rosters. It does
+not read governance, so rulesets, properties, and policies are written by
+hand once. Then iterate: `synth`, `diff`, and trim until the diff is quiet.
+
+### Lock names down at compile time
+
+Repository names, usernames, and role names belong to your organization, so
+the types ship open and a misspelling survives until `plan` checks it. A
+definition that knows its names can close them:
+
+```ts
+export const USERS = ['ana', 'bo'] as const;
+export const REPOSITORIES = ['netcore', 'fctl'] as const;
+
+declare module 'cdkgithub/src/index.ts' {
+  interface Vocabulary {
+    member: (typeof USERS)[number];
+    repository: (typeof REPOSITORIES)[number];
+  }
+}
+```
+
+From then on every roster and grant is checked against those lists:
+`members: ['anna']` and `push('nset')` stop compiling. A project that
+declares nothing keeps the open types and loses nothing. The declaration is
+global to a compilation unit; where that matters, `teamOf<Username>()` binds
+a vocabulary locally and returns the same constructor with a narrower
+parameter type.
+
+### Run an access review
+
+Pivot the diff onto people rather than teams:
+
+```bash
+bun bin/cdkgithub.ts diff --by-person                 # who reaches what, before and after
+bun bin/cdkgithub.ts diff --by-person --changed-only  # only people something happens to
+bun bin/cdkgithub.ts diff --csv > access.csv          # one row per person per repository
+```
+
+Two access paths sit outside the team structure and need checking by hand:
+organization owners reach every repository whatever the teams say, and a
+collaborator added to a single repository holds a grant no team records.
+`plan` prints a third: organization role assignments the definition does not
+account for, which reach further than any team grant. The plain `diff` also
+lists repositories no team reaches and the definition does not declare, each
+one a repository with no maintainer written down anywhere.
+
+### Migrate legacy branch protection to a ruleset
+
+1. Write the ruleset with `enforcement: "evaluate"`, so it records violations
+   without blocking anyone.
+2. Apply, and read the ruleset's rule suites in GitHub until they are quiet.
+3. Flip it to `enforcement: "active"` and apply again.
+4. Retire the old protection by declaring it off, not by deleting the
+   construct:
+
+   ```ts
+   new BranchProtection(deck, "main", { enabled: false });
+   ```
+
+   Deleting the construct leaves the live protection in place, because no
+   endpoint lists an organization's protected branches and cdkgithub cannot
+   prune what it was never told about.
+
+5. Apply with the gate open for exactly this kind of removal:
+
+   ```bash
+   bun bin/cdkgithub.ts apply --yes --allow-delete=branch-protection
+   ```
+
+### Revert an apply
+
+Every apply that writes first saves `github.out/backups/<timestamp>/`. To put
+the team structure back the way that run found it:
+
+```bash
+bun bin/cdkgithub.ts apply \
+  --manifest github.out/backups/<timestamp>/rollback-manifest.json --yes
+```
+
+The rollback manifest covers teams, hierarchy, and every roster and grant the
+run had read. Governance surfaces revert the declarative way instead: revert
+the definition commit, `synth`, `apply`. For a run that stopped partway,
+`journal.jsonl` in the same directory says exactly what landed and what never
+ran; re-running `apply` continues from live state.
+
+### Run apply from automation
+
+The interactive prompt refuses when there is no terminal to ask on, so
+automation states its approval up front:
+
+```bash
+bun bin/cdkgithub.ts apply --yes --require-approval never
+```
+
+Have the pipeline run `plan` on the pull request and gate the apply on that
+review. Scope deletions to what the automation is allowed to prune, for
+example `--allow-delete=grants,members`, and leave `--force` out: a refused
+mass deletion in automation is a stale manifest to investigate, not a prompt
+to override.
+
+## Reference
+
+### Commands
+
+| Command | Effect |
+| --- | --- |
+| `synth <config.ts>` | Run the definition, write `github.out/manifest.json`, stamp provenance. |
+| `diff` | Read the live organization whole and print it as a tree against the manifest. Read-only. |
+| `plan` | Diff the manifest against the surfaces it declares and print the change list. Read-only. |
+| `apply` | Print the plan, then reconcile the organization to match. Dry run without `--yes`. |
+
+`plan` and `apply` validate the manifest on read and print its provenance
+line. A misspelled flag or a stray argument is an error, never silently
+ignored.
+
+### Options
+
+| Option | Commands | Effect |
+| --- | --- | --- |
+| `--manifest <path>` | diff, plan, apply | Manifest to read. Default `github.out/manifest.json`. |
+| `--yes` | apply | Execute changes. Without it, apply prints the plan and stops. |
+| `--allow-delete` | apply | Permit every destructive change kind. |
+| `--allow-delete=<scopes>` | apply | Permit only the named kinds. See the scope table. |
+| `--require-approval <level>` | apply | When to pause for an interactive "y": `never`, `destructive` (default), or `any-change`. Without a terminal, a required approval refuses instead of assuming. |
+| `--force` | apply | Skip the guard that refuses to delete three or more teams amounting to half the organization's teams or more in one run. |
+| `--enable-scim` | apply | Perform Entra ID external-group linking. Otherwise link changes are skipped and reported. |
+| `--changed-only` | diff | Hide every subtree that matches end to end. Also filters `--by-person`. |
+| `--full` | diff | Expand every team and list every grant, rather than the first eight. |
+| `--live` | diff | Print the live organization and stop. No manifest is compared. |
+| `--by-person` | diff | Pivot onto people: who can reach what, before and after. |
+| `--csv` | diff | Write `--by-person` as CSV, one row per person per repository. |
+| `--color` / `--no-color` | diff | Force color on or off. The default colors a terminal and leaves a pipe plain; `NO_COLOR` and `FORCE_COLOR` are honoured, and the flags beat both. |
+
+### Delete scopes
+
+Each scope names one destructive change kind for `--allow-delete=<scopes>`:
+
+| Scope | Permits removing |
+| --- | --- |
+| `teams` | A team absent from the definition. |
+| `members` | A team member the declared roster does not carry. |
+| `grants` | A repository grant the declared access map does not carry. |
+| `org-roles` | An organization role assignment. |
+| `repo-roles` | A custom repository role. |
+| `rulesets` | An organization ruleset. |
+| `security-configs` | A code security configuration. |
+| `properties` | A custom property. |
+| `branch-protection` | A branch's legacy protection, from `enabled: false`. |
+
+### Backups
+
+Before its first write, `apply --yes` saves four files under
+`github.out/backups/<timestamp>/`:
+
+| File | Contents |
+| --- | --- |
+| `live-state.json` | The organization as this run read it, before anything was touched. |
+| `rollback-manifest.json` | A manifest restoring the team structure to that state. Applying it reverts. |
+| `plan.json` | The change list that was approved. |
+| `journal.jsonl` | One line per attempted change, appended as the run goes: kind, description, and applied, skipped, or failed. |
+
+### Manifest provenance
+
+`synth` stamps the manifest with a `provenance` object: `source` (the
+definition file), `commit` (`git rev-parse HEAD` at synth time), `dirty`
+(whether the working tree had uncommitted changes), and `synthesizedAt`.
+`plan` and `apply` print the line, so a review can tell a freshly
+synthesized manifest from a stale one.
+
+### Authentication
+
+The CLI takes a token from `GITHUB_TOKEN` or `GH_TOKEN`, and otherwise runs
+`gh auth token`, bounded at ten seconds. Managing teams needs org-admin
+scope; the governance surfaces need `admin:org`; code security configurations
+additionally need the organization to have those features.
+
+Every surface works with a fine-grained token (rulesets, the Actions policy,
+and code security configurations under Administration; custom properties
+under Custom properties; teams under Members) except one: the SCIM
+external-group endpoints behind `--enable-scim` are absent from GitHub's
+[fine-grained permissions index](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens)
+and still want a classic token with `admin:org`.
+
+### Rate limits
+
+The client queues requests under GitHub's own throttling rules and waits out
+a primary or secondary rate limit, retrying a few times before giving up. A
+large organization plans slowly rather than failing halfway through an apply.
+
+### Ownership semantics
+
+A surface is unmanaged until the definition declares it, and owned from then
+on:
+
+- A team with no `repositories` map keeps its grants unread and untouched;
+  declaring the map, `{}` included, owns it.
+- Declaring `members` or `maintainers` owns the whole roster; a team with an
+  `externalGroup` never has its roster diffed.
+- Write no `Ruleset` and the org's rulesets are never read, reported, or
+  pruned. Declare one and the definition owns the surface: live rulesets
+  missing from it become deletes, gated like everything else.
+
+Within a resource, only the fields you write are compared. GitHub returns
+every field it knows, defaults included, so `plan` asks whether the live
+resource already says everything you asked for rather than whether the two
+are identical. Adopting one setting does not reset its neighbours.
+
+### Constructs
+
+The authoring API, all exported from `src/index.ts`.
+
+#### Organization and UserAccount
+
+A definition names one owner, and the owner decides what exists.
+
+```ts
+const org = new Organization(app, "factbird", {
+  login: "factbird",
+  settings: {
+    defaultRepositoryPermission: "read",
+    membersCanCreatePublicRepositories: false,
+    membersCanForkPrivateRepositories: false,
+    webCommitSignoffRequired: true,
+  },
+});
+```
+
+`settings` is member privileges and org-wide defaults, applied with
+`PATCH /orgs/{org}`. The security toggles that endpoint still accepts
+(`dependabot_alerts_enabled_for_new_repositories` and its neighbours) are not
+modelled; GitHub has replaced them with code security configurations.
+
+`UserAccount` is the personal-account owner. It supports repositories and
+their branch protection; declaring any organization-only construct under it
+fails synthesis with the constructs named. See
+[`examples/personal.ts`](examples/personal.ts).
+
+#### Team
+
+```ts
+new Team(engineering, "platform", {
+  name: "Platform",                       // defaults to the construct id
+  previousSlug: "infra",                  // rename marker, see the guide
+  description: "Platform & infrastructure",
+  privacy: "closed",                      // default; "secret" hides the team
+  maintainers: ["mj"],
+  members: ["ada"],
+  repositories: [maintain("flow-portal")], // or { "flow-portal": "maintain" }
+  externalGroup: { name: "GH-Platform" }, // Entra ID binding, or { id: 123 }
+});
+```
+
+Nesting is the construct tree: a `Team` scoped under another `Team` becomes a
+child team, and a team under the `Organization` is top-level. Parent teams
+require `closed` privacy.
+
+#### Grant helpers
+
+`pull`, `triage`, `push`, `maintain`, and `admin` each take any number of
+repository names and return grants; `role(name)` returns the same shape of
+helper for a custom repository role. Lists flatten, so
+`[push('netcore'), triage(...systemII)]` is one list of grants. Synthesis
+rejects a repository granted twice in one team, naming both grants.
+
+`maintain` and `admin` also claim the repository. One team holds that claim
+per repository, checked at synthesis:
+
+```
+Repository "netcore" is owned by both "cloud" ("maintain") and "product"
+("admin"). Both permissions say a team answers for a repository, and one
+does; grant the other team a lesser permission instead.
+```
+
+GitHub answers with `read`/`write` where it takes `pull`/`push`; cdkgithub
+maps the reply onto the request, so a grant written as `push` matches a live
+`write` instead of reporting drift forever.
+
+#### Repository and BranchProtection
+
+```ts
+const deck = new Repository(org, "flow-portal");
+
+new BranchProtection(deck, "main", {
+  enforceAdmins: true,
+  requiredSignatures: true,
+  requiredStatusChecks: { strict: true, checks: [{ context: "build" }] },
+  requiredPullRequestReviews: {
+    requiredApprovingReviewCount: 1,
+    dismissStaleReviews: true,
+  },
+});
+```
+
+A declared repository the organization does not have is created; an existing
+one is adopted as it stands, and there is no update and no delete beside that
+create. Unset visibility resolves to `internal` under an enterprise account
+and to `private` otherwise; `public` is never inferred. `BranchProtection`
+takes `repository: "name"` instead of nesting if you prefer, and
+`enabled: false` declares the branch unprotected.
+
+#### Ruleset
+
+```ts
+new Ruleset(org, "protect-default-branch", {
+  conditions: {
+    refName: { include: ["~DEFAULT_BRANCH"] },
+    repositoryName: { include: ["~ALL"] },
+  },
+  rules: [{ type: "deletion" }, { type: "non_fast_forward" }],
+  bypassActors: [
+    { actorType: "OrganizationAdmin" },
+    { actorType: "Team", team: "platform", bypassMode: "pull_request" },
+    { actorType: "Integration", app: "renovate" },
+  ],
+});
+```
+
+Rules are typed and all 21 of GitHub's rule types are covered: the
+creation/update/deletion trio, `required_linear_history`,
+`required_signatures`, `non_fast_forward`, `pull_request`,
+`required_status_checks`, `required_deployments`, `merge_queue`, `workflows`,
+`code_scanning`, `file_path_restriction`, `file_extension_restriction`,
+`max_file_size`, `max_file_path_length`, and the five name and message
+pattern rules. Each takes the parameters of GitHub's REST payload in
+camelCase, and a test round-trips one of every type through the conversion so
+a schema change breaks the build rather than an apply.
+
+`enforcement: "evaluate"` records violations without blocking anyone.
+
+Bypass actors are named, and cdkgithub resolves the team slug or app slug to
+GitHub's numeric `actor_id` while planning; a name that resolves to nothing
+fails the plan before anything is written. Pass a number to skip the lookup.
+`RepositoryRole` is the exception and takes `roleId`: the API version pinned
+here has no route for listing repository roles, and guessing at a bypass
+grant is the wrong place to guess.
+
+#### CustomProperty
+
+```ts
+new CustomProperty(org, "service-tier", {
+  valueType: "single_select",
+  allowedValues: ["tier-1", "tier-2", "internal"],
+  required: true,
+  defaultValue: "internal",
+  values: { "flow-portal": "tier-1" },   // per-repository values
+});
+```
+
+A ruleset can then target the class through its `repositoryProperty`
+condition instead of a list of names, and new repositories inherit the policy
+without anyone editing the definition. `plan` lists only the repositories
+whose value differs, and `apply` writes one call per distinct value.
+
+#### ActionsPolicy
+
+```ts
+new ActionsPolicy(org, "actions", {
+  allowedActions: "selected",
+  allowedActionsConfig: {
+    githubOwnedAllowed: true,
+    verifiedAllowed: false,
+    patternsAllowed: ["factbird/*"],
+  },
+  defaultWorkflowPermissions: "read",
+  canApprovePullRequestReviews: false,
+});
+```
+
+Three endpoints behind one construct: which repositories may run Actions,
+which actions they may run, and what the `GITHUB_TOKEN` starts with. One
+policy per organization; a second fails synthesis. With
+`enabledRepositories: "selected"`, name the repositories in
+`selectedRepositories` and they resolve to ids at apply time.
+
+#### CodeSecurityConfiguration
+
+```ts
+new CodeSecurityConfiguration(org, "baseline", {
+  description: "Dependabot, secret scanning, and push protection everywhere",
+  dependabotAlerts: "enabled",
+  secretScanning: "enabled",
+  secretScanningPushProtection: "enabled",
+  enforcement: "enforced",              // repo admins cannot switch it back off
+  defaultForNewRepos: "all",
+  attach: "all_without_configurations",
+});
+```
+
+`defaultForNewRepos` is diffed against the org's current defaults. Attachment
+is recorded on the repositories rather than the configuration, so `apply`
+re-issues it every run, the way it re-issues external-group links. GitHub's
+own `global` presets cannot be edited or deleted, so they are never proposed
+for pruning.
+
+#### CustomRepositoryRole
+
+```ts
+new CustomRepositoryRole(org, "Merge Queue Jumper", {
+  description: "Bypass the merge queue",
+  baseRole: "push",
+  permissions: ["bypass_branch_protection"],
+});
+```
+
+A custom role ranks as the built-in it extends, which is how grants through
+it compare against inherited access.
+
+#### OrganizationRole
+
+```ts
+new OrganizationRole(org, 'security_manager', { teams: ['devops'] });
+```
+
+The predefined roles carry weight worth knowing:
+
+| Role | Grants |
+| --- | --- |
+| `all_repo_read` through `all_repo_admin` | That permission on every repository. |
+| `security_manager` | `read` on every repository, plus 22 security permissions. |
+| `open_source_license_manager` | `read` on every repository, plus licence review. |
+
+Whenever the definition declares any organization role, `plan` reads every
+role and prints the assignments nothing accounts for:
+
+```
+Organization roles held outside this definition:
+  all_repo_admin (admin on every repository): some-user
+  ci_cd_admin: another-user, a-third
+```
+
+### The diff tree
 
 ```
   organization FactbirdHQ
@@ -264,41 +704,34 @@ sides as the same tree, and prints one marked up against the other.
 28 teams to change, 2 to add, 1 to remove.
 ```
 
-Color carries the same three marks a second time: green adds, red removes,
-yellow changes, and a dim grey for the teams that match and for counts and
-hints. It is applied per line rather than per team, so under a team that differs
-a grant being added is green and a member leaving is red. Output goes plain into
-a pipe or a file and colored into a terminal; `NO_COLOR` turns it off,
-`FORCE_COLOR` turns it on, and `--color`/`--no-color` beat both.
+Indentation says where a team sits; the gutter says what happens to it: `+`
+adds, `-` removes, `~` changes. A team that matches is one line, a team that
+differs expands into what differs, and a team being added or removed is
+summarised. A declaration carrying `previousSlug` pairs with the live team of
+that name, so a rename reads as one changed team. Color repeats the marks:
+green adds, red removes, yellow changes, dim grey for what matches.
 
-Indentation says where a team sits; the gutter says what happens to it. A team
-that matches is one line, a team that differs expands into what differs, and a
-team being added or removed is summarised rather than listed out. A declaration
-carrying `previousSlug` pairs with the live team of that name, so a rename reads
-as one changed team rather than an addition beside a removal.
+What the comparison is made of:
 
-Six flags shape the output:
+- **Repository access, effective rather than declared.** A child team holds
+  whatever its ancestors grant, and GitHub reports that inherited access on
+  the child as though the child held it, so both sides resolve inheritance
+  before comparing. A child re-declaring its parent's grant is no difference,
+  and the report under the tree names those redundant grants, since deleting
+  one changes nothing.
+- **Rosters, direct rather than reported.** GitHub reports a descendant's
+  members on every team above it; the live read subtracts them, so each
+  roster is the people a team holds in its own right. Maintainer roles are
+  not inherited and are taken as they come. An Entra-bound team has no roster
+  compared at all.
+- **Everything else about a team**: name, description, privacy, and its place
+  in the hierarchy.
 
-| Flag | Effect |
-| --- | --- |
-| `--changed-only` | Hide every subtree that matches end to end. |
-| `--full` | Expand every team and list every grant, rather than the first eight. |
-| `--live` | Print the live org and stop. No manifest is compared. |
-| `--by-person` | Pivot onto people: who can reach what, before and after. |
-| `--csv` | Write `--by-person` as CSV, one row per person per repository. |
-
-Beneath the tree, `diff` names any repository the organization has that no team
-reaches and the definition does not declare. Each one has no maintainer written
-down anywhere, which nothing else surfaces: it is not drift, so `plan` has
-nothing to propose about it, and it stays invisible until someone goes looking.
-Declare it or archive it.
-| `--color` / `--no-color` | Force color on or off. |
-
-### Who can reach what
-
-`--by-person` reads the same two trees down the other axis. Instead of a team
-and what changes about it, each person and the repositories they can reach,
-before and after, with the team granting each one named.
+`--by-person` reads the same two trees down the other axis: each person and
+the repositories they can reach, before and after, with the team granting
+each one named. Access is the union of the effective access of every team a
+person belongs to directly; where two teams grant the same repository, the
+stronger permission wins, which is what GitHub does.
 
 ```
 alex-doe   (36 -> 4 repos)
@@ -306,581 +739,225 @@ alex-doe   (36 -> 4 repos)
     - team cloud
     + afterkit = "push"   via engineering
     - cloud-provisioner   (had "push" via cloud)
-    - customer-integration   (had "maintain" via cloud)
     … and 21 more   (--full to list)
 ```
 
-Someone's access is the union of the effective access of every team they belong
-to directly. Belonging to a parent does not confer a child's grants, only the
-other way around, and where two teams grant the same repository the stronger
-permission wins, which is what GitHub does. `--changed-only` drops the people
-nothing happens to, `--full` lists every repository each one holds rather than
-only what moves, and `--csv` writes it as one row per person per repository for
-a review that wants a spreadsheet.
+Beneath the tree, `diff` names any repository the organization has that no
+team reaches and the definition does not declare. Declare it or archive it.
 
-Two things it cannot see, both outside the team structure: an organization owner
-reaches every repository whatever the teams say, and a collaborator added to a
-single repository by hand holds a grant no team records.
+### Warnings
 
-### What it compares
+`synth` and `plan` print two warnings to stderr, so piping a plan to a file
+keeps them where a human sees them:
 
-**Repository access, effective rather than declared.** A child team holds
-whatever its ancestors grant, and GitHub reports that inherited access on the
-child as though the child held it. So both sides resolve inheritance the same
-way before they are compared, and a child that re-declares its parent's grant is
-no difference at all. Those re-declarations are worth removing even so, and the
-report under the tree names them: a grant an ancestor already makes at the same
-strength or better, which deleting changes nothing.
+- An organization declaring legacy branch protection at all. Rulesets cover
+  the same rules across every repository, including ones nobody has created
+  yet.
+- A branch holding legacy protection while sitting inside a ruleset's target.
+  GitHub applies both and the stricter rule wins, so neither declaration
+  alone reads as the effective policy. Ruleset `repositoryName` patterns
+  (`~ALL`, `*`) are resolved; a ruleset selecting by custom property is
+  skipped rather than guessed at.
 
-**Rosters, direct rather than reported.** GitHub reports a descendant team's
-members as members of every team above it. The live read subtracts them, so each
-team's roster is the people it holds in its own right. The maintainer role is
-not inherited, so that list is taken as it comes. A team bound to an Entra group
-has no roster compared at all, because Entra owns it and the next SCIM push
-would undo whatever the definition said.
+A personal account gets neither warning: it has no rulesets to prefer.
 
-**Everything else about a team**: its name, description, privacy, and its place
-in the hierarchy.
+### What GitHub does not expose
 
-`diff` costs two API calls per team plus one for the org's custom repository
-roles, where `plan` reads only the surfaces a team declares. That difference is
-why it is a separate command rather than a flag on `plan`: reading the whole org
-is the point here and would be waste there.
-
-### Who maintains a repository
-
-\`repositories\` says what a team can reach. It cannot say what a team is
-answerable for, and those are different questions: access overlaps by design,
-while "who maintains this" has one answer or none.
-
-\`\`\`ts
-new Team(engineering, "cloud", {
-  maintains: ["netcore", "netcore-qa", "cloud-gateway"],
-  repositories: { fctl: "pull" },   // reached, not maintained
-});
-\`\`\`
-
-The word is the permission. Maintaining carries \`maintain\`, and takes no level
-of its own: \`maintain\` is write plus the repository's description, topics,
-Pages and pull-request merge settings, and nothing that deletes, transfers or
-re-permissions it. That is the whole of what answering for a repository needs,
-so choosing it per repository would only invite choosing it wrong. A line in
-\`repositories\` still overrides it where a team needs something else.
-
-Maintaining is exclusive. Two teams claiming one repository fails \`synth\`,
-before anything reads the organization, because the conflict is in the
-definition:
-
-\`\`\`
-Repository "netcore" is maintained by both "cloud" and "product". A repository has
-one maintaining team; grant the other team access through \`repositories\` instead.
-\`\`\`
-
-### Repositories are never deleted
-
-cdkgithub can create a repository the organization does not have, and adopts an
-existing one as it stands. There is no update and no delete beside that create.
-Unset visibility resolves to `internal` under an enterprise account and to
-`private` otherwise; `public` is never inferred.
-
-That is deliberate. A definition is edited far more often than the organization
-is, and the edit that drops a repository from a team looks identical to the edit
-that drops it from the company. Only one of those is recoverable.
-
-So removing a repository from a definition removes the **grants**, never the
-repository: `remove-repo-access` calls `teams.removeRepoInOrg`, which takes the
-team off the repository and leaves the repository where it was. It is gated
-behind `--allow-delete` like every other removal.
-
-Archiving, transferring and deleting stay in GitHub's own hands, where they are
-one deliberate action rather than a consequence of an edit.
-
-### Naming what you have
-
-The interesting names belong to an organization, not to this tool: its
-repositories, its people, the repository roles it defines. So the types leave
-them open, and a misspelling survives until `plan` checks it against the live
-organization — or, for a username, until `apply` quietly invites nobody.
-
-A definition that knows them says so once:
-
-```ts
-export const USERS = ['ana', 'bo'] as const;
-export const REPOSITORIES = ['netcore', 'fctl'] as const;
-
-declare module 'cdkgithub/src/index.ts' {
-  interface Vocabulary {
-    member: (typeof USERS)[number];
-    repository: (typeof REPOSITORIES)[number];
-  }
-}
-```
-
-From then on every roster and every grant is checked against those lists, with
-nothing said at the point of use. `members: ['anna']` and `push('nset')` stop
-compiling. A project that declares nothing keeps the open types and loses
-nothing.
-
-It is global to a compilation unit, which is the trade. One project cannot hold
-two organizations with different vocabularies, and this repository's own test
-suite is the proof: the test that declares one is checked by its own tsconfig,
-because otherwise it narrows every other test to two repositories.
-
-Where that matters, `teamOf<Username>()` binds a vocabulary locally instead and
-returns the same constructor with a narrower parameter type.
-
-## Governance and policy
-
-Teams say who exists. Governance says what they can do. Five more surfaces are
-declared the same way, all of them scoped under the `Organization`.
-
-A surface stays unmanaged until you declare something on it. Write no `Ruleset`
-and cdkgithub never reads, reports, or prunes the org rulesets, so a definition
-that only covers teams keeps working with a token that only covers teams.
-Declare one ruleset and the definition owns the whole surface: live rulesets
-missing from it turn into deletes, gated behind `--allow-delete` like team
-deletes.
-
-Within a resource, only the fields you write are compared. GitHub returns every
-field it knows about, including the defaults it filled in, so `plan` asks whether
-the live resource already says everything you asked for rather than whether the
-two are identical. Adopting one setting does not reset its neighbours, and a rule
-parameter you never mentioned does not show up as drift on every run.
-
-### Organization settings
-
-Member privileges and org-wide defaults, applied with `PATCH /orgs/{org}`.
-
-```ts
-const org = new Organization(app, "factbird", {
-  login: "factbird",
-  settings: {
-    defaultRepositoryPermission: "read",
-    membersCanCreatePublicRepositories: false,
-    membersCanForkPrivateRepositories: false,
-    webCommitSignoffRequired: true,
-  },
-});
-```
-
-The security toggles that `PATCH /orgs` still accepts
-(`dependabot_alerts_enabled_for_new_repositories` and its neighbours) are not
-here. GitHub has replaced them with code security configurations, which is the
-surface further down.
-
-### Rulesets
-
-Rulesets are GitHub's replacement for branch protection, and cdkgithub models the
-organization level. Org rulesets apply across repositories, and a repo-level
-ruleset can only add restrictions on top of one, never loosen it. So the org
-level is where a policy that has to hold everywhere belongs.
-
-```ts
-new Ruleset(org, "protect-default-branch", {
-  conditions: {
-    refName: { include: ["~DEFAULT_BRANCH"] },
-    repositoryName: { include: ["~ALL"] },
-  },
-  rules: [{ type: "deletion" }, { type: "non_fast_forward" }],
-});
-```
-
-Rules are typed, and all 21 of GitHub's rule types are covered: the
-creation/update/deletion trio, `required_linear_history`, `required_signatures`,
-`non_fast_forward`, `pull_request`, `required_status_checks`,
-`required_deployments`, `merge_queue`, `workflows`, `code_scanning`,
-`file_path_restriction`, `file_extension_restriction`, `max_file_size`,
-`max_file_path_length`, and the five name and message pattern rules. Each takes
-the parameters of GitHub's REST payload in camelCase, and a test round-trips one
-of every type through the conversion so a schema change breaks the build rather
-than an apply.
-
-Set `enforcement: "evaluate"` to land a ruleset that records violations without
-blocking anyone. That is the honest way to introduce a rule to an org that has
-been running without it.
-
-Bypass actors are named, not numbered:
-
-```ts
-bypassActors: [
-  { actorType: "OrganizationAdmin" },
-  { actorType: "Team", team: "platform", bypassMode: "pull_request" },
-  { actorType: "Integration", app: "renovate" },
-]
-```
-
-GitHub stores a numeric `actor_id` whose meaning depends on the actor type, and
-those ids are not knowable when you write the definition. cdkgithub resolves the
-team slug and the app slug while planning, before the diff rather than at apply
-time: the live ruleset only ever carries ids, so a definition still holding a
-name would report drift on every run. A name that resolves to nothing fails the
-plan, which is the right moment, because nothing has been written yet. Pass a
-number instead of a name to skip the lookup.
-
-`RepositoryRole` is the exception and takes `roleId`. GitHub's REST description
-carries no route for listing repository roles at the API version pinned here and
-the built-in role ids are not in the published schema, so resolving a role name
-would mean hardcoding a mapping nobody can check. Granting bypass to the wrong
-role is not a good thing to guess at.
-
-### Custom properties
-
-A property classifies repositories, and a ruleset can then target the class
-instead of a list of names. New repositories inherit the policy without anyone
-editing the definition, which is the whole reason to bother with properties.
-
-```ts
-new CustomProperty(org, "service-tier", {
-  valueType: "single_select",
-  allowedValues: ["tier-1", "tier-2", "internal"],
-  required: true,
-  defaultValue: "internal",
-  values: { "flow-portal": "tier-1" },        // per-repository values
-});
-
-new Ruleset(org, "tier-1-review", {
-  conditions: {
-    refName: { include: ["~DEFAULT_BRANCH"] },
-    repositoryProperty: {
-      include: [{ name: "service-tier", propertyValues: ["tier-1"] }],
-    },
-  },
-  rules: [
-    { type: "required_signatures" },
-    {
-      type: "pull_request",
-      parameters: {
-        requiredApprovingReviewCount: 1,
-        dismissStaleReviewsOnPush: true,
-        requireCodeOwnerReview: true,
-        requireLastPushApproval: false,
-        requiredReviewThreadResolution: true,
-        allowedMergeMethods: ["squash"],
-      },
-    },
-  ],
-});
-```
-
-`plan` lists only the repositories whose value differs, and `apply` writes one
-call per distinct value rather than one per repository.
-
-### Actions policy
-
-Three endpoints behind one construct: which repositories may run Actions, which
-actions they may run, and what the `GITHUB_TOKEN` starts with.
-
-```ts
-new ActionsPolicy(org, "actions", {
-  allowedActions: "selected",
-  allowedActionsConfig: {
-    githubOwnedAllowed: true,
-    verifiedAllowed: false,
-    patternsAllowed: ["factbird/*"],
-  },
-  defaultWorkflowPermissions: "read",
-  canApprovePullRequestReviews: false,
-});
-```
-
-There is one policy per organization, and a second `ActionsPolicy` fails
-synthesis. With `enabledRepositories: "selected"`, name the repositories in
-`selectedRepositories` and cdkgithub resolves them to ids at apply time.
-
-### Code security configurations
-
-One bundle of Dependabot, secret scanning, push protection, and code scanning
-settings, attached to repositories.
-
-```ts
-new CodeSecurityConfiguration(org, "baseline", {
-  description: "Dependabot, secret scanning, and push protection everywhere",
-  dependabotAlerts: "enabled",
-  secretScanning: "enabled",
-  secretScanningPushProtection: "enabled",
-  enforcement: "enforced",              // repo admins cannot switch it back off
-  defaultForNewRepos: "all",
-  attach: "all_without_configurations",
-});
-```
-
-`defaultForNewRepos` is diffed against the org's current defaults. Attachment is
-not. It is recorded on the repositories rather than on the configuration, so
-`apply` re-issues it every run, the way it re-issues team external-group links.
-GitHub's own `global` presets, "GitHub recommended" and its siblings, cannot be
-edited or deleted, so cdkgithub never proposes pruning them.
-
-## Organization roles
-
-Teams grant access to named repositories. Organization roles grant privileges
-across the whole organization, and they are assignable to a team or to a person
-directly:
-
-```ts
-new OrganizationRole(org, 'security_manager', {
-  teams: ['devops'],
-  users: ['a-security-engineer'],
-});
-new OrganizationRole(org, 'ci_cd_admin', { teams: ['devops'] });
-```
-
-The role itself is GitHub's. `security_manager`, `ci_cd_admin`, `app_manager`,
-`open_source_license_manager` and the five `all_repo_*` roles are predefined, so
-what is declared here is who holds one, never what one grants. A name GitHub does
-not define fails the plan rather than being created, because a role that does not
-exist would read as a grant and do nothing.
-
-`teams` and `users` are separate surfaces on the same role. Declaring one and
-leaving the other off owns the first and leaves the second alone, the way every
-optional field here works. An empty list is a declaration that nobody should
-hold it, and revoking is gated behind `--allow-delete`.
-
-### Why this is worth reading even if you declare none
-
-Five predefined roles carry a `base_role`, which is a repository permission on
-**every repository at once**:
-
-| Role | Grants |
-| --- | --- |
-| `all_repo_read` … `all_repo_admin` | That permission on every repository |
-| `security_manager` | `read` on every repository, plus 22 security permissions |
-| `open_source_license_manager` | `read` on every repository, plus licence review |
-
-So a role assignment reaches further than any team grant, and it does it without
-a repository list to keep current. `plan` reads every role whether or not the
-definition mentions one, and prints the assignments nothing accounts for:
-
-```
-Organization roles held outside this definition:
-  all_repo_admin (admin on every repository): some-user
-  ci_cd_admin: another-user, a-third
-```
-
-That report is the point. An assignment nobody wrote down is the widest access
-path in the organization and the least visible, and it is not something a team
-diff can show.
-
-## Organizations and personal accounts
-
-A definition names one owner, and the owner decides what exists.
-
-```ts
-const org = new Organization(app, "factbird", { login: "factbird" });
-// or
-const me = new UserAccount(app, "martinjlowm", { login: "martinjlowm" });
-```
-
-Teams, rulesets, the Actions policy, code security configurations, custom
-properties, and member privileges are all organization features. GitHub does not
-offer them to a personal account, so declaring one under a `UserAccount` fails
-synthesis instead of writing a manifest that could never apply:
-
-```
-UserAccount "martinjlowm" declares Team, Ruleset, which GitHub only offers to
-organizations. A personal account supports repositories and their branch protection.
-```
-
-What a personal account does have is repositories and their branch protection.
-See [`examples/personal.ts`](examples/personal.ts).
-
-## Legacy branch protection
-
-`PUT /repos/{owner}/{repo}/branches/{branch}/protection` predates rulesets and
-still works. cdkgithub covers it, and warns when you use it on an organization.
-
-```ts
-const deck = new Repository(org, "flow-portal");
-
-new BranchProtection(deck, "main", {
-  enforceAdmins: true,
-  requiredSignatures: true,
-  requiredStatusChecks: { strict: true, checks: [{ context: "build" }] },
-  requiredPullRequestReviews: {
-    requiredApprovingReviewCount: 1,
-    dismissStaleReviews: true,
-  },
-});
-```
-
-`Repository` is a scope, not something cdkgithub creates. The repository has to
-exist already. Pass `repository: "name"` instead of nesting if you prefer.
-
-### Why it warns
-
-Two warnings, both printed to stderr by `synth` and again by `plan`, so piping a
-plan to a file keeps them where a human sees them.
-
-The first fires whenever an organization declares branch protection at all. A
-ruleset covers the same rules across every repository including ones nobody has
-created yet, and a repository-level rule can only add restrictions on top of one.
-Protecting one branch of one repository through the old API means repeating
-yourself for every branch you care about.
-
-The second fires when a branch has legacy protection and sits inside a ruleset's
-target. GitHub applies both and the stricter rule wins, so the effective policy
-on that branch is not readable from either declaration alone. This one resolves
-`~ALL` and `*` patterns in a ruleset's `repositoryName` condition. A ruleset that
-selects by custom property is skipped rather than guessed at, because the values
-that decide the match are not in the definition.
-
-A personal account gets neither warning. It has no rulesets to prefer, so the
-legacy API is simply the API.
-
-### Retiring it
-
-Declare `enabled: false` rather than deleting the construct:
-
-```ts
-new BranchProtection(deck, "main", { enabled: false });
-```
-
-Deleting the construct leaves the live protection in place. There is no endpoint
-that lists the protected branches of an organization, so cdkgithub only ever
-looks at branches the definition names and cannot prune one it was never told
-about. `enabled: false` is a declaration, but it still removes every rule on
-the branch in one call, so it is gated behind `--allow-delete`.
-`--allow-delete=branch-protection` scopes the permission to exactly this.
-
-The migration this is built for: land the ruleset on `evaluate`, read its rule
-suites until it is quiet, flip it to `active`, then set `enabled: false` on the
-branch protection it replaced.
-
-## What GitHub does not expose
-
-Worth knowing before you go looking for these.
-
-- **Enterprise-level policy** is patchy. Some of it is REST, some GraphQL, and
-  the fine-grained PAT and GitHub App installation policies are UI only. None of
+- **Enterprise-level policy** is patchy: some REST, some GraphQL, and the
+  fine-grained PAT and GitHub App installation policies are UI only. None of
   it is modelled here.
-- **Fine-grained tokens do not reach the SCIM external-group endpoints.** Every
-  governance surface here works with a fine-grained token (org rulesets, the
-  Actions policy, and code security configurations under Administration; custom
-  properties under Custom properties; teams under Members). The external-group
-  linking behind `--enable-scim` is the exception: it is absent from GitHub's
-  [fine-grained permissions
-  index](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens),
-  so that one command still wants a classic token with `admin:org`. Everything
-  else runs on a fine-grained token.
-- **Outside collaborator invites** have no field on `PATCH /orgs`, despite being
-  a member privilege in the UI.
-- **Legacy branch protection** is covered, but under protest. See
-  [Legacy branch protection](#legacy-branch-protection) for the two warnings and
-  the migration path off it.
-- **The audit log API** reports what happened. It enforces nothing, so it has no
-  place in a desired-state tool.
+- **Outside collaborator invites** have no field on `PATCH /orgs`, despite
+  being a member privilege in the UI.
+- **No endpoint lists an organization's protected branches**, which is why
+  legacy protection is only ever read for branches the definition names, and
+  never pruned.
+- **The audit log API** reports what happened. It enforces nothing, so it has
+  no place in a desired-state tool.
 
-## Entra ID (SCIM) team synchronization
-
-The goal is to link a GitHub team to an **Entra ID security group** so that team
-membership is driven by the IdP. This uses GitHub's external-groups API:
-
-- `GET /orgs/{org}/external-groups` — list Entra groups visible to the org
-- `PATCH /orgs/{org}/teams/{team_slug}/external-groups` — link one group to a team
-
-Declare the binding with `externalGroup: { name: "..." }` (or `{ id: 123 }`). The
-group name is resolved to its id at apply time. Because only one group links to a
-team and membership becomes IdP-owned, the `members`/`maintainers` fields are for
-**non-synced** teams and are applied best-effort on team creation.
-
-**Prerequisites (org-side, not automated here):** GitHub Enterprise Cloud with
-SCIM provisioning / Enterprise Managed Users, Entra ID configured as the IdP, and
-the security groups provisioned to GitHub. Until that's in place, `plan` still
-shows the intended linkage and `apply` skips it unless `--enable-scim` is passed.
-Wiring the Azure-side SCIM push is **future work** (see below).
-
-> With Entra ID, only security groups are supported — no nested groups, no
-> Microsoft 365 groups.
-> ([GitHub docs](https://docs.github.com/en/enterprise-cloud@latest/admin/managing-iam/provisioning-user-accounts-with-scim/managing-team-memberships-with-identity-provider-groups))
-
-## Project layout
+### Project layout
 
 ```
 src/
   constructs/   the authoring API: App, Organization, UserAccount, Team,
-                ExternalGroup, OrganizationRole, Ruleset, ActionsPolicy,
+                OrganizationRole, CustomRepositoryRole, Ruleset, ActionsPolicy,
                 CodeSecurityConfiguration, CustomProperty, Repository,
-                BranchProtection
-  synth/        manifest.ts (teams) + governance.ts (org policy) +
-                branch-protection.ts + warnings.ts + synthesizer
-  github/       Octokit client wrapper, key casing, token resolution
-  reconcile/    changes model, live-state reader, planner and applier (teams in
-                planner.ts/applier.ts, policy in plan-governance.ts/
-                apply-governance.ts), subset comparison, render
-  reconcile/    plan-org-roles.ts diffs who holds each organization role;
-                tree.ts + tree-diff.ts + render-tree.ts build and compare the
-                org as a tree, which is what `diff` prints; access-by-person.ts
-                + render-person.ts pivot the same trees onto people; color.ts is
-                the palette and when to use it
+                BranchProtection, and the grant helpers
+  synth/        synthesizer + manifest types (teams in manifest.ts, org policy
+                in governance.ts, branch-protection.ts), manifest validation,
+                warnings
+  github/       Octokit client wrapper (throttled and retrying), key casing,
+                token resolution
+  reconcile/    the change model, live-state reader, planner and applier
+                (teams in planner.ts/applier.ts, policy in plan-governance.ts/
+                apply-governance.ts), backups and the rollback manifest,
+                subset comparison, plan rendering; tree.ts + tree-diff.ts +
+                render-tree.ts build and compare the org as a tree for `diff`,
+                access-by-person.ts + render-person.ts pivot it onto people,
+                plan-org-roles.ts diffs who holds each organization role
   cli.ts        synth | diff | plan | apply
 bin/cdkgithub.ts
 examples/factbird.ts   example org definition
 examples/personal.ts   example personal-account definition
-scripts/import-org.ts  dump a live org's teams into a stack definition
-cicd/main.ts           CI/CD workflows (defined with @factbird/cdkactions)
-.github/workflows/     generated — do not edit by hand
-test/                  bun tests for synthesizer, planner, applier, governance,
-                       tree diff
+scripts/import-org.ts  dump a live org's teams into a definition
+cicd/main.ts           CI workflow, defined with @factbird/cdkactions
+.github/workflows/     generated, do not edit by hand
+test/                  bun tests against an in-memory GitHub fake
 ```
 
-## CI/CD
+### CI and development
 
-The GitHub Actions workflow is itself defined as code with
-[`@factbird/cdkactions`](https://github.com/FactbirdHQ/cdkactions) in
-[`cicd/main.ts`](cicd/main.ts) and synthesized to `.github/workflows/`:
+CI (`cdkactions_ci.yaml`, generated from `cicd/main.ts`) runs on pull
+requests to `main` and pushes to `main`: typecheck, unit tests, a synth of
+the example definition, and a check that the workflow YAML matches
+`cicd/main.ts`. It needs no secrets and never touches the live organization.
 
 ```bash
 bun run synth:workflows   # regenerate .github/workflows/*.yaml
+bun test                  # unit tests, no network, in-memory GitHub fake
+bun run build             # tsc --noEmit typecheck
+devenv shell              # pinned toolchain (Bun + gh); bun install on entry
+devenv test               # typecheck + unit tests, the same gate as CI
 ```
 
-**CI** (`cdkactions_ci.yaml`) — on PRs to `main` and pushes to `main` —
-**only synthesizes the structure**: typecheck, run the unit tests, build the
-desired-state manifest from the org definition, and verify the workflow YAML is
-in sync with `cicd/main.ts`. It needs no secrets and never touches the live org.
+## Design notes
 
-The generated YAML is committed; editing it by hand is overwritten on the next
-synth.
+### The organization is code
 
-### Why no `plan`/`apply` in CI
+Team structure and org policy managed by hand in the GitHub UI drift, and
+nobody can review them. Moving them into git makes every change a pull
+request, and `plan` the thing a reviewer approves. The definition is edited
+far more often than the organization restructures, and that asymmetry drives
+most of the decisions below.
 
-- **`apply` is not automated.** Running it on every push would impose this repo's
-  structure onto the real organization. Reconciliation towards the org is a
-  deliberate act, run manually (`bun run apply`) by an operator with an org-admin
-  token, not a side effect of merging.
-- **The apply/plan *surface* is still tested** — `bun test` exercises the planner
-  and applier against an in-memory GitHub fake (no network, no token).
-- **End-to-end apply wants a sandbox.** Once a throwaway sandbox org exists, add a
-  manual `workflow_dispatch` job that mints a short-lived token with
-  cdkactions' `createGithubAppTokenV3` (`actions/create-github-app-token`) and
-  runs `plan`/`apply` against the sandbox only.
+### Identity is the slug
 
-## Out of scope for v1
+GitHub addresses a team by the slug it derives from the name, so cdkgithub
+keys identity there too rather than inventing its own. The cost is that a
+rename looks like a delete plus a create until the definition says otherwise,
+which is what `previousSlug` is for. During an apply, the slug GitHub returns
+from the rename, not the locally derived guess, addresses the rest of the
+run, because slug derivation is GitHub's and collisions append suffixes the
+definition cannot predict.
 
-- The Azure-side SCIM push that provisions groups/users into GitHub (the linkage
-  endpoint is wired; enabling SCIM on the org and configuring Entra is separate).
-- Team renames, repository creation, member invitations.
-- Ongoing membership reconciliation for existing teams (IdP-owned by design).
-- Repository-level rulesets, runner groups, and org or repo secrets and
-  variables. All three have REST endpoints and would fit the same model.
-- Repository creation. `Repository` is a scope for attaching things to a
-  repository that already exists.
-- Importing governance. `scripts/import-org.ts` reads teams only, so an org that
-  already has rulesets needs them written by hand once.
-- Multi-language publishing via jsii/projen (TypeScript only for now).
+### A surface is unmanaged until declared
 
-## Development
+Absence means "leave it alone", never "remove it". This is what lets a
+definition covering only the team tree run on a token that only reaches
+teams, lets an organization adopt the tool one surface at a time, and keeps
+`plan` from proposing to strip settings nobody has written down yet. The
+price is that declaring a surface is a commitment: the moment one ruleset is
+declared, every live ruleset is either in the definition or on the delete
+list.
 
-A [devenv](https://devenv.sh) shell pins the toolchain (Bun + `gh`) so everyone
-and CI use the same versions:
+### Destructive changes are gated three times
 
-```bash
-devenv shell       # or `direnv allow` to enter it automatically
-                   # `bun install` runs on entry
-devenv test        # typecheck + unit tests (same gate as CI)
-```
+A deletion has to pass the plan (visible, marked), the gate
+(`--allow-delete`, scoped to kinds), and the prompt (`--require-approval`,
+interactive by default). The layers exist because they fail differently: the
+plan catches what a reviewer reads, the gate catches a flag passed out of
+habit, and the prompt catches the run where the manifest is staler than the
+operator thinks. The mass-delete guard is the backstop for the worst version
+of that: a truncated manifest turning most of the organization into delete
+candidates is refused outright unless `--force` says the restructuring is
+real.
 
-Without devenv, install Bun yourself and run the scripts directly:
+### Backups instead of a state file
 
-```bash
-bun test           # unit tests (no network — uses an in-memory GitHub fake)
-bun run build      # tsc --noEmit typecheck
-```
+cdkgithub keeps no state between runs: every plan reads the live
+organization and diffs it against the manifest, so there is no state file to
+corrupt, lock, or drift, and "state surgery" is not a failure mode. What a
+state file would have provided, the ability to put things back, comes from
+the backup instead: the live state read before an apply is saved next to a
+rollback manifest generated from it, and the journal records how far a run
+got. The AWS CDK delegates this problem to CloudFormation; there is no
+CloudFormation for a GitHub organization, so the applier carries its own
+undo.
+
+### Repositories are never deleted
+
+The edit that drops a repository from a team looks identical to the edit
+that drops it from the company, and only one of those is recoverable. So
+removing a repository from a definition removes grants, never the
+repository, and the client has no delete or transfer call for repositories
+at all. A source-grepping test keeps it that way. Archiving, transferring,
+and deleting stay in GitHub's own hands, where they are one deliberate
+action rather than a consequence of an edit.
+
+### Inherited access is reported but not removable
+
+GitHub reports a child team's repositories as including everything its
+ancestors reach, and a parent's members as including everyone below it, and
+neither is removable where it is reported. So the planner proposes a removal
+only when the team tree does not already explain what it found, and the live
+reader fetches ancestors' grants and descendants' rosters alongside every
+declaring team to make that explanation possible. Without this, a faithful
+definition would propose the same impossible deletions on every run.
+
+### Maintaining is a claim, not a level
+
+`maintain` is write plus the repository's own presentation, which is the
+whole of what answering for a repository needs, so maintainership is not a
+setting to choose per repository. `maintain` and `admin` both make the
+claim, one team holds it per repository, and the conflict fails synthesis
+because it is a conflict in the definition, not in the organization. Access
+below that level overlaps freely, because reading and writing are not claims
+about responsibility.
+
+### Rulesets over legacy branch protection
+
+An organization ruleset applies across repositories, including ones nobody
+has created yet, and a repository-level rule can only tighten it. Legacy
+protection guards one branch of one repository, and where both apply GitHub
+enforces the stricter rule, so the effective policy stops being readable
+from either declaration. That is why declaring legacy protection on an
+organization warns, why the overlap warns louder, and why the supported
+direction is the migration in the how-to guide. On a personal account the
+legacy API is simply the API, and nothing warns.
+
+### Organization roles are printed even when undeclared
+
+Five predefined roles carry a repository permission on every repository at
+once, so a role assignment is the widest access path in an organization and
+the least visible. A team diff cannot show it. That is why `plan` reads
+every role whenever the definition declares any, and prints the assignments
+nothing accounts for, whether or not you asked.
+
+### Personal accounts fail loud
+
+Teams, rulesets, and the rest are organization features. Declaring one under
+a `UserAccount` fails synthesis with the constructs named, because a manifest
+that can never apply is worse than an error at the moment the mistake is
+written.
+
+### diff and plan answer different questions
+
+`plan` reads only the surfaces the definition declares and lists the calls
+`apply` would make. `diff` reads every team whole, several calls per team,
+because its question is what the organization looks like, drift included,
+next to what the definition says. Reading the whole organization is the
+point of one command and would be waste in the other, which is why they are
+two commands rather than one flag.
+
+### apply is not in CI
+
+Running `apply` on merge would impose this repository's structure onto the
+real organization as a side effect. Reconciliation is a deliberate act, run
+by an operator holding an org-admin token, with the prompt and the gates
+between them and a mistake. The planner and applier are still tested on
+every push, against an in-memory GitHub fake. End-to-end apply wants a
+throwaway sandbox organization first; once one exists, a manual
+`workflow_dispatch` job can mint a short-lived token and run `plan` and
+`apply` against the sandbox only.
+
+### Non-goals
+
+- The Azure-side SCIM push that provisions groups and users into GitHub. The
+  linkage endpoint is wired; configuring Entra and enabling SCIM on the
+  organization is separate work.
+- Repository-level rulesets, runner groups, and organization or repository
+  secrets and variables. All have REST endpoints and would fit the model.
+- Importing governance. `scripts/import-org.ts` reads teams only, so an
+  organization that already has rulesets writes them down by hand once.
+- Enterprise-level policy, pending an API that covers it.
+- Multi-language publishing via jsii. cdkgithub is TypeScript, by decision
+  rather than by schedule.
