@@ -134,6 +134,48 @@ describe('planning', () => {
     ]);
   });
 
+  test('an OrganizationAdmin bypass matches the null actor id the repository endpoint reports', () => {
+    // The org endpoints report OrganizationAdmin as actor_id 1; the repository
+    // endpoints report null for the same actor. The plan must settle anyway.
+    const changes = plan(
+      desired({
+        repositoryRulesets: [
+          {
+            ...mergeQueue,
+            bypassActors: [
+              { actorType: 'OrganizationAdmin', bypassMode: 'always' },
+            ],
+          },
+        ],
+      }),
+      live({
+        repositoryRulesets: [
+          {
+            repository: 'flight-deck',
+            id: 8,
+            name: 'merge-queue',
+            target: 'branch',
+            enforcement: 'active',
+            conditions: {
+              refName: { include: ['~DEFAULT_BRANCH'], exclude: [] },
+            },
+            rules: [{ type: 'required_linear_history' }],
+            bypassActors: [
+              {
+                actorType: 'OrganizationAdmin',
+                actorId: null,
+                bypassMode: 'always',
+              },
+            ],
+            sourceType: 'Repository',
+          },
+        ],
+      }),
+    );
+
+    expect(changes).toEqual([]);
+  });
+
   test('resolves a team bypass actor against the live org', () => {
     const changes = plan(
       desired({
