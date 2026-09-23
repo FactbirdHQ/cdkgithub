@@ -1,9 +1,19 @@
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { createInterface } from 'node:readline/promises';
 import { pathToFileURL } from 'node:url';
 import { OctokitGitHubClient } from './github/client.ts';
 import { resolveToken } from './github/token.ts';
-import { apply } from './reconcile/applier.ts';
+import { apply, deleteAllowed } from './reconcile/applier.ts';
+import { writeBackup } from './reconcile/backup.ts';
+import {
+  type Change,
+  DELETE_SCOPES,
+  type DeleteScope,
+  type DestructiveKind,
+  isDestructive,
+} from './reconcile/changes.ts';
 import { readLiveState } from './reconcile/live.ts';
 import { unmanagedRoleAssignments } from './reconcile/plan-org-roles.ts';
 import { plan } from './reconcile/planner.ts';
@@ -29,7 +39,8 @@ import {
   redundantGrants,
 } from './reconcile/tree.ts';
 import { diffTrees } from './reconcile/tree-diff.ts';
-import type { DesiredState } from './synth/manifest.ts';
+import type { DesiredState, ManifestProvenance } from './synth/manifest.ts';
+import { validateManifest } from './synth/validate.ts';
 import { collectWarnings } from './synth/warnings.ts';
 
 const USAGE = `cdkgithub — define GitHub org team structure as code
@@ -43,8 +54,15 @@ Usage:
 Options:
   --manifest <path>   Manifest to read for plan/apply (default: github.out/manifest.json)
   --yes               Actually execute changes (apply). Without it, apply is a dry run.
-  --allow-delete      Permit deleting resources absent from the manifest (teams,
-                      rulesets, code security configurations, custom properties).
+  --allow-delete[=scopes]
+                      Permit deleting resources absent from the manifest. Bare, it
+                      permits every kind; with scopes, only those named. Scopes:
+                      ${Object.keys(DELETE_SCOPES).join(', ')}.
+  --require-approval <never|destructive|any-change>
+                      When apply pauses for an interactive "y" before writing
+                      (default: destructive). In automation, pass "never".
+  --force             Skip the guard that refuses to delete most of the org's
+                      teams in one run.
   --enable-scim       Perform Entra ID (SCIM) external-group linking.
   --full              Expand every team, listing every grant rather than a sample.
   --changed-only      Hide teams whose whole subtree matches (diff).
@@ -55,13 +73,26 @@ Options:
   --color / --no-color  Force color on or off. The default colors a terminal and
                       leaves a pipe or a file plain; NO_COLOR is honoured.
 
+Every apply that writes first saves a backup under github.out/backups/<time>/:
+the live state it read, a rollback manifest that restores the team structure
+when applied with --manifest, the plan, and a journal of each change.
+
 Auth: uses GITHUB_TOKEN/GH_TOKEN, else falls back to \`gh auth token\`. Managing
 teams needs org-admin scope; the governance surfaces additionally need admin:org,
 and code security configurations need the org to have those features available.`;
 
 export async function main(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
-  const flags = parseFlags(rest);
+
+  let flags: Flags;
+  try {
+    flags = parseFlags(rest, command);
+  } catch (error) {
+    console.error(
+      `${error instanceof Error ? error.message : String(error)}\n\n${USAGE}`,
+    );
+    return 1;
+  }
 
   switch (command) {
     case 'synth':
@@ -92,7 +123,49 @@ async function synthCommand(configPath: string | undefined): Promise<number> {
   }
   // The config module constructs an App and calls app.synth() on load.
   await import(pathToFileURL(resolve(configPath)).href);
+  stampProvenance('github.out/manifest.json', configPath);
   return 0;
+}
+
+/**
+ * Record in the manifest where it came from, so every plan can say which
+ * definition and commit it is acting for. Best-effort: a config that writes to
+ * a custom outdir is simply not stamped.
+ */
+function stampProvenance(manifestPath: string, configPath: string): void {
+  let manifest: DesiredState;
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as DesiredState;
+  } catch {
+    return;
+  }
+
+  const provenance: ManifestProvenance = {
+    source: configPath,
+    synthesizedAt: new Date().toISOString(),
+    ...gitState(),
+  };
+  writeFileSync(
+    manifestPath,
+    `${JSON.stringify({ ...manifest, provenance }, null, 2)}\n`,
+  );
+}
+
+/** The commit the working tree is on, and whether it is dirty, when in git. */
+function gitState(): { commit?: string; dirty?: boolean } {
+  const head = spawnSync('git', ['rev-parse', 'HEAD'], {
+    encoding: 'utf8',
+    timeout: 5_000,
+  });
+  if (head.status !== 0) return {};
+  const status = spawnSync('git', ['status', '--porcelain'], {
+    encoding: 'utf8',
+    timeout: 5_000,
+  });
+  return {
+    commit: head.stdout.trim(),
+    dirty: status.status === 0 ? status.stdout.trim() !== '' : undefined,
+  };
 }
 
 async function planCommand(flags: Flags): Promise<number> {
@@ -101,6 +174,7 @@ async function planCommand(flags: Flags): Promise<number> {
   const live = await readLiveState(client, desired);
   const changes = plan(desired, live);
   printWarnings(desired);
+  printProvenance(desired);
   console.log(`Plan for ${describeOwner(desired)}:\n`);
   console.log(renderPlan(changes));
   printUnmanagedRoles(desired, live);
@@ -138,6 +212,7 @@ async function applyCommand(flags: Flags): Promise<number> {
   const changes = plan(desired, live);
 
   printWarnings(desired);
+  printProvenance(desired);
   console.log(`Plan for ${describeOwner(desired)}:\n`);
   console.log(renderPlan(changes));
   console.log('');
@@ -147,19 +222,124 @@ async function applyCommand(flags: Flags): Promise<number> {
     return 0;
   }
 
-  const result = await apply(client, desired.owner, changes, live, {
-    allowDelete: flags.allowDelete,
-    enableScim: flags.enableScim,
-    onProgress: (m) => console.log(`  ${m}`),
-  });
-
-  console.log(
-    `\nApplied: ${result.created} created, ${result.updated} updated, ` +
-      `${result.linked} linked, ${result.deleted} deleted, ` +
-      `${result.governance} governance change${result.governance === 1 ? '' : 's'}.`,
+  const allowDelete = resolveAllowDelete(flags.allowDelete);
+  const executable = changes.filter(
+    (c) =>
+      deleteAllowed(c, allowDelete) &&
+      !(c.kind === 'link-group' && !flags.enableScim),
   );
-  for (const s of result.skipped) console.log(`  skipped: ${s}`);
-  return 0;
+  if (executable.length === 0) {
+    console.log('Nothing to apply.');
+    return 0;
+  }
+
+  const guard = massDeleteGuard(executable, live.teams.length, flags.force);
+  if (guard) {
+    console.error(guard);
+    return 1;
+  }
+
+  if (!(await approved(executable, flags.requireApproval))) return 1;
+
+  const backup = writeBackup('github.out', desired, live, executable);
+  console.log(`Backup written to ${backup.dir} (rollback-manifest.json reverts the team structure).\n`);
+
+  try {
+    const result = await apply(client, desired.owner, changes, live, {
+      allowDelete,
+      enableScim: flags.enableScim,
+      onProgress: (m) => console.log(`  ${m}`),
+      onRecord: backup.journal,
+    });
+
+    console.log(
+      `\nApplied: ${result.created} created, ${result.updated} updated, ` +
+        `${result.linked} linked, ${result.deleted} deleted, ` +
+        `${result.governance} governance change${result.governance === 1 ? '' : 's'}.`,
+    );
+    for (const s of result.skipped) console.log(`  skipped: ${s}`);
+    return 0;
+  } catch (error) {
+    console.error(
+      `\napply stopped: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    console.error(
+      `The organization is partially reconciled. ${backup.dir}/journal.jsonl ` +
+        'says what was applied; re-running apply continues from live state, ' +
+        `and ${backup.dir}/rollback-manifest.json restores the team structure.`,
+    );
+    return 1;
+  }
+}
+
+/** Turn the flag value into what {@link apply} takes. */
+function resolveAllowDelete(
+  value: Flags['allowDelete'],
+): boolean | ReadonlySet<DestructiveKind> {
+  if (typeof value === 'boolean') return value;
+  return new Set(value.map((scope) => DELETE_SCOPES[scope]));
+}
+
+/**
+ * Refuse to delete most of the organization's teams in one run without
+ * `--force`. A plan like that is far more often a truncated or stale manifest
+ * than an intended restructuring, and it is the one mistake a gate flag passed
+ * out of habit would not catch.
+ */
+export function massDeleteGuard(
+  executable: Change[],
+  liveTeamCount: number,
+  force: boolean,
+): string | undefined {
+  if (force) return undefined;
+  const teamDeletes = executable.filter((c) => c.kind === 'delete').length;
+  if (teamDeletes < 3 || teamDeletes * 2 < liveTeamCount) return undefined;
+  return (
+    `Refusing to delete ${teamDeletes} of ${liveTeamCount} teams in one run. ` +
+    'If the manifest is current and this is intended, re-run with --force; ' +
+    'otherwise re-run `cdkgithub synth` first.'
+  );
+}
+
+/**
+ * The interactive gate before writing, in the shape of \`cdk deploy\`'s
+ * --require-approval: "destructive" pauses when a change removes something,
+ * "any-change" always pauses, "never" never does. Where there is no terminal
+ * to ask, the run fails rather than assumes.
+ */
+async function approved(
+  executable: Change[],
+  level: RequireApproval,
+): Promise<boolean> {
+  if (level === 'never') return true;
+  const needing =
+    level === 'any-change' ? executable : executable.filter(isDestructive);
+  if (needing.length === 0) return true;
+
+  const destructive = executable.filter(isDestructive).length;
+  console.log(
+    `${executable.length} change${executable.length === 1 ? '' : 's'} to apply, ` +
+      `${destructive} destructive.`,
+  );
+
+  if (!process.stdin.isTTY) {
+    console.error(
+      `"--require-approval ${level}" needs a terminal to ask on. ` +
+        'In automation, review the plan first and pass --require-approval never.',
+    );
+    return false;
+  }
+
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const answer = (
+    await rl.question('Do you wish to apply these changes (y/n)? ')
+  )
+    .trim()
+    .toLowerCase();
+  rl.close();
+  if (answer === 'y' || answer === 'yes') return true;
+  console.log('Aborted. Nothing was changed.');
+  return false;
 }
 
 function describeOwner(desired: DesiredState): string {
@@ -174,14 +354,38 @@ function printWarnings(desired: DesiredState): void {
   }
 }
 
+/** Which definition and commit this manifest speaks for, when synth stamped it. */
+function printProvenance(desired: DesiredState): void {
+  const p = desired.provenance;
+  if (!p) return;
+  const commit = p.commit
+    ? ` at ${p.commit.slice(0, 7)}${p.dirty ? ' (dirty working tree)' : ''}`
+    : '';
+  console.log(`Manifest: ${p.source}${commit}, synthesized ${p.synthesizedAt}\n`);
+}
+
 function readManifest(path: string): DesiredState {
+  let raw: string;
   try {
-    return JSON.parse(readFileSync(path, 'utf8')) as DesiredState;
-  } catch {
+    raw = readFileSync(path, 'utf8');
+  } catch (error) {
     throw new Error(
-      `Could not read manifest at "${path}". Run \`cdkgithub synth\` first.`,
+      `Could not read manifest at "${path}" ` +
+        `(${error instanceof Error ? error.message : String(error)}). ` +
+        'Run `cdkgithub synth` first.',
     );
   }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(
+      `Manifest at "${path}" is not valid JSON ` +
+        `(${error instanceof Error ? error.message : String(error)}). ` +
+        'Re-run `cdkgithub synth`.',
+    );
+  }
+  return validateManifest(parsed, path);
 }
 
 /**
@@ -269,10 +473,15 @@ async function diffCommand(flags: Flags): Promise<number> {
   return 0;
 }
 
+type RequireApproval = 'never' | 'destructive' | 'any-change';
+
 interface Flags {
   manifest: string;
   yes: boolean;
-  allowDelete: boolean;
+  /** `true` = every destructive kind; a list = only those scopes. */
+  allowDelete: boolean | DeleteScope[];
+  requireApproval: RequireApproval;
+  force: boolean;
   enableScim: boolean;
   full: boolean;
   changedOnly: boolean;
@@ -282,11 +491,13 @@ interface Flags {
   color?: 'always' | 'never';
 }
 
-function parseFlags(args: string[]): Flags {
+export function parseFlags(args: string[], command?: string): Flags {
   const flags: Flags = {
     manifest: 'github.out/manifest.json',
     yes: false,
     allowDelete: false,
+    requireApproval: 'destructive',
+    force: false,
     enableScim: false,
     full: false,
     changedOnly: false,
@@ -294,17 +505,44 @@ function parseFlags(args: string[]): Flags {
     byPerson: false,
     csv: false,
   };
+  // `synth` takes a positional config path; the other commands take none.
+  const positionalsAllowed = command === 'synth' ? 1 : 0;
+  let positionals = 0;
+
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
+    if (arg === undefined) continue;
     switch (arg) {
-      case '--manifest':
-        flags.manifest = args[++i] ?? flags.manifest;
+      case '--manifest': {
+        const value = args[++i];
+        if (value === undefined || value.startsWith('--')) {
+          throw new Error('--manifest needs a path.');
+        }
+        flags.manifest = value;
         break;
+      }
       case '--yes':
         flags.yes = true;
         break;
       case '--allow-delete':
         flags.allowDelete = true;
+        break;
+      case '--require-approval': {
+        const value = args[++i];
+        if (
+          value !== 'never' &&
+          value !== 'destructive' &&
+          value !== 'any-change'
+        ) {
+          throw new Error(
+            '--require-approval takes never, destructive, or any-change.',
+          );
+        }
+        flags.requireApproval = value;
+        break;
+      }
+      case '--force':
+        flags.force = true;
         break;
       case '--enable-scim':
         flags.enableScim = true;
@@ -331,7 +569,39 @@ function parseFlags(args: string[]): Flags {
         flags.csv = true;
         flags.byPerson = true;
         break;
+      default: {
+        if (arg.startsWith('--allow-delete=')) {
+          flags.allowDelete = parseDeleteScopes(
+            arg.slice('--allow-delete='.length),
+          );
+          break;
+        }
+        // A misspelled flag must not silently change what an apply does.
+        if (arg.startsWith('-')) throw new Error(`Unknown option: ${arg}`);
+        if (++positionals > positionalsAllowed) {
+          throw new Error(`Unexpected argument: ${arg}`);
+        }
+        break;
+      }
     }
   }
   return flags;
+}
+
+function parseDeleteScopes(value: string): DeleteScope[] {
+  const scopes = value.split(',').filter((s) => s !== '');
+  if (scopes.length === 0) {
+    throw new Error(
+      `--allow-delete= needs at least one scope (${Object.keys(DELETE_SCOPES).join(', ')}).`,
+    );
+  }
+  for (const scope of scopes) {
+    if (!(scope in DELETE_SCOPES)) {
+      throw new Error(
+        `Unknown --allow-delete scope "${scope}". ` +
+          `Scopes: ${Object.keys(DELETE_SCOPES).join(', ')}.`,
+      );
+    }
+  }
+  return scopes as DeleteScope[];
 }

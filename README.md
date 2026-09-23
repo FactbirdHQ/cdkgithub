@@ -40,10 +40,20 @@ apply    reconcile           create / update / (link) / delete to match desired
   team unless you say otherwise. `previousSlug` is how you say otherwise. See
   [Renaming a team](#renaming-a-team).
 - **Deletes are gated** behind `--allow-delete` so unmanaged teams, repository
-  grants, team members, rulesets, configurations, and properties aren't wiped by
-  accident. Removing branch
-  protection with `enabled: false` is a declaration, not a prune, so it is not
-  gated. **SCIM linking is gated** behind `--enable-scim`.
+  grants, team members, org roles, rulesets, configurations, properties, and
+  branch protection aren't wiped by accident. The bare flag permits every kind;
+  `--allow-delete=teams,grants` permits only the kinds named, so pruning a team
+  does not also authorize revoking an org role. **SCIM linking is gated**
+  behind `--enable-scim`.
+- **Apply asks before it writes.** With destructive changes in the plan, `apply
+  --yes` pauses for an interactive `y` the way `cdk deploy` does; tune it with
+  `--require-approval <never|destructive|any-change>`. A run that would delete
+  most of the org's teams refuses without `--force`, because that plan is
+  usually a stale manifest rather than a decision.
+- **Every apply writes a backup first** under `github.out/backups/<time>/`: the
+  live state it read, a rollback manifest that restores the team structure, the
+  plan, and a journal that grows one line per change. See
+  [Backups and rollback](#backups-and-rollback).
 - **A governance surface is unmanaged until you declare it.** See
   [Governance and policy](#governance-and-policy).
 
@@ -75,14 +85,45 @@ bun bin/cdkgithub.ts diff --live           # just the live org, no comparison
 # 4. Preview the changes apply would make (read-only)
 bun bin/cdkgithub.ts plan
 
-# 5. Apply. Without --yes this is a dry run.
+# 5. Apply. Without --yes this is a dry run. With it, destructive changes still
+#    pause for an interactive "y"; automation that reviewed the plan already
+#    skips the prompt with --require-approval never.
 bun bin/cdkgithub.ts apply --yes
-bun bin/cdkgithub.ts apply --yes --allow-delete  # also remove unmanaged teams
-bun bin/cdkgithub.ts apply --yes --enable-scim   # also link Entra groups (see below)
+bun bin/cdkgithub.ts apply --yes --allow-delete         # also remove what's unmanaged
+bun bin/cdkgithub.ts apply --yes --allow-delete=teams   # ...but only teams
+bun bin/cdkgithub.ts apply --yes --enable-scim          # also link Entra groups (see below)
 ```
 
 Scripts are also wired in `package.json`: `bun run synth | diff | plan | apply`,
 `bun run build` (typecheck), `bun test`.
+
+## Backups and rollback
+
+Before its first write, every `apply --yes` saves what it is about to change
+under `github.out/backups/<timestamp>/`:
+
+- `live-state.json` is the organization as this run read it, before anything
+  was touched.
+- `rollback-manifest.json` is a manifest that restores the team structure to
+  that state: teams, hierarchy, and every roster and grant the run had read.
+  Reverting is an ordinary apply:
+  `cdkgithub apply --manifest github.out/backups/<timestamp>/rollback-manifest.json --yes`.
+  Governance surfaces revert the declarative way instead: revert the definition
+  commit, synth, apply.
+- `plan.json` is the change list that was approved.
+- `journal.jsonl` grows one line per attempted change, written as the run goes,
+  so an aborted apply says exactly what landed and what never ran. Re-running
+  `apply` continues from live state; nothing needs the journal to resume.
+
+`synth` also stamps the manifest with its origin: the definition file, the git
+commit, and whether the working tree was dirty. `plan` and `apply` print that
+line, so a review can tell a freshly synthesized manifest from a stale one.
+`plan` and `apply` validate the manifest on read, and refuse a plan that would
+delete most of the org's teams unless `--force` says it is intended.
+
+A rate limit does not kill the run. The client queues requests under GitHub's
+own throttling rules and waits out a primary or secondary limit, so a large
+organization plans slowly instead of failing halfway through an apply.
 
 ## Defining teams
 
@@ -335,11 +376,12 @@ Repository "nest" is maintained by both "cloud" and "product". A repository has
 one maintaining team; grant the other team access through \`repositories\` instead.
 \`\`\`
 
-### Repositories are never created or deleted
+### Repositories are never deleted
 
-cdkgithub has no create or delete for a repository, and the `Repository`
-construct exists to nest branch protection under rather than to make one. A
-repository has to exist before anything here can attach to it.
+cdkgithub can create a repository the organization does not have, and adopts an
+existing one as it stands. There is no update and no delete beside that create.
+Unset visibility resolves to `internal` under an enterprise account and to
+`private` otherwise; `public` is never inferred.
 
 That is deliberate. A definition is edited far more often than the organization
 is, and the edit that drops a repository from a team looks identical to the edit
@@ -695,8 +737,9 @@ new BranchProtection(deck, "main", { enabled: false });
 Deleting the construct leaves the live protection in place. There is no endpoint
 that lists the protected branches of an organization, so cdkgithub only ever
 looks at branches the definition names and cannot prune one it was never told
-about. `enabled: false` is a declaration, so unlike a team or ruleset delete it
-is not gated behind `--allow-delete`.
+about. `enabled: false` is a declaration, but it still removes every rule on
+the branch in one call, so it is gated behind `--allow-delete`.
+`--allow-delete=branch-protection` scopes the permission to exactly this.
 
 The migration this is built for: land the ruleset on `evaluate`, read its rule
 suites until it is quiet, flip it to `active`, then set `enabled: false` on the

@@ -142,9 +142,27 @@ export type OwnerType = 'organization' | 'user';
  * team structure. Once a surface is declared, the definition owns it and live
  * resources missing from it are proposed for deletion (gated by `--allow-delete`).
  */
+/**
+ * Where a manifest came from: the definition it was synthesized from and the
+ * commit the working tree was on. Printed with every plan, so a review knows
+ * whether the manifest on disk is the definition that was actually merged.
+ */
+export interface ManifestProvenance {
+  /** Path of the definition file, as given to `synth`. */
+  readonly source: string;
+  /** `git rev-parse HEAD` at synth time, when the definition lives in git. */
+  readonly commit?: string;
+  /** Whether the working tree had uncommitted changes at synth time. */
+  readonly dirty?: boolean;
+  /** ISO timestamp of the synth. */
+  readonly synthesizedAt: string;
+}
+
 export interface DesiredState {
   /** The organization login or username everything below belongs to. */
   readonly owner: string;
+  /** Stamped by `synth`; absent on a manifest written by hand. */
+  readonly provenance?: ManifestProvenance;
   /** Whether `owner` is an organization or a personal account. */
   readonly ownerType: OwnerType;
   /** Teams keyed implicitly by slug; ordered parents-before-children. */
