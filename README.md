@@ -949,7 +949,7 @@ throwaway sandbox organization first; once one exists, a manual
 `workflow_dispatch` job can mint a short-lived token and run `plan` and
 `apply` against the sandbox only.
 
-### Non-goals
+### Not built yet
 
 - The Azure-side SCIM push that provisions groups and users into GitHub. The
   linkage endpoint is wired; configuring Entra and enabling SCIM on the
@@ -958,6 +958,9 @@ throwaway sandbox organization first; once one exists, a manual
   secrets and variables. All have REST endpoints and would fit the model.
 - Importing governance. `scripts/import-org.ts` reads teams only, so an
   organization that already has rulesets writes them down by hand once.
-- Enterprise-level policy, pending an API that covers it.
+- Enterprise-level policy, blocked until GitHub exposes an API that covers it.
+
+### Non-goals
+
 - Multi-language publishing via jsii. cdkgithub is TypeScript, by decision
   rather than by schedule.
