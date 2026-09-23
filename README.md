@@ -502,7 +502,7 @@ new Team(engineering, "platform", {
   previousSlug: "infra",                  // rename marker, see the guide
   description: "Platform & infrastructure",
   privacy: "closed",                      // default; "secret" hides the team
-  maintainers: ["mj"],
+  maintainers: ["casey"],
   members: ["ada"],
   repositories: [maintain("flight-deck")], // or { "flight-deck": "maintain" }
   externalGroup: { name: "GH-Platform" }, // Entra ID binding, or { id: 123 }
@@ -690,9 +690,9 @@ Organization roles held outside this definition:
 ### The diff tree
 
 ```
-  organization FactbirdHQ
+  organization factbird
 ~   team engineering
-      + repo agent-skills = "push"
+      + repo build-tools = "push"
       + member alex-doe
 ~     team cloud
         - member alex-doe
@@ -737,8 +737,8 @@ stronger permission wins, which is what GitHub does.
 alex-doe   (36 -> 4 repos)
     + team engineering
     - team cloud
-    + agent-skills = "push"   via engineering
-    - cloud-provisioning   (had "push" via cloud)
+    + build-tools = "push"   via engineering
+    - infra-modules   (had "push" via cloud)
     … and 21 more   (--full to list)
 ```
 
