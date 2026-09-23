@@ -1,4 +1,5 @@
 import type { LiveBranchProtection, LiveRuleset } from '../github/client.ts';
+import type { ResolvedBypassActor } from '../synth/governance.ts';
 import type {
   ActionsPolicyManifest,
   BranchProtectionManifest,
@@ -395,7 +396,9 @@ export function diffRuleset(
   if (!matchesSubset(desired.rules, live.rules)) {
     fields.push({ field: 'rules', from: live.rules, to: desired.rules });
   }
-  if (!matchesSubset(desired.bypassActors ?? [], live.bypassActors)) {
+  const desiredActors = (desired.bypassActors ?? []).map(normalizeBypassActor);
+  const liveActors = live.bypassActors.map(normalizeBypassActor);
+  if (!matchesSubset(desiredActors, liveActors)) {
     fields.push({
       field: 'bypassActors',
       from: live.bypassActors,
@@ -404,6 +407,19 @@ export function diffRuleset(
   }
 
   return fields;
+}
+
+/**
+ * GitHub's ruleset endpoints disagree on `OrganizationAdmin`'s id: the
+ * organization endpoints report `actor_id: 1`, the repository endpoints
+ * report `actor_id: null` for the same actor, and writes take 1 at either
+ * scope. Both sides compare as 1, or a repository ruleset with an admin
+ * bypass diffs as changed on every run.
+ */
+function normalizeBypassActor(actor: ResolvedBypassActor): ResolvedBypassActor {
+  return actor.actorType === 'OrganizationAdmin' && actor.actorId == null
+    ? { ...actor, actorId: 1 }
+    : actor;
 }
 
 // ---------------------------------------------------------------------------
