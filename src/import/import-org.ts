@@ -6,10 +6,13 @@
  * organization-wide governance: settings, the Actions policy, custom repository
  * roles, organization role assignments, rulesets, code security configurations,
  * custom properties with their values, runner groups, and Actions variables
- * and secrets. Repository-scoped surfaces (repository rulesets, repository
- * secrets and variables) are not enumerated, because there is no listing
- * short of walking every repository. Secrets come back as names only, so each
- * is emitted reading its value from an environment variable of the same name.
+ * and secrets. Secrets come back as names only, so each is emitted reading its
+ * value from an environment variable of the same name.
+ *
+ * The repository-scoped surfaces (repository rulesets, secrets, and variables)
+ * have no organization-wide listing, so they are read by walking repositories,
+ * and only when {@link ImportOptions.repositories} asks for the walk: one
+ * round of requests per repository is a real cost on a large organization.
  *
  * A surface the token or the plan cannot read is skipped and named in the
  * generated header, not failed on: an importer that dies on the first missing
@@ -29,9 +32,19 @@ import type {
   RulesetBypassActor,
 } from '../synth/manifest.ts';
 
+export interface ImportOptions {
+  /**
+   * Walk repositories and import their rulesets, Actions variables, and
+   * Actions secrets: `true` for every repository in the organization, or the
+   * names of the ones to walk.
+   */
+  readonly repositories?: boolean | readonly string[];
+}
+
 export async function importOrganization(
   client: GitHubClient,
   org: string,
+  options: ImportOptions = {},
 ): Promise<string> {
   const skipped: string[] = [];
   const optional = async <T>(
@@ -221,10 +234,7 @@ export async function importOrganization(
   }
 
   if (orgSecrets?.length) {
-    emit.comment(
-      'Secret values are unreadable, so each secret reads its value from an\n' +
-        'environment variable of its own name. Export them before `apply`.',
-    );
+    emit.secretNote();
     for (const secret of orgSecrets) {
       emit.construct('ActionsSecret', secret.name, {
         visibility: secret.visibility,
@@ -233,7 +243,110 @@ export async function importOrganization(
     }
   }
 
+  if (options.repositories) {
+    await importRepositories(
+      client,
+      org,
+      options.repositories,
+      emit,
+      skipped,
+      (actors) => unresolveBypassActors(actors, teams, appInstallations ?? []),
+    );
+  }
+
   return emit.render();
+}
+
+/**
+ * Walk the repositories and emit a `Repository` block for each one that
+ * carries a ruleset, a variable, or a secret of its own, nesting those under
+ * it. A repository with none is left out of the file, and a surface a
+ * repository refuses to hand over (a token without the secrets scope, say) is
+ * reported once per surface with the repositories it failed on, not once per
+ * repository.
+ */
+async function importRepositories(
+  client: GitHubClient,
+  org: string,
+  scope: true | readonly string[],
+  emit: Emitter,
+  skipped: string[],
+  unresolve: (
+    actors: ResolvedBypassActor[],
+  ) => RulesetBypassActor[] | undefined,
+): Promise<void> {
+  const names =
+    scope === true
+      ? ((await client.listRepositories(org)).map((r) => r.name) as string[])
+      : [...scope];
+  names.sort((a, b) => a.localeCompare(b));
+
+  const failures = new Map<string, { repositories: string[]; message: string }>();
+  const attempt = async <T>(
+    surface: string,
+    repository: string,
+    read: () => Promise<T>,
+  ): Promise<T | undefined> => {
+    try {
+      return await read();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const failure = failures.get(surface) ?? { repositories: [], message };
+      failure.repositories.push(repository);
+      failures.set(surface, failure);
+      return undefined;
+    }
+  };
+
+  const byName = (a: { name: string }, b: { name: string }) =>
+    a.name.localeCompare(b.name);
+
+  for (const repository of names) {
+    const [rulesets, variables, secrets] = await Promise.all([
+      attempt('rulesets', repository, () =>
+        client.listRepositoryRulesets(org, repository),
+      ),
+      attempt('variables', repository, () =>
+        client.listRepositoryVariables(org, repository),
+      ),
+      attempt('secrets', repository, () =>
+        client.listRepositorySecrets(org, repository),
+      ),
+    ]);
+
+    const children = [
+      ...[...(rulesets ?? [])].sort(byName).map((ruleset) => ({
+        type: 'RepositoryRuleset',
+        id: ruleset.name,
+        props: {
+          target: ruleset.target,
+          enforcement: ruleset.enforcement,
+          conditions: ruleset.conditions,
+          rules: ruleset.rules,
+          bypassActors: unresolve(ruleset.bypassActors),
+        },
+      })),
+      ...[...(variables ?? [])].sort(byName).map((variable) => ({
+        type: 'ActionsVariable',
+        id: variable.name,
+        props: { value: variable.value },
+      })),
+      ...[...(secrets ?? [])].sort(byName).map((secret) => ({
+        type: 'ActionsSecret',
+        id: secret.name,
+        props: {},
+      })),
+    ];
+    if (children.length === 0) continue;
+    if ((secrets ?? []).length > 0) emit.secretNote();
+    emit.repository(repository, children);
+  }
+
+  for (const [surface, failure] of failures) {
+    skipped.push(
+      `repository ${surface} on ${failure.repositories.join(', ')} (${failure.message})`,
+    );
+  }
 }
 
 /**
@@ -295,6 +408,8 @@ const IMPORT_ORDER = [
   'CustomRepositoryRole',
   'Organization',
   'OrganizationRole',
+  'Repository',
+  'RepositoryRuleset',
   'RunnerGroup',
   'Ruleset',
   'Team',
@@ -303,6 +418,8 @@ const IMPORT_ORDER = [
 class Emitter {
   private readonly chunks: string[] = [];
   private readonly used = new Set<string>(['App', 'Organization']);
+  private readonly names = new VariableNames();
+  private secretNoteShown = false;
 
   constructor(
     private readonly org: string,
@@ -329,6 +446,37 @@ class Emitter {
     this.chunks.push(`new ${type}(org, ${lit(id)}, ${lit(props)});`, '');
   }
 
+  /** The one warning secrets need, above the first block that declares any. */
+  secretNote(): void {
+    if (this.secretNoteShown) return;
+    this.secretNoteShown = true;
+    this.comment(
+      'Secret values are unreadable, so each secret reads its value from an\n' +
+        'environment variable of its own name. Export them before `apply`.',
+    );
+  }
+
+  /** A repository and the rulesets, variables, and secrets nested under it. */
+  repository(
+    name: string,
+    children: Array<{
+      type: string;
+      id: string;
+      props: Record<string, unknown>;
+    }>,
+  ): void {
+    this.used.add('Repository');
+    const variable = this.names.for(name);
+    this.chunks.push(`const ${variable} = new Repository(org, ${lit(name)});`);
+    for (const child of children) {
+      this.used.add(child.type);
+      this.chunks.push(
+        `new ${child.type}(${variable}, ${lit(child.id)}, ${lit(child.props)});`,
+      );
+    }
+    this.chunks.push('');
+  }
+
   /**
    * The team tree, nested the way the hierarchy nests: a child team is
    * declared against its parent's variable, so the generated file reads like
@@ -343,6 +491,7 @@ class Emitter {
   ): void {
     if (teams.length === 0) return;
     this.used.add('Team');
+    const names = this.names;
 
     const childrenOf = (slug: string | null) =>
       teams
@@ -366,7 +515,6 @@ class Emitter {
       return inherited;
     };
 
-    const names = new VariableNames();
     const emitSubtree = (team: LiveTeam, scope: string) => {
       const children = childrenOf(team.slug);
       const variable = children.length > 0 ? names.for(team.slug) : undefined;

@@ -237,6 +237,129 @@ describe('importOrganization', () => {
     expect(code).not.toContain('new RunnerGroup');
   });
 
+  test('walks the repositories only when asked, and round-trips them', async () => {
+    const client = orgClient();
+    client.repositories = [
+      { id: 1, name: 'flow-portal' },
+      { id: 2, name: 'netcore' },
+      { id: 3, name: 'empty-repo' },
+    ];
+    client.repositoryRulesets = {
+      'flow-portal': [
+        {
+          id: 30,
+          name: 'merge-queue',
+          target: 'branch',
+          enforcement: 'active',
+          conditions: { refName: { include: ['~DEFAULT_BRANCH'] } },
+          rules: [{ type: 'required_linear_history' }],
+          bypassActors: [{ actorType: 'Team', actorId: 2, bypassMode: 'always' }],
+          sourceType: 'Repository',
+        },
+      ],
+    };
+    client.repositoryVariables = {
+      netcore: [{ name: 'SENTRY_PROJECT', value: 'netcore' }],
+    };
+    client.repositorySecrets = {
+      netcore: [{ name: 'SENTRY_DSN' }],
+    };
+
+    const withoutWalk = await importOrganization(client, 'acme');
+    expect(withoutWalk).not.toContain('new Repository(');
+
+    const code = await importOrganization(client, 'acme', {
+      repositories: true,
+    });
+    // A repository with nothing of its own stays out of the file.
+    expect(code).not.toContain('empty-repo');
+
+    const dir = mkdtempSync(join(tmpdir(), 'cdkgithub-import-'));
+    const indexUrl = pathToFileURL(
+      join(import.meta.dir, '../src/index.ts'),
+    ).href;
+    const file = join(dir, 'acme.ts');
+    writeFileSync(
+      file,
+      code
+        .replace('"../src/index.ts"', JSON.stringify(indexUrl))
+        .replace('new App()', `new App({ outdir: ${JSON.stringify(dir)} })`),
+    );
+    await import(pathToFileURL(file).href);
+    const state = JSON.parse(
+      readFileSync(join(dir, 'manifest.json'), 'utf8'),
+    ) as DesiredState;
+
+    expect(state.repositories).toEqual([
+      { name: 'flow-portal' },
+      { name: 'netcore' },
+    ]);
+    expect(state.repositoryRulesets).toEqual([
+      expect.objectContaining({
+        repository: 'flow-portal',
+        name: 'merge-queue',
+        bypassActors: [
+          { actorType: 'Team', team: 'platform', bypassMode: 'always' },
+        ],
+      }),
+    ]);
+    expect(state.actionsVariables).toEqual([
+      expect.objectContaining({ name: 'REGION', value: 'eu-west-1' }),
+      expect.objectContaining({
+        name: 'SENTRY_PROJECT',
+        value: 'netcore',
+        repository: 'netcore',
+      }),
+    ]);
+    expect(state.actionsSecrets).toEqual([
+      expect.objectContaining({ name: 'NPM_TOKEN' }),
+      expect.objectContaining({
+        name: 'SENTRY_DSN',
+        valueFrom: 'SENTRY_DSN',
+        repository: 'netcore',
+      }),
+    ]);
+  });
+
+  test('a repository list scopes the walk to the named ones', async () => {
+    const client = orgClient();
+    client.repositories = [
+      { id: 1, name: 'flow-portal' },
+      { id: 2, name: 'netcore' },
+    ];
+    client.repositoryVariables = {
+      'flow-portal': [{ name: 'A', value: '1' }],
+      netcore: [{ name: 'B', value: '2' }],
+    };
+    const code = await importOrganization(client, 'acme', {
+      repositories: ['flow-portal'],
+    });
+    expect(code).toContain('new Repository(org, "flow-portal")');
+    expect(code).not.toContain('new Repository(org, "netcore")');
+  });
+
+  test('a surface a repository refuses is reported once, naming the repositories', async () => {
+    const client = orgClient();
+    client.repositories = [
+      { id: 1, name: 'flow-portal' },
+      { id: 2, name: 'netcore' },
+    ];
+    client.repositoryVariables = {
+      'flow-portal': [{ name: 'A', value: '1' }],
+    };
+    client.listRepositorySecrets = async () => {
+      throw new Error('needs the secrets scope');
+    };
+    const code = await importOrganization(client, 'acme', {
+      repositories: true,
+    });
+    expect(code).toContain(
+      'repository secrets on flow-portal, netcore (needs the secrets scope)',
+    );
+    // The other surfaces still land.
+    expect(code).toContain('new ActionsVariable(flowPortal, "A"');
+  });
+
   test('a team slug that collides with a keyword still emits legal code', async () => {
     const client = new FakeClient({
       teams: [
