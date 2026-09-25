@@ -8,9 +8,9 @@
  * Secrets and variables come in an organization scope and a repository scope,
  * and one manifest type covers both: an entry carrying `repository` lives on
  * that repository, an entry without one lives on the organization. Ownership
- * follows the scopes that appear in the collection, not the collection itself:
- * declaring only repository-scoped entries never reads or prunes the
- * organization's own, and vice versa.
+ * follows the scope rather than its entries: an organization owns its own,
+ * and so does every repository the definition declares or an entry names, with
+ * or without an entry left in it.
  */
 
 // ---------------------------------------------------------------------------

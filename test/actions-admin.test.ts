@@ -282,22 +282,34 @@ describe('variables', () => {
     ]);
   });
 
-  test('declaring only repository variables never reads the organization ones', async () => {
+  test('an organization owns its variables and secrets with none declared', async () => {
     const client = new FakeClient({
       orgVariables: [{ name: 'REGION', value: 'eu', visibility: 'all' }],
-      repositoryVariables: { 'flow-portal': [] },
+      orgSecrets: [{ name: 'LEGACY', visibility: 'all' }],
     });
-    const state = desired({
-      actionsVariables: [
-        { name: 'X', value: '1', repository: 'flow-portal' },
-      ],
+    const state = desired();
+    expect(plan(state, await readLiveState(client, state))).toEqual([
+      { kind: 'delete-variable', name: 'REGION' },
+      { kind: 'delete-secret', name: 'LEGACY' },
+    ]);
+  });
+
+  test('a declared repository owns its secrets once the last one is removed', async () => {
+    const client = new FakeClient({
+      repositorySecrets: {
+        'flow-portal': [{ name: 'SENTRY_DSN' }],
+        dotfiles: [{ name: 'HOMEBREW_TOKEN' }],
+      },
     });
+    // flow-portal is declared and names no secret; dotfiles is not declared.
+    const state = desired({ repositories: [{ name: 'flow-portal' }] });
     const liveState = await readLiveState(client, state);
-    expect(liveState.actionsVariables).toBeUndefined();
-    // And with nothing read, nothing organization-wide is proposed.
-    expect(
-      plan(state, liveState).filter((c) => c.kind === 'delete-variable'),
-    ).toEqual([]);
+    expect(liveState.repositorySecrets).toEqual([
+      { repository: 'flow-portal', name: 'SENTRY_DSN' },
+    ]);
+    expect(plan(state, liveState).filter((c) => c.kind === 'delete-secret')).toEqual([
+      { kind: 'delete-secret', name: 'SENTRY_DSN', repository: 'flow-portal' },
+    ]);
   });
 
   test('apply resolves an organization variable through its endpoints', async () => {
