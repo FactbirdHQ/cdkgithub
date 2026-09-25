@@ -126,6 +126,19 @@ function diffTeam(desired: TeamManifest, live: LiveTeam): FieldChange[] {
     fields.push({ field: 'privacy', from: live.privacy, to: desired.privacy });
   }
 
+  // Compared only when declared, so a definition that never mentions the
+  // setting leaves every live team's as it is.
+  if (
+    desired.notificationSetting !== undefined &&
+    desired.notificationSetting !== live.notificationSetting
+  ) {
+    fields.push({
+      field: 'notificationSetting',
+      from: live.notificationSetting ?? null,
+      to: desired.notificationSetting,
+    });
+  }
+
   const desiredParent = desired.parentSlug ?? null;
   const liveParent = live.parentSlug ?? null;
   if (desiredParent !== liveParent) {
