@@ -55,6 +55,8 @@ Each scope names one destructive change kind for `--allow-delete=<scopes>`:
 | `properties` | A custom property. |
 | `branch-protection` | A branch's legacy protection, from `enabled: false`. |
 
+Every change of these kinds is planned after every change that adds or updates something, in one run as in the plan. `apply` stops at its first failure, so an addition that fails leaves what it was replacing in place: a team's successor is created and granted before the team goes, and a ruleset is in force before the legacy protection it replaces is removed.
+
 ## Backups
 
 Before its first write, `apply --yes` saves four files under

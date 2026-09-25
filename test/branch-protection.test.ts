@@ -316,3 +316,50 @@ describe('warnings', () => {
     expect(collectWarnings(synthesize(app))).toHaveLength(1);
   });
 });
+
+test('every removal runs after every addition, so a retired control outlives its replacement', () => {
+  const changes = plan(
+    desired({
+      teams: [
+        {
+          slug: 'firmware',
+          name: 'firmware',
+          privacy: 'closed',
+          repositories: { app: 'push' },
+        },
+      ],
+      branchProtection: [{ repository: 'app', branch: 'main', enabled: false }],
+      repositoryRulesets: [
+        {
+          name: 'Default',
+          repository: 'app',
+          target: 'branch',
+          enforcement: 'active',
+          conditions: { refName: { include: ['~DEFAULT_BRANCH'] } },
+          rules: [{ type: 'deletion' }],
+        },
+      ],
+    }),
+    live({
+      teams: [
+        {
+          id: 1,
+          slug: 'hardware',
+          name: 'hardware',
+          description: null,
+          privacy: 'closed',
+          parentSlug: null,
+        },
+      ],
+      branchProtection: [liveProtection()],
+      repositoryRulesets: [],
+    }),
+  );
+
+  expect(changes.map((c) => c.kind)).toEqual([
+    'create',
+    'create-repo-ruleset',
+    'delete',
+    'remove-branch-protection',
+  ]);
+});

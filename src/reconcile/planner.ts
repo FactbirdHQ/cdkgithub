@@ -1,6 +1,7 @@
 import type { LiveTeam } from '../github/client.ts';
 import type { DesiredState, TeamManifest } from '../synth/manifest.ts';
 import type { Change, FieldChange } from './changes.ts';
+import { isDestructive } from './changes.ts';
 import type { LiveState } from './live.ts';
 import { resolveLive } from './live.ts';
 import { planActionsAdmin } from './plan-actions-admin.ts';
@@ -21,6 +22,13 @@ import { planTeamAccess } from './plan-team-access.ts';
  * top-to-bottom without violating GitHub's parent/child constraints, puts a
  * repository and a custom role before the grants that name them, and puts the
  * governance surfaces after the teams they may name as ruleset bypass actors.
+ *
+ * Every removal then moves behind every addition, keeping the order above
+ * within each half. A removal is often retiring what an addition replaces:
+ * legacy branch protection once a ruleset covers the branch, an old team once
+ * its successor holds the grants, an old ruleset once the new one is active.
+ * `apply` stops at the first failure, so with removals last a failed addition
+ * leaves the old control standing rather than a gap where both are missing.
  *
  * Note on membership and access: a team owns neither until it declares one. A
  * team with no `repositories` map keeps the grants it has, and a team with no
@@ -82,7 +90,7 @@ export function plan(desired: DesiredState, live: LiveState): Change[] {
   const roleUpserts = roleChanges.filter((c) => c.kind !== 'delete-repo-role');
   const roleDeletes = roleChanges.filter((c) => c.kind === 'delete-repo-role');
 
-  return [
+  const ordered = [
     ...creates,
     ...updates,
     // Before the team access below and the governance further down: a grant, a
@@ -100,6 +108,10 @@ export function plan(desired: DesiredState, live: LiveState): Change[] {
     ...planActionsAdmin(desired, live),
     ...roleDeletes,
     ...planOrganizationRoles(desired.organizationRoles, live),
+  ];
+  return [
+    ...ordered.filter((change) => !isDestructive(change)),
+    ...ordered.filter(isDestructive),
   ];
 }
 
