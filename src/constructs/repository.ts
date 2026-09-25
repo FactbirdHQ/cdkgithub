@@ -41,18 +41,6 @@ export interface RepositoryProps {
   readonly hasIssues?: boolean;
   readonly hasProjects?: boolean;
   readonly hasWiki?: boolean;
-
-  /**
-   * Own this repository's Actions secrets even when the definition declares none
-   * on it. An {@link ActionsSecret} in the scope owns it already; this keeps it
-   * owned once the last one is removed, so that removal plans a delete (gated
-   * by `--allow-delete=secrets`) instead of dropping the scope from what is
-   * read and leaving the secret on GitHub.
-   */
-  readonly ownsSecrets?: boolean;
-
-  /** The same for Actions variables, gated by `--allow-delete=variables`. */
-  readonly ownsVariables?: boolean;
 }
 
 /**

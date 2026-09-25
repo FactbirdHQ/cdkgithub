@@ -8,10 +8,9 @@
  * Secrets and variables come in an organization scope and a repository scope,
  * and one manifest type covers both: an entry carrying `repository` lives on
  * that repository, an entry without one lives on the organization. Ownership
- * follows the scopes that appear in the collection, not the collection itself:
- * declaring only repository-scoped entries never reads or prunes the
- * organization's own, and vice versa. A scope declared owned in
- * {@link OwnedScopes} is owned with no entry in it at all.
+ * follows the scope rather than its entries: an organization owns its own,
+ * and so does every repository the definition declares or an entry names, with
+ * or without an entry left in it.
  */
 
 // ---------------------------------------------------------------------------
@@ -77,20 +76,4 @@ export interface ActionsSecretManifest {
   readonly visibility?: OrgConfigVisibility;
   /** Repository names that can read it. Only read with `visibility: "selected"`. */
   readonly selectedRepositories?: string[];
-}
-
-/**
- * The scopes a secret or variable collection owns whether or not it declares an
- * entry in them.
- *
- * An entry owns its own scope already. This covers the scope with no entry
- * left in it: without it, removing the last secret on a repository removes the
- * repository from what is read, and the secret the removal meant to delete
- * stays on GitHub with nothing in the plan to say so.
- */
-export interface OwnedScopes {
-  /** The organization's own secrets or variables. */
-  readonly organization?: boolean;
-  /** Repositories whose secrets or variables are owned. */
-  readonly repositories?: string[];
 }

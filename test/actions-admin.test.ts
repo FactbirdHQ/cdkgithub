@@ -282,22 +282,34 @@ describe('variables', () => {
     ]);
   });
 
-  test('declaring only repository variables never reads the organization ones', async () => {
+  test('an organization owns its variables and secrets with none declared', async () => {
     const client = new FakeClient({
       orgVariables: [{ name: 'REGION', value: 'eu', visibility: 'all' }],
-      repositoryVariables: { 'flow-portal': [] },
+      orgSecrets: [{ name: 'LEGACY', visibility: 'all' }],
     });
-    const state = desired({
-      actionsVariables: [
-        { name: 'X', value: '1', repository: 'flow-portal' },
-      ],
+    const state = desired();
+    expect(plan(state, await readLiveState(client, state))).toEqual([
+      { kind: 'delete-variable', name: 'REGION' },
+      { kind: 'delete-secret', name: 'LEGACY' },
+    ]);
+  });
+
+  test('a declared repository owns its secrets once the last one is removed', async () => {
+    const client = new FakeClient({
+      repositorySecrets: {
+        'flow-portal': [{ name: 'SENTRY_DSN' }],
+        dotfiles: [{ name: 'HOMEBREW_TOKEN' }],
+      },
     });
+    // flow-portal is declared and names no secret; dotfiles is not declared.
+    const state = desired({ repositories: [{ name: 'flow-portal' }] });
     const liveState = await readLiveState(client, state);
-    expect(liveState.actionsVariables).toBeUndefined();
-    // And with nothing read, nothing organization-wide is proposed.
-    expect(
-      plan(state, liveState).filter((c) => c.kind === 'delete-variable'),
-    ).toEqual([]);
+    expect(liveState.repositorySecrets).toEqual([
+      { repository: 'flow-portal', name: 'SENTRY_DSN' },
+    ]);
+    expect(plan(state, liveState).filter((c) => c.kind === 'delete-secret')).toEqual([
+      { kind: 'delete-secret', name: 'SENTRY_DSN', repository: 'flow-portal' },
+    ]);
   });
 
   test('apply resolves an organization variable through its endpoints', async () => {
@@ -449,55 +461,5 @@ describe('secrets', () => {
     expect(
       missingSecretValues(changes, { PRESENT_EXPORT: 'here' }),
     ).toEqual(['SHARED_EXPORT']);
-  });
-});
-
-describe('owned scopes', () => {
-  test('removing the last secret on an owned repository plans its delete', async () => {
-    const app = new App();
-    const org = new Organization(app, 'acme', { login: 'acme' });
-    new Repository(org, 'flow-portal', { ownsSecrets: true });
-    new Repository(org, 'dotfiles');
-
-    const state = synthesize(app);
-    // Ownership shapes what is read, never what a new repository is created with.
-    expect(state.repositories).toEqual([
-      { name: 'flow-portal' },
-      { name: 'dotfiles' },
-    ]);
-    expect(state.ownedSecretScopes).toEqual({ repositories: ['flow-portal'] });
-
-    const client = new FakeClient({
-      repositorySecrets: {
-        'flow-portal': [{ name: 'SENTRY_DSN' }],
-        dotfiles: [{ name: 'HOMEBREW_TOKEN' }],
-      },
-    });
-    const changes = plan(state, await readLiveState(client, state));
-
-    expect(changes.filter((c) => c.kind === 'delete-secret')).toEqual([
-      { kind: 'delete-secret', name: 'SENTRY_DSN', repository: 'flow-portal' },
-    ]);
-  });
-
-  test('an organization that owns its secrets and variables prunes them with none declared', async () => {
-    const app = new App();
-    new Organization(app, 'acme', {
-      login: 'acme',
-      ownsSecrets: true,
-      ownsVariables: true,
-    });
-
-    const state = synthesize(app);
-    const client = new FakeClient({
-      orgSecrets: [{ name: 'LEGACY', visibility: 'all' }],
-      orgVariables: [{ name: 'REGION', value: 'eu-west-1', visibility: 'all' }],
-    });
-    const changes = plan(state, await readLiveState(client, state));
-
-    expect(changes).toEqual([
-      { kind: 'delete-variable', name: 'REGION' },
-      { kind: 'delete-secret', name: 'LEGACY' },
-    ]);
   });
 });

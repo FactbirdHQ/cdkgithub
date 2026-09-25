@@ -7,7 +7,6 @@ import type {
   ActionsSecretManifest,
   ActionsVariableManifest,
   DesiredState,
-  OwnedScopes,
   RunnerGroupManifest,
 } from '../synth/manifest.ts';
 import type { Change, FieldChange } from './changes.ts';
@@ -20,10 +19,10 @@ import { matchesSubset } from './subset.ts';
  * Diff the Actions administration surfaces: runner groups, and the secrets and
  * variables of every scope the definition declares one on.
  *
- * Secrets and variables share the same scoping rule: an organization-scoped
- * entry owns the organization's, an entry naming a repository owns that
- * repository's, and a scope declared owned is owned with no entry in it, so
- * pruning never reaches past what the definition speaks for.
+ * Secrets and variables share the same scoping rule: the organization owns its
+ * own, a declared repository owns its own, and so does a repository an entry
+ * names, whether or not any entry is left in the scope. Pruning never reaches a
+ * repository the definition does not mention.
  * GitHub compares the names case-insensitively and reports them uppercased, so
  * the matching here does the same rather than proposing to recreate `token`
  * because the live listing says `TOKEN`.
@@ -34,12 +33,8 @@ export function planActionsAdmin(
 ): Change[] {
   return [
     ...planRunnerGroups(desired.runnerGroups, live),
-    ...planVariables(
-      desired.actionsVariables,
-      desired.ownedVariableScopes,
-      live,
-    ),
-    ...planSecrets(desired.actionsSecrets, desired.ownedSecretScopes, live),
+    ...planVariables(desired.actionsVariables, desired, live),
+    ...planSecrets(desired.actionsSecrets, desired, live),
   ];
 }
 
@@ -110,11 +105,11 @@ function diffRunnerGroup(
 
 function planVariables(
   declared: ActionsVariableManifest[] | undefined,
-  owned: OwnedScopes | undefined,
+  desired: DesiredState,
   live: LiveState,
 ): Change[] {
   const variables = declared ?? [];
-  const scopes = scopesOf(variables, owned);
+  const scopes = scopesOf(variables, desired);
   const changes: Change[] = [];
 
   const orgDeclared = variables.filter((v) => v.repository === undefined);
@@ -220,11 +215,11 @@ function diffOrgVariable(
  */
 function planSecrets(
   declared: ActionsSecretManifest[] | undefined,
-  owned: OwnedScopes | undefined,
+  desired: DesiredState,
   live: LiveState,
 ): Change[] {
   const secrets = declared ?? [];
-  const scopes = scopesOf(secrets, owned);
+  const scopes = scopesOf(secrets, desired);
   const changes: Change[] = [];
 
   const orgDeclared = secrets.filter((s) => s.repository === undefined);

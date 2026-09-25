@@ -85,8 +85,8 @@ additionally need the organization to have those features.
 Every surface works with a fine-grained token (rulesets, the Actions policy,
 and code security configurations under organization Administration; custom
 properties under Custom properties; teams under Members; runner groups under
-Self-hosted runners; organization secrets and variables under the
-organization Secrets and Variables permissions, and their repository-scoped
+Self-hosted runners; organization secrets and variables, read for every
+organization, under the organization Secrets and Variables permissions, and their repository-scoped
 counterparts, with repository rulesets, under the matching repository
 permissions) except one: the SCIM external-group endpoints behind
 `--enable-scim` are absent from GitHub's
@@ -120,13 +120,15 @@ on:
 - Write no `Ruleset` and the org's rulesets are never read, reported, or
   pruned. Declare one and the definition owns the surface: live rulesets
   missing from it become deletes, gated like everything else.
-- The repository-scoped collections (repository rulesets, and Actions
-  secrets and variables) own one scope at a time. An organization-scoped
-  secret owns the organization's secrets; an entry naming `flow-portal` owns
-  `flow-portal`'s; a repository nothing names is never read or pruned.
-  `ownsSecrets` and `ownsVariables` on the `Organization` or a
-  `Repository` own that scope with no entry in it, so removing its last
-  entry plans a delete.
+- Repository rulesets own one repository at a time: an entry naming
+  `flow-portal` owns `flow-portal`'s, and a repository nothing names is never
+  read or pruned.
+- Actions secrets and variables are owned per scope, whether or not an entry
+  is left in it. An `Organization` owns the organization's; a declared
+  `Repository`, or a repository an entry names, owns that repository's.
+  Removing the last secret on a repository therefore plans its delete, and
+  a live secret nobody declared is a gated removal the next `plan` shows.
+  Each declared repository costs one read per collection on every `plan`.
 
 Within a resource, only the fields you write are compared. GitHub returns
 every field it knows, defaults included, so `plan` asks whether the live
@@ -373,14 +375,6 @@ organization. An organization entry must declare `visibility` (`all`,
 `private`, or `selected` with `selectedRepositories`), and a repository
 entry must not, because only its own repository reads it. Names compare
 case-insensitively, the way GitHub stores them.
-
-| Prop | On | Effect |
-| --- | --- | --- |
-| `ownsSecrets` | `Organization`, `Repository` | Reads and prunes the scope's secrets with no `ActionsSecret` in it. Emitted as `ownedSecretScopes`. |
-| `ownsVariables` | `Organization`, `Repository` | The same for variables. Emitted as `ownedVariableScopes`. |
-
-Neither is written to a repository GitHub creates; both stay out of the
-repository's manifest entry.
 
 A variable carries its value in the clear and diffs on it. A secret carries
 no value anywhere: `valueFrom` names the environment variable `apply` reads
