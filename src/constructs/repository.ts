@@ -1,5 +1,32 @@
 import { Construct } from 'constructs';
 import type { RepositoryVisibility } from '../synth/manifest.ts';
+import { ActionsSecret } from './actions-secret.ts';
+import { ActionsVariable } from './actions-variable.ts';
+import {
+  BranchProtection,
+  type BranchProtectionProps,
+} from './branch-protection.ts';
+import {
+  Environment,
+  type EnvironmentOptions,
+  type SecretOptions,
+} from './environment.ts';
+import {
+  RepositoryRuleset,
+  type RepositoryRulesetProps,
+} from './repository-ruleset.ts';
+
+/** A repository ruleset, as `Repository.addRuleset` takes it. */
+export type RepositoryRulesetOptions = Omit<
+  RepositoryRulesetProps,
+  'name' | 'repository'
+>;
+
+/** A branch's legacy protection, as `Repository.addBranchProtection` takes it. */
+export type BranchProtectionOptions = Omit<
+  BranchProtectionProps,
+  'branch' | 'repository'
+>;
 
 export interface RepositoryProps {
   /** Repository name without the owner. Defaults to the construct id. */
@@ -41,6 +68,25 @@ export interface RepositoryProps {
   readonly hasIssues?: boolean;
   readonly hasProjects?: boolean;
   readonly hasWiki?: boolean;
+
+  /**
+   * Deployment environments, by name, like an AWS CDK Lambda function's
+   * `environment`. The same as calling {@link Repository.addEnvironment} for
+   * each.
+   */
+  readonly environment?: Readonly<Record<string, EnvironmentOptions>>;
+
+  /** Repository-wide Actions variables, by name and value. */
+  readonly variable?: Readonly<Record<string, string>>;
+
+  /** Repository-wide Actions secrets, by name. */
+  readonly secret?: Readonly<Record<string, SecretOptions>>;
+
+  /** Repository rulesets, by name. */
+  readonly ruleset?: Readonly<Record<string, RepositoryRulesetOptions>>;
+
+  /** Legacy branch protection, by branch. */
+  readonly branchProtection?: Readonly<Record<string, BranchProtectionOptions>>;
 }
 
 /**
@@ -58,7 +104,9 @@ export interface RepositoryProps {
  * from the company, and only one of those is recoverable, so this tool offers
  * the recoverable one.
  *
- * It is also the scope {@link BranchProtection} nests under.
+ * It is also the scope {@link BranchProtection}, {@link Environment} and the
+ * repository's own variables and secrets nest under, declared as props or
+ * added with the methods below.
  *
  * ```ts
  * const deck = new Repository(org, 'flight-deck', { private: true });
@@ -73,5 +121,48 @@ export class Repository extends Construct {
     super(scope, id);
     this.repositoryName = props.name ?? id;
     this.props = props;
+    for (const [name, options] of Object.entries(props.environment ?? {})) {
+      this.addEnvironment(name, options);
+    }
+    for (const [name, value] of Object.entries(props.variable ?? {})) {
+      this.addVariable(name, value);
+    }
+    for (const [name, options] of Object.entries(props.secret ?? {})) {
+      this.addSecret(name, options);
+    }
+    for (const [name, options] of Object.entries(props.ruleset ?? {})) {
+      this.addRuleset(name, options);
+    }
+    for (const [branch, options] of Object.entries(props.branchProtection ?? {})) {
+      this.addBranchProtection(branch, options);
+    }
+  }
+
+  /** Declare a deployment environment on this repository. */
+  addEnvironment(name: string, options: EnvironmentOptions = {}): Environment {
+    return new Environment(this, name, options);
+  }
+
+  /** Declare a repository-wide variable. */
+  addVariable(name: string, value: string): ActionsVariable {
+    return new ActionsVariable(this, name, { value });
+  }
+
+  /** Declare a repository-wide secret, its value read from `valueFrom` (default: its name). */
+  addSecret(name: string, options: SecretOptions = {}): ActionsSecret {
+    return new ActionsSecret(this, name, options);
+  }
+
+  /** Declare a ruleset on this repository. */
+  addRuleset(name: string, options: RepositoryRulesetOptions): RepositoryRuleset {
+    return new RepositoryRuleset(this, name, options);
+  }
+
+  /** Declare a branch's legacy protection, or `{ enabled: false }` to retire it. */
+  addBranchProtection(
+    branch: string,
+    options: BranchProtectionOptions = {},
+  ): BranchProtection {
+    return new BranchProtection(this, branch, options);
   }
 }

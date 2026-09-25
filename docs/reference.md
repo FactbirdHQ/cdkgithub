@@ -54,6 +54,7 @@ Each scope names one destructive change kind for `--allow-delete=<scopes>`:
 | `security-configs` | A code security configuration. |
 | `properties` | A custom property. |
 | `branch-protection` | A branch's legacy protection, from `enabled: false`. |
+| `branch-policies` | A branch or tag pattern a declared environment admits and its declaration no longer lists. |
 
 Every change of these kinds is planned after every change that adds or updates something, in one run as in the plan. `apply` stops at its first failure, so an addition that fails leaves what it was replacing in place: a team's successor is created and granted before the team goes, and a ruleset is in force before the legacy protection it replaces is removed.
 
@@ -90,7 +91,8 @@ properties under Custom properties; teams under Members; runner groups under
 Self-hosted runners; organization secrets and variables, read for every
 organization, under the organization Secrets and Variables permissions, and their repository-scoped
 counterparts, with repository rulesets, under the matching repository
-permissions, environment variables under Environments) except one: the SCIM external-group endpoints behind
+permissions, environments and their variables and secrets under
+Environments, with repository Administration to create an environment) except one: the SCIM external-group endpoints behind
 `--enable-scim` are absent from GitHub's
 [fine-grained permissions index](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens)
 and still want a classic token with `admin:org`.
@@ -131,7 +133,9 @@ on:
   Removing the last secret on a repository therefore plans its delete, and
   a live secret nobody declared is a gated removal the next `plan` shows.
   Each declared repository costs one read per collection on every `plan`,
-  and its variables one more for its environments and one per environment.
+  one more for its environments, and one per environment for each of variables
+  and secrets. Every environment of an owned repository owns its variables
+  and secrets the same way.
 
 Within a resource, only the fields you write are compared. GitHub returns
 every field it knows, defaults included, so `plan` asks whether the live
@@ -139,6 +143,34 @@ resource already says everything you asked for rather than whether the two
 are identical. Adopting one setting does not reset its neighbours.
 
 ## Constructs
+
+A construct that belongs to a parent can be written three ways, which
+synthesize identically: as a record prop on the parent keyed by name, with
+the parent's `add*` method, or with `new` under the parent. The prop is named
+after the construct and the method adds one, the way an AWS CDK Lambda
+function takes `environment` and has `addEnvironment`. Each method returns
+the construct it creates.
+
+| Parent | Prop | Method | Creates |
+| --- | --- | --- | --- |
+| `Organization` | `variable` | `addVariable(name, options)` | `ActionsVariable` |
+| `Organization` | `secret` | `addSecret(name, options)` | `ActionsSecret` |
+| `Organization` | `ruleset` | `addRuleset(name, options)` | `Ruleset` |
+| `Organization` | `runnerGroup` | `addRunnerGroup(name, options)` | `RunnerGroup` |
+| `Organization` | `customProperty` | `addCustomProperty(name, options)` | `CustomProperty` |
+| `Organization` | `codeSecurityConfiguration` | `addCodeSecurityConfiguration(name, options)` | `CodeSecurityConfiguration` |
+| `Organization` | `organizationRole` | `addOrganizationRole(name, options)` | `OrganizationRole` |
+| `Organization` | `customRepositoryRole` | `addCustomRepositoryRole(name, options)` | `CustomRepositoryRole` |
+| `Repository` | `environment` | `addEnvironment(name, options)` | `Environment` |
+| `Repository` | `variable` | `addVariable(name, value)` | `ActionsVariable` |
+| `Repository` | `secret` | `addSecret(name, options)` | `ActionsSecret` |
+| `Repository` | `ruleset` | `addRuleset(name, options)` | `RepositoryRuleset` |
+| `Repository` | `branchProtection` | `addBranchProtection(branch, options)` | `BranchProtection` |
+| `Environment` | `variable` | `addVariable(name, value)` | `ActionsVariable` |
+| `Environment` | `secret` | `addSecret(name, options)` | `ActionsSecret` |
+
+Teams keep their own shape: a child team is a `Team` scoped under its parent,
+and rosters and grants are props of the team itself.
 
 The authoring API, all exported from `src/index.ts`.
 
@@ -401,6 +433,64 @@ no value anywhere: `valueFrom` names the environment variable `apply` reads
 at the moment of writing, and the plan diffs existence and visibility, the
 whole of what GitHub can report back. See
 [Declare Actions secrets without their values](how-to.md#declare-actions-secrets-without-their-values).
+
+### Environment
+
+```ts
+const deck = new Repository(org, "flight-deck", {
+  variable: { REGION: "eu-west-1" },
+  secret: { NPM_TOKEN: {} },                        // value from $NPM_TOKEN
+  environment: {
+    production: {
+      deploymentBranchPolicy: { branches: ["main"] }, // or "protected", or "all"
+      reviewers: { teams: ["platform"], users: ["casey"] },
+      preventSelfReview: true,
+      waitTimer: 10,                                   // minutes, 0 to 43200
+      variable: { DEPLOY_ROLE_ARN: "arn:aws:iam::123456789012:role/deploy" },
+      secret: { SENTRY_DSN: { valueFrom: "PROD_SENTRY_DSN" } },
+    },
+  },
+});
+```
+
+The same, a piece at a time:
+
+```ts
+const deck = new Repository(org, "flight-deck");
+deck.addVariable("REGION", "eu-west-1");
+deck.addSecret("NPM_TOKEN");
+const production = deck.addEnvironment("production", {
+  deploymentBranchPolicy: { branches: ["main"] },
+});
+production.addVariable("DEPLOY_ROLE_ARN", "arn:aws:iam::123456789012:role/deploy");
+production.addSecret("SENTRY_DSN", { valueFrom: "PROD_SENTRY_DSN" });
+```
+
+Each `add*` returns the construct it creates, and both spellings synthesize to
+what `new Environment`, `new ActionsVariable` and `new ActionsSecret` nested
+under the repository would. A variable or secret nested under an environment
+lives in it; naming a different `environment` of its own fails synthesis.
+
+A declared environment is created when the repository lacks it, and every
+field written is held to what it says. A field left out is sent back as it
+stands, because GitHub's write replaces the environment's protection rules
+whole. An environment nothing declares is never deleted: that would take its
+secrets, variables and deployment history with it.
+
+`deploymentBranchPolicy` decides which refs may deploy. `{ branches, tags }`
+becomes GitHub's custom policy plus one name pattern each; a pattern the
+declaration drops is a gated removal (`branch-policies`). An OIDC trust on
+`environment:<name>` trusts every ref this admits, so an environment a cloud
+role trusts should not be left at `"all"`.
+
+Reviewers are team slugs and user logins, six at most, resolved to ids when
+`apply` writes. Whether administrators may bypass the rules is not
+declarable: GitHub reports `can_admins_bypass` but its REST API does not
+accept it.
+
+`ActionsVariable` and `ActionsSecret` take `environment` to live inside
+one, read only by jobs running in it. The environment must be declared or
+already exist; `plan` fails otherwise.
 
 ### CodeSecurityConfiguration
 

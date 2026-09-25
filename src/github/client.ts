@@ -343,7 +343,29 @@ export interface LiveOrgSecret {
 /** One repository's Actions secret: a name and nothing more. */
 export interface LiveRepoSecret {
   readonly repository: string;
+  /** The deployment environment it is scoped to. Absent for a repository-wide one. */
+  readonly environment?: string;
   readonly name: string;
+}
+
+/** A deployment environment's settings, as far as cdkgithub declares them. */
+export interface LiveEnvironment {
+  readonly repository: string;
+  readonly name: string;
+  readonly deploymentBranchPolicy: 'all' | 'protected' | 'custom';
+  /** The branch and tag patterns, when the policy is `custom`. */
+  readonly branchPolicies: Array<{ id: number; name: string; type: 'branch' | 'tag' }>;
+  readonly reviewers: { teams: string[]; users: string[] };
+  readonly preventSelfReview: boolean;
+  readonly waitTimer: number;
+}
+
+/** What a create-or-update writes. Reviewers are resolved ids by then. */
+export interface EnvironmentSettings {
+  readonly deploymentBranchPolicy: 'all' | 'protected' | 'custom';
+  readonly reviewers: Array<{ type: 'User' | 'Team'; id: number }>;
+  readonly preventSelfReview: boolean;
+  readonly waitTimer: number;
 }
 
 /**
@@ -573,6 +595,52 @@ export interface GitHubClient {
   ): Promise<void>;
   /** Names of a repository's deployment environments. */
   listRepositoryEnvironments(owner: string, repo: string): Promise<string[]>;
+  /** One environment, or undefined when the repository has no such environment. */
+  getEnvironment(
+    owner: string,
+    repo: string,
+    name: string,
+  ): Promise<LiveEnvironment | undefined>;
+  putEnvironment(
+    owner: string,
+    repo: string,
+    name: string,
+    settings: EnvironmentSettings,
+  ): Promise<void>;
+  createEnvironmentBranchPolicy(
+    owner: string,
+    repo: string,
+    environment: string,
+    name: string,
+    type: 'branch' | 'tag',
+  ): Promise<void>;
+  deleteEnvironmentBranchPolicy(
+    owner: string,
+    repo: string,
+    environment: string,
+    id: number,
+  ): Promise<void>;
+  /** Numeric ids, for naming reviewers. */
+  getTeamId(org: string, slug: string): Promise<number>;
+  getUserId(login: string): Promise<number>;
+  listEnvironmentSecrets(
+    owner: string,
+    repo: string,
+    environment: string,
+  ): Promise<Array<{ name: string }>>;
+  putEnvironmentSecret(
+    owner: string,
+    repo: string,
+    environment: string,
+    name: string,
+    value: string,
+  ): Promise<void>;
+  deleteEnvironmentSecret(
+    owner: string,
+    repo: string,
+    environment: string,
+    name: string,
+  ): Promise<void>;
   listEnvironmentVariables(
     owner: string,
     repo: string,
@@ -1692,6 +1760,198 @@ export class OctokitGitHubClient implements GitHubClient {
       names.push(...environments.map((e) => e.name));
       if (environments.length < 100) return names;
     }
+  }
+
+  async getEnvironment(
+    owner: string,
+    repo: string,
+    name: string,
+  ): Promise<LiveEnvironment | undefined> {
+    let data;
+    try {
+      ({ data } = await this.octokit.rest.repos.getEnvironment({
+        owner,
+        repo,
+        environment_name: name,
+      }));
+    } catch (error) {
+      if ((error as { status?: number }).status === 404) return undefined;
+      throw error;
+    }
+    const policy = data.deployment_branch_policy;
+    const deploymentBranchPolicy = !policy
+      ? ('all' as const)
+      : policy.protected_branches
+        ? ('protected' as const)
+        : ('custom' as const);
+    const branchPolicies =
+      deploymentBranchPolicy === 'custom'
+        ? await this.listEnvironmentBranchPolicies(owner, repo, name)
+        : [];
+    const teams: string[] = [];
+    const users: string[] = [];
+    let preventSelfReview = false;
+    let waitTimer = 0;
+    for (const rule of data.protection_rules ?? []) {
+      if (rule.type === 'wait_timer' && 'wait_timer' in rule) {
+        waitTimer = rule.wait_timer ?? 0;
+      }
+      if (rule.type === 'required_reviewers' && 'reviewers' in rule) {
+        preventSelfReview =
+          'prevent_self_review' in rule ? Boolean(rule.prevent_self_review) : false;
+        for (const entry of rule.reviewers ?? []) {
+          const reviewer = entry.reviewer as { slug?: string; login?: string } | undefined;
+          if (entry.type === 'Team' && reviewer?.slug) teams.push(reviewer.slug);
+          if (entry.type === 'User' && reviewer?.login) users.push(reviewer.login);
+        }
+      }
+    }
+    return {
+      repository: repo,
+      name,
+      deploymentBranchPolicy,
+      branchPolicies,
+      reviewers: { teams, users },
+      preventSelfReview,
+      waitTimer,
+    };
+  }
+
+  private async listEnvironmentBranchPolicies(
+    owner: string,
+    repo: string,
+    environment: string,
+  ): Promise<Array<{ id: number; name: string; type: 'branch' | 'tag' }>> {
+    const policies: Array<{ id: number; name: string; type: 'branch' | 'tag' }> = [];
+    for (let page = 1; ; page++) {
+      const { data } = await this.octokit.rest.repos.listDeploymentBranchPolicies({
+        owner,
+        repo,
+        environment_name: environment,
+        per_page: 100,
+        page,
+      });
+      for (const policy of data.branch_policies) {
+        if (policy.id === undefined || policy.name === undefined) continue;
+        policies.push({
+          id: policy.id,
+          name: policy.name,
+          type: policy.type === 'tag' ? 'tag' : 'branch',
+        });
+      }
+      if (data.branch_policies.length < 100) return policies;
+    }
+  }
+
+  async putEnvironment(
+    owner: string,
+    repo: string,
+    name: string,
+    settings: EnvironmentSettings,
+  ): Promise<void> {
+    await this.octokit.rest.repos.createOrUpdateEnvironment({
+      owner,
+      repo,
+      environment_name: name,
+      wait_timer: settings.waitTimer,
+      prevent_self_review: settings.preventSelfReview,
+      reviewers: settings.reviewers,
+      deployment_branch_policy:
+        settings.deploymentBranchPolicy === 'all'
+          ? null
+          : {
+              protected_branches: settings.deploymentBranchPolicy === 'protected',
+              custom_branch_policies: settings.deploymentBranchPolicy === 'custom',
+            },
+    });
+  }
+
+  async createEnvironmentBranchPolicy(
+    owner: string,
+    repo: string,
+    environment: string,
+    name: string,
+    type: 'branch' | 'tag',
+  ): Promise<void> {
+    await this.octokit.rest.repos.createDeploymentBranchPolicy({
+      owner,
+      repo,
+      environment_name: environment,
+      name,
+      type,
+    });
+  }
+
+  async deleteEnvironmentBranchPolicy(
+    owner: string,
+    repo: string,
+    environment: string,
+    id: number,
+  ): Promise<void> {
+    await this.octokit.rest.repos.deleteDeploymentBranchPolicy({
+      owner,
+      repo,
+      environment_name: environment,
+      branch_policy_id: id,
+    });
+  }
+
+  async getTeamId(org: string, slug: string): Promise<number> {
+    const { data } = await this.octokit.rest.teams.getByName({ org, team_slug: slug });
+    return data.id;
+  }
+
+  async getUserId(login: string): Promise<number> {
+    const { data } = await this.octokit.rest.users.getByUsername({ username: login });
+    return data.id;
+  }
+
+  async listEnvironmentSecrets(
+    owner: string,
+    repo: string,
+    environment: string,
+  ): Promise<Array<{ name: string }>> {
+    const secrets = await this.octokit.paginate(
+      this.octokit.rest.actions.listEnvironmentSecrets,
+      { owner, repo, environment_name: environment, per_page: 100 },
+    );
+    return secrets.map((s) => ({ name: s.name }));
+  }
+
+  async putEnvironmentSecret(
+    owner: string,
+    repo: string,
+    environment: string,
+    name: string,
+    value: string,
+  ): Promise<void> {
+    const { data: key } = await this.octokit.rest.actions.getEnvironmentPublicKey({
+      owner,
+      repo,
+      environment_name: environment,
+    });
+    await this.octokit.rest.actions.createOrUpdateEnvironmentSecret({
+      owner,
+      repo,
+      environment_name: environment,
+      secret_name: name,
+      encrypted_value: await sealSecretValue(key.key, value),
+      key_id: key.key_id,
+    });
+  }
+
+  async deleteEnvironmentSecret(
+    owner: string,
+    repo: string,
+    environment: string,
+    name: string,
+  ): Promise<void> {
+    await this.octokit.rest.actions.deleteEnvironmentSecret({
+      owner,
+      repo,
+      environment_name: environment,
+      secret_name: name,
+    });
   }
 
   async listEnvironmentVariables(

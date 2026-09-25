@@ -77,8 +77,46 @@ export interface ActionsSecretManifest {
   readonly valueFrom: string;
   /** The repository the secret lives on. Absent for an organization secret. */
   readonly repository?: string;
+  /** The deployment environment on `repository` it is scoped to, if any. */
+  readonly environment?: string;
   /** Required on an organization secret; a repository secret has no visibility. */
   readonly visibility?: OrgConfigVisibility;
   /** Repository names that can read it. Only read with `visibility: "selected"`. */
   readonly selectedRepositories?: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Deployment environments — /repos/{owner}/{repo}/environments
+// ---------------------------------------------------------------------------
+
+/**
+ * Which refs may deploy to an environment: any branch, only protected
+ * branches, or the branches and tags matching the listed name patterns.
+ */
+export type DeploymentBranchPolicy =
+  | 'all'
+  | 'protected'
+  | { readonly branches?: string[]; readonly tags?: string[] };
+
+/** Who must approve a deployment before it runs. At most six in total. */
+export interface EnvironmentReviewers {
+  /** Team slugs. */
+  readonly teams?: string[];
+  /** User logins. */
+  readonly users?: string[];
+}
+
+/**
+ * A deployment environment on one repository. Every field but the identity is
+ * optional, and an omitted one is left as it stands on GitHub.
+ */
+export interface EnvironmentManifest {
+  readonly repository: string;
+  readonly name: string;
+  readonly deploymentBranchPolicy?: DeploymentBranchPolicy;
+  readonly reviewers?: EnvironmentReviewers;
+  /** Stop the person who triggered a deployment approving it. */
+  readonly preventSelfReview?: boolean;
+  /** Minutes to wait before a deployment proceeds, up to 43200. */
+  readonly waitTimer?: number;
 }

@@ -1,5 +1,6 @@
 import type { GitHubClient } from '../github/client.ts';
 import type { GovernanceChange } from './changes.ts';
+import { policyMode } from './plan-environments.ts';
 
 /**
  * Everything the governance applier needs beyond the change itself: a way to
@@ -293,6 +294,19 @@ export async function applyGovernanceChange(
             'Export it and re-run apply.',
         );
       }
+      if (secret.repository && secret.environment) {
+        ctx.log(
+          `Writing secret ${secret.name} on ${secret.repository} (${secret.environment})`,
+        );
+        await client.putEnvironmentSecret(
+          org,
+          secret.repository,
+          secret.environment,
+          secret.name,
+          value,
+        );
+        return;
+      }
       if (secret.repository) {
         ctx.log(`Writing secret ${secret.name} on ${secret.repository}`);
         await client.putRepositorySecret(
@@ -317,6 +331,18 @@ export async function applyGovernanceChange(
     }
 
     case 'delete-secret':
+      if (change.repository && change.environment) {
+        ctx.log(
+          `Deleting secret ${change.name} from ${change.repository} (${change.environment})`,
+        );
+        await client.deleteEnvironmentSecret(
+          org,
+          change.repository,
+          change.environment,
+          change.name,
+        );
+        return;
+      }
       ctx.log(
         change.repository
           ? `Deleting secret ${change.name} from ${change.repository}`
@@ -325,6 +351,61 @@ export async function applyGovernanceChange(
       await (change.repository
         ? client.deleteRepositorySecret(org, change.repository, change.name)
         : client.deleteOrgSecret(org, change.name));
+      return;
+
+    case 'put-environment': {
+      const { environment, current } = change;
+      ctx.log(
+        `${current ? 'Updating' : 'Creating'} environment ${environment.name} on ${environment.repository}`,
+      );
+      // The write replaces the protection rules, so every field the
+      // declaration leaves out is sent as it stands on GitHub.
+      const reviewers = environment.reviewers ?? current?.reviewers;
+      await client.putEnvironment(org, environment.repository, environment.name, {
+        deploymentBranchPolicy:
+          policyMode(environment.deploymentBranchPolicy) ??
+          current?.deploymentBranchPolicy ??
+          'all',
+        reviewers: [
+          ...(await Promise.all(
+            (reviewers?.teams ?? []).map(async (slug) => ({
+              type: 'Team' as const,
+              id: await client.getTeamId(org, ctx.resolveTeamSlug(slug)),
+            })),
+          )),
+          ...(await Promise.all(
+            (reviewers?.users ?? []).map(async (login) => ({
+              type: 'User' as const,
+              id: await client.getUserId(login),
+            })),
+          )),
+        ],
+        preventSelfReview:
+          environment.preventSelfReview ?? current?.preventSelfReview ?? false,
+        waitTimer: environment.waitTimer ?? current?.waitTimer ?? 0,
+      });
+      for (const policy of change.addPolicies) {
+        await client.createEnvironmentBranchPolicy(
+          org,
+          environment.repository,
+          environment.name,
+          policy.name,
+          policy.type,
+        );
+      }
+      return;
+    }
+
+    case 'delete-environment-branch-policy':
+      ctx.log(
+        `Removing ${change.policy.type} ${change.policy.name} from environment ${change.environment} on ${change.repository}`,
+      );
+      await client.deleteEnvironmentBranchPolicy(
+        org,
+        change.repository,
+        change.environment,
+        change.policy.id,
+      );
       return;
 
     case 'create-security-config': {

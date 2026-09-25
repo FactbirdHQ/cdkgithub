@@ -383,9 +383,11 @@ export function describeChange(change: Change): string {
         : '';
       return `${verb} variable ${change.variable.name}${where}`;
     }
+    case 'put-environment':
+      return `${change.current ? 'update' : 'create'} environment ${change.environment.name} on ${change.environment.repository}`;
     case 'put-secret': {
       const where = change.secret.repository
-        ? ` on ${change.secret.repository}`
+        ? ` on ${change.secret.repository}${change.secret.environment ? ` (${change.secret.environment})` : ''}`
         : '';
       return `write secret ${change.secret.name}${where}`;
     }
@@ -432,13 +434,15 @@ function describeDelete(change: Change): string {
       return `delete ruleset "${change.live.name}" from ${change.repository}`;
     case 'delete-runner-group':
       return `delete runner group "${change.live.name}"`;
+    case 'delete-environment-branch-policy':
+      return `remove ${change.policy.type} ${change.policy.name} from environment ${change.environment} on ${change.repository}`;
     case 'delete-variable':
       return change.repository
         ? `delete variable ${change.name} from ${change.repository}${change.environment ? ` (${change.environment})` : ''}`
         : `delete organization variable ${change.name}`;
     case 'delete-secret':
       return change.repository
-        ? `delete secret ${change.name} from ${change.repository}`
+        ? `delete secret ${change.name} from ${change.repository}${change.environment ? ` (${change.environment})` : ''}`
         : `delete organization secret ${change.name}`;
     case 'delete-security-config':
       return `delete code security configuration "${change.live.name}"`;

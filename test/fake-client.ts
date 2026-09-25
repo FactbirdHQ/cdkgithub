@@ -21,6 +21,8 @@ import type {
   LiveTeamMember,
   LiveTeamRepository,
   UpdateTeamParams,
+  EnvironmentSettings,
+  LiveEnvironment,
 } from '../src/github/client.ts';
 import type {
   AllowedActions,
@@ -70,6 +72,10 @@ export interface FakeClientState {
   orgSecrets?: LiveOrgSecret[];
   /** Repository variables keyed by repository name. */
   repositoryVariables?: Record<string, Array<{ name: string; value: string }>>;
+  /** Environments keyed by repository, then name, as getEnvironment reports them. */
+  environments?: Record<string, Record<string, LiveEnvironment>>;
+  /** Environment secret names keyed by repository, then environment name. */
+  environmentSecrets?: Record<string, Record<string, Array<{ name: string }>>>;
   /** Environment variables keyed by repository, then environment name. */
   environmentVariables?: Record<
     string,
@@ -114,6 +120,8 @@ export class FakeClient implements GitHubClient {
     string,
     Record<string, Array<{ name: string; value: string }>>
   >;
+  environments: Record<string, Record<string, LiveEnvironment>>;
+  environmentSecrets: Record<string, Record<string, Array<{ name: string }>>>;
   repositorySecrets: Record<string, Array<{ name: string }>>;
 
   links: Array<{ slug: string; groupId: number }> = [];
@@ -154,6 +162,8 @@ export class FakeClient implements GitHubClient {
     this.orgSecrets = state.orgSecrets ?? [];
     this.repositoryVariables = state.repositoryVariables ?? {};
     this.environmentVariables = state.environmentVariables ?? {};
+    this.environments = state.environments ?? {};
+    this.environmentSecrets = state.environmentSecrets ?? {};
     this.repositorySecrets = state.repositorySecrets ?? {};
   }
 
@@ -607,7 +617,88 @@ export class FakeClient implements GitHubClient {
     _owner: string,
     repo: string,
   ): Promise<string[]> {
-    return Object.keys(this.environmentVariables[repo] ?? {});
+    return [
+      ...new Set([
+        ...Object.keys(this.environments[repo] ?? {}),
+        ...Object.keys(this.environmentVariables[repo] ?? {}),
+        ...Object.keys(this.environmentSecrets[repo] ?? {}),
+      ]),
+    ];
+  }
+
+  async getEnvironment(
+    _owner: string,
+    repo: string,
+    name: string,
+  ): Promise<LiveEnvironment | undefined> {
+    return this.environments[repo]?.[name];
+  }
+
+  async putEnvironment(
+    _owner: string,
+    repo: string,
+    name: string,
+    settings: EnvironmentSettings,
+  ): Promise<void> {
+    this.record('putEnvironment', { repo, name, settings });
+  }
+
+  async createEnvironmentBranchPolicy(
+    _owner: string,
+    repo: string,
+    environment: string,
+    name: string,
+    type: 'branch' | 'tag',
+  ): Promise<void> {
+    this.record('createEnvironmentBranchPolicy', { repo, environment, name, type });
+  }
+
+  async deleteEnvironmentBranchPolicy(
+    _owner: string,
+    repo: string,
+    environment: string,
+    id: number,
+  ): Promise<void> {
+    this.record('deleteEnvironmentBranchPolicy', { repo, environment, id });
+  }
+
+  async getTeamId(_org: string, slug: string): Promise<number> {
+    const team = this.teams.find((t) => t.slug === slug);
+    if (!team) throw Object.assign(new Error(`no team ${slug}`), { status: 404 });
+    return team.id;
+  }
+
+  async getUserId(login: string): Promise<number> {
+    let h = 0;
+    for (let i = 0; i < login.length; i++) h = (h * 31 + login.charCodeAt(i)) | 0;
+    return Math.abs(h);
+  }
+
+  async listEnvironmentSecrets(
+    _owner: string,
+    repo: string,
+    environment: string,
+  ): Promise<Array<{ name: string }>> {
+    return this.environmentSecrets[repo]?.[environment] ?? [];
+  }
+
+  async putEnvironmentSecret(
+    _owner: string,
+    repo: string,
+    environment: string,
+    name: string,
+    value: string,
+  ): Promise<void> {
+    this.record('putEnvironmentSecret', { repo, environment, name, value });
+  }
+
+  async deleteEnvironmentSecret(
+    _owner: string,
+    repo: string,
+    environment: string,
+    name: string,
+  ): Promise<void> {
+    this.record('deleteEnvironmentSecret', { repo, environment, name });
   }
 
   async listEnvironmentVariables(
