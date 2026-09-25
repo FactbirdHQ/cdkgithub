@@ -16,6 +16,13 @@ export interface ActionsVariableProps {
   readonly repository?: string;
 
   /**
+   * A deployment environment on the repository, for a variable only jobs
+   * running in that environment read. The environment must already exist:
+   * cdkgithub declares variables in it, not the environment itself.
+   */
+  readonly environment?: string;
+
+  /**
    * Which repositories can read an organization variable. Required there, so
    * nobody finds out at apply time what a default decided; not accepted on a
    * repository variable, which only its own repository reads.

@@ -420,6 +420,11 @@ function toVariableManifest(
     repository,
     variable.props.visibility,
   );
+  if (variable.props.environment !== undefined && repository === undefined) {
+    throw new Error(
+      `Variable "${variable.variableName}" names environment "${variable.props.environment}" but no repository. An environment belongs to one repository: nest the variable under it or pass \`repository\`.`,
+    );
+  }
   return {
     ...variable.props,
     name: variable.variableName,
@@ -451,18 +456,22 @@ function toSecretManifest(secret: ActionsSecret): ActionsSecretManifest {
  * written.
  */
 function assertUniquePerRepository(
-  items: Array<{ name: string; repository?: string }> | undefined,
+  items:
+    | Array<{ name: string; repository?: string; environment?: string }>
+    | undefined,
   kind: string,
   caseInsensitive = true,
 ): void {
   const seen = new Set<string>();
   for (const item of items ?? []) {
     const name = caseInsensitive ? item.name.toUpperCase() : item.name;
-    const key = `${item.repository ?? ''} ${name}`;
+    const key = `${item.repository ?? ''} ${item.environment ?? ''} ${name}`;
     if (seen.has(key)) {
-      const where = item.repository
-        ? `repository "${item.repository}"`
-        : 'the organization';
+      const where = item.environment
+        ? `environment "${item.environment}" of repository "${item.repository}"`
+        : item.repository
+          ? `repository "${item.repository}"`
+          : 'the organization';
       throw new Error(`Duplicate ${kind} "${item.name}" on ${where}.`);
     }
     seen.add(key);

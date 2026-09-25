@@ -70,6 +70,11 @@ export interface FakeClientState {
   orgSecrets?: LiveOrgSecret[];
   /** Repository variables keyed by repository name. */
   repositoryVariables?: Record<string, Array<{ name: string; value: string }>>;
+  /** Environment variables keyed by repository, then environment name. */
+  environmentVariables?: Record<
+    string,
+    Record<string, Array<{ name: string; value: string }>>
+  >;
   /** Repository secret names keyed by repository name. */
   repositorySecrets?: Record<string, Array<{ name: string }>>;
 }
@@ -105,6 +110,10 @@ export class FakeClient implements GitHubClient {
   orgVariables: LiveOrgVariable[];
   orgSecrets: LiveOrgSecret[];
   repositoryVariables: Record<string, Array<{ name: string; value: string }>>;
+  environmentVariables: Record<
+    string,
+    Record<string, Array<{ name: string; value: string }>>
+  >;
   repositorySecrets: Record<string, Array<{ name: string }>>;
 
   links: Array<{ slug: string; groupId: number }> = [];
@@ -144,6 +153,7 @@ export class FakeClient implements GitHubClient {
     this.orgVariables = state.orgVariables ?? [];
     this.orgSecrets = state.orgSecrets ?? [];
     this.repositoryVariables = state.repositoryVariables ?? {};
+    this.environmentVariables = state.environmentVariables ?? {};
     this.repositorySecrets = state.repositorySecrets ?? {};
   }
 
@@ -591,6 +601,50 @@ export class FakeClient implements GitHubClient {
     name: string,
   ): Promise<void> {
     this.record('deleteRepositoryVariable', { repo, name });
+  }
+
+  async listRepositoryEnvironments(
+    _owner: string,
+    repo: string,
+  ): Promise<string[]> {
+    return Object.keys(this.environmentVariables[repo] ?? {});
+  }
+
+  async listEnvironmentVariables(
+    _owner: string,
+    repo: string,
+    environment: string,
+  ): Promise<Array<{ name: string; value: string }>> {
+    return this.environmentVariables[repo]?.[environment] ?? [];
+  }
+
+  async createEnvironmentVariable(
+    _owner: string,
+    repo: string,
+    environment: string,
+    name: string,
+    value: string,
+  ): Promise<void> {
+    this.record('createEnvironmentVariable', { repo, environment, name, value });
+  }
+
+  async updateEnvironmentVariable(
+    _owner: string,
+    repo: string,
+    environment: string,
+    name: string,
+    value: string,
+  ): Promise<void> {
+    this.record('updateEnvironmentVariable', { repo, environment, name, value });
+  }
+
+  async deleteEnvironmentVariable(
+    _owner: string,
+    repo: string,
+    environment: string,
+    name: string,
+  ): Promise<void> {
+    this.record('deleteEnvironmentVariable', { repo, environment, name });
   }
 
   // ---- actions secrets -----------------------------------------------------
