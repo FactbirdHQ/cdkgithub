@@ -88,9 +88,6 @@ export interface OrganizationProps {
   readonly customRepositoryRole?: Readonly<
     Record<string, CustomRepositoryRoleProps>
   >;
-
-  /** Top-level teams, by construct id. Each may declare its own `subTeam`s. */
-  readonly team?: Readonly<Record<string, TeamProps>>;
 }
 
 /**
@@ -138,15 +135,13 @@ export class Organization extends Construct {
     )) {
       this.addCustomRepositoryRole(name, options);
     }
-    for (const [id, options] of Object.entries(props.team ?? {})) {
-      this.addTeam(id, options);
-    }
   }
 
   /**
    * Declare a top-level team. Its roster is checked against the declared
-   * vocabulary, the same as the `team` prop, and its `addSubTeam` children
-   * inherit that check.
+   * vocabulary, as `new Team` checks it, and its `addSubTeam` children
+   * inherit that check. Teams have no record prop, only this and
+   * {@link Team.addSubTeam}.
    */
   addTeam(id: string, props: TeamProps = {}): Team {
     return new Team(this, id, props);

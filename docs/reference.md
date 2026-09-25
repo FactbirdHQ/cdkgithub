@@ -161,8 +161,8 @@ the construct it creates.
 | `Organization` | `codeSecurityConfiguration` | `addCodeSecurityConfiguration(name, options)` | `CodeSecurityConfiguration` |
 | `Organization` | `organizationRole` | `addOrganizationRole(name, options)` | `OrganizationRole` |
 | `Organization` | `customRepositoryRole` | `addCustomRepositoryRole(name, options)` | `CustomRepositoryRole` |
-| `Organization` | `team` | `addTeam(id, props)` | `Team` |
-| `Team` | `subTeam` | `addSubTeam(id, props)` | `Team` |
+| `Organization` | none | `addTeam(id, props)` | `Team` |
+| `Team` | none | `addSubTeam(id, props)` | `Team` |
 | `Repository` | `environment` | `addEnvironment(name, options)` | `Environment` |
 | `Repository` | `variable` | `addVariable(name, value)` | `ActionsVariable` |
 | `Repository` | `secret` | `addSecret(name, options)` | `ActionsSecret` |
@@ -171,10 +171,11 @@ the construct it creates.
 | `Environment` | `variable` | `addVariable(name, value)` | `ActionsVariable` |
 | `Environment` | `secret` | `addSecret(name, options)` | `ActionsSecret` |
 
-A subclass of `Team` that builds its children in its own constructor is one
-more spelling of the same tree, the one-directory-per-team layout. `addTeam`,
-`addSubTeam`, `team` and `subTeam` check rosters against the declared
-vocabulary exactly as `new Team` does.
+Teams are the exception to the record prop: a tree is written with `addTeam`
+and `addSubTeam`, with nested `new Team`, or with a `Team` subclass that
+builds its children in its own constructor, the one-directory-per-team layout,
+and all three synthesize the same tree. `addTeam` and `addSubTeam` check
+rosters against the declared vocabulary exactly as `new Team` does.
 
 The authoring API, all exported from `src/index.ts`.
 
