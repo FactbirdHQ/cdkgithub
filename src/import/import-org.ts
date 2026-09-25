@@ -35,7 +35,7 @@ import type {
 
 export interface ImportOptions {
   /**
-   * Walk repositories and import their rulesets, Actions variables, and
+   * Walk repositories and import their rulesets, collaborators, Actions variables, and
    * Actions secrets: `true` for every repository in the organization, or the
    * names of the ones to walk.
    */
@@ -303,7 +303,7 @@ async function importRepositories(
     a.name.localeCompare(b.name);
 
   for (const repository of names) {
-    const [rulesets, variables, environments, secrets] = await Promise.all([
+    const [rulesets, variables, environments, secrets, collaborators] = await Promise.all([
       attempt('rulesets', repository, () =>
         client.listRepositoryRulesets(org, repository),
       ),
@@ -323,6 +323,9 @@ async function importRepositories(
       }),
       attempt('secrets', repository, () =>
         client.listRepositorySecrets(org, repository),
+      ),
+      attempt('collaborators', repository, () =>
+        client.listRepositoryCollaborators(org, repository),
       ),
     ]);
 
@@ -348,6 +351,15 @@ async function importRepositories(
         id: secret.name,
         props: {},
       })),
+      // A pending invitation is imported as the grant it asks for, so the
+      // definition keeps it rather than proposing to withdraw it.
+      ...[...(collaborators ?? [])]
+        .sort((a, b) => a.login.localeCompare(b.login))
+        .map((collaborator) => ({
+          type: 'Collaborator',
+          id: collaborator.login,
+          props: { permission: collaborator.permission },
+        })),
       // Each environment, then what lives in it. The ids carry the environment,
       // because a repository-wide entry and an environment's may share a name
       // under the one repository scope.
@@ -475,6 +487,7 @@ const IMPORT_ORDER = [
   'ActionsVariable',
   'App',
   'CodeSecurityConfiguration',
+  'Collaborator',
   'CustomProperty',
   'CustomRepositoryRole',
   'Environment',

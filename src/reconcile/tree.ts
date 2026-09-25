@@ -78,6 +78,20 @@ export interface OrgTree {
    * folds it back in, which is the only place the two meet.
    */
   readonly orgRoles?: readonly OrgRoleAssignment[];
+  /**
+   * People granted a repository directly, outside any team. Like an
+   * organization role this sits outside the team tree, and the access review
+   * folds it back in. A pending invitation holds nothing yet, so the live side
+   * leaves invitations out.
+   */
+  readonly collaborators?: readonly DirectGrant[];
+}
+
+/** A person holding one repository directly, outside any team. */
+export interface DirectGrant {
+  readonly repository: string;
+  readonly login: string;
+  readonly permission: string;
 }
 
 /** The fields a team carries before its place in the tree is known. */
@@ -107,9 +121,20 @@ export async function readLiveTree(
   client: GitHubClient,
   owner: string,
   ownerType: DesiredState['ownerType'] = 'organization',
+  collaboratorRepositories: readonly string[] = [],
 ): Promise<OrgTree> {
+  const collaborators = (
+    await Promise.all(
+      collaboratorRepositories.map(async (repository) =>
+        (await client.listRepositoryCollaborators(owner, repository))
+          .filter((c) => c.invitationId === undefined)
+          .map((c) => ({ repository, login: c.login, permission: c.permission })),
+      ),
+    )
+  ).flat();
+
   // A personal account has no teams, and asking for them 404s.
-  if (ownerType === 'user') return buildTree(owner, [], []);
+  if (ownerType === 'user') return { ...buildTree(owner, [], []), collaborators };
 
   const [teams, customRoles, repositories, orgRoles] = await Promise.all([
     client.listTeams(owner),
@@ -133,6 +158,7 @@ export async function readLiveTree(
     ...buildTree(owner, narrowLiveSeeds(seeds, ranks), customRoles),
     repositories,
     orgRoles,
+    collaborators,
   };
 }
 
@@ -265,6 +291,11 @@ export function desiredTree(
     ...buildTree(desired.owner, seeds, customRoles),
     orgRoles,
     repositories,
+    collaborators: desired.collaborators?.map((c) => ({
+      repository: c.repository,
+      login: c.login,
+      permission: comparableRoleName(c.permission),
+    })),
   };
 }
 

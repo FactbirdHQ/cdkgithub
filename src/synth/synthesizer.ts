@@ -2,6 +2,7 @@ import type { IConstruct } from 'constructs';
 import { ActionsPolicy } from '../constructs/actions-policy.ts';
 import { ActionsSecret } from '../constructs/actions-secret.ts';
 import { ActionsVariable } from '../constructs/actions-variable.ts';
+import { Collaborator } from '../constructs/collaborator.ts';
 import { Environment } from '../constructs/environment.ts';
 import { BranchProtection } from '../constructs/branch-protection.ts';
 import { CodeSecurityConfiguration } from '../constructs/code-security.ts';
@@ -29,6 +30,7 @@ import type { BranchProtectionManifest } from './branch-protection.ts';
 import type {
   ActionsPolicyManifest,
   CodeSecurityConfigurationManifest,
+  CollaboratorManifest,
   CustomPropertyManifest,
   RepositoryRulesetManifest,
   RulesetManifest,
@@ -82,6 +84,7 @@ export function synthesize(root: IConstruct): DesiredState {
       secret: _secret,
       ruleset: _ruleset,
       branchProtection: _branchProtection,
+      collaborator: _collaborator,
       ...props
     } = r.props;
     return { name: r.repositoryName, ...props };
@@ -117,6 +120,7 @@ export function synthesize(root: IConstruct): DesiredState {
   const actionsVariables = collect(root, ActionsVariable, toVariableManifest);
   const actionsSecrets = collect(root, ActionsSecret, toSecretManifest);
   const environments = collect(root, Environment, toEnvironmentManifest);
+  const collaborators = collect(root, Collaborator, toCollaboratorManifest);
 
   assertUniqueNames(repositories, 'repository');
   assertUniqueNames(rulesets, 'ruleset');
@@ -129,6 +133,10 @@ export function synthesize(root: IConstruct): DesiredState {
   assertUniquePerRepository(actionsVariables, 'variable');
   assertUniquePerRepository(actionsSecrets, 'secret');
   assertUniquePerRepository(environments, 'environment', false);
+  assertUniquePerRepository(
+    collaborators?.map((c) => ({ name: c.login, repository: c.repository })),
+    'collaborator',
+  );
 
   const state: DesiredState = {
     owner: owner.login,
@@ -148,6 +156,7 @@ export function synthesize(root: IConstruct): DesiredState {
     actionsVariables,
     actionsSecrets,
     environments,
+    collaborators,
     scim: singleScimProvisioning(root, owner.login, teams),
   };
 
@@ -515,6 +524,17 @@ function toSecretManifest(secret: ActionsSecret): ActionsSecretManifest {
     repository,
     ...(environment === undefined ? {} : { environment }),
   };
+}
+
+function toCollaboratorManifest(collaborator: Collaborator): CollaboratorManifest {
+  const repository =
+    collaborator.props.repository ?? nearestRepository(collaborator)?.repositoryName;
+  if (repository === undefined) {
+    throw new Error(
+      `Collaborator "${collaborator.login}" names no repository. Nest it under a Repository or pass \`repository\`.`,
+    );
+  }
+  return { repository, login: collaborator.login, permission: collaborator.props.permission };
 }
 
 function toEnvironmentManifest(environment: Environment): EnvironmentManifest {

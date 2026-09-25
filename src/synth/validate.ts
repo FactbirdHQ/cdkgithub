@@ -110,6 +110,7 @@ export function validateManifest(value: unknown, path: string): DesiredState {
     'actionsVariables',
     'actionsSecrets',
     'environments',
+    'collaborators',
     'codeSecurityConfigurations',
     'customProperties',
     'branchProtection',

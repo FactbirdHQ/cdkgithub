@@ -14,6 +14,8 @@
  *   desired state the same way before comparing it to what GitHub returns.
  */
 
+import type { RepoPermission } from './manifest.ts';
+
 // ---------------------------------------------------------------------------
 // Organization settings — PATCH /orgs/{org}
 // ---------------------------------------------------------------------------
@@ -498,6 +500,13 @@ export type RepositoryVisibility = 'public' | 'private' | 'internal';
  * Everything but `name` describes what to create. An existing repository is
  * adopted unchanged, so none of it is compared against a live one.
  */
+/** A person granted access to one repository directly, outside any team. */
+export interface CollaboratorManifest {
+  readonly repository: string;
+  readonly login: string;
+  readonly permission: RepoPermission;
+}
+
 export interface RepositoryManifest {
   readonly name: string;
   readonly description?: string;
