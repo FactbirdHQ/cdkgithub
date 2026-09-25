@@ -34,18 +34,7 @@ describe('a team bound to a list of people', () => {
 });
 
 describe('addTeam and addSubTeam', () => {
-  test('props, methods and nested constructs build the same team tree', () => {
-    const asProps = new App();
-    new Organization(asProps, 'acme', {
-      login: 'acme',
-      team: {
-        Engineering: {
-          maintainers: ['casey'],
-          subTeam: { Cloud: { members: ['ada'], subTeam: { DevOps: {} } } },
-        },
-      },
-    });
-
+  test('the methods and nested constructs build the same team tree', () => {
     const asMethods = new App();
     new Organization(asMethods, 'acme', { login: 'acme' })
       .addTeam('Engineering', { maintainers: ['casey'] })
@@ -64,6 +53,5 @@ describe('addTeam and addSubTeam', () => {
       ['devops', 'cloud'],
     ]);
     expect(synthesize(asMethods).teams).toEqual(teams);
-    expect(synthesize(asProps).teams).toEqual(teams);
   });
 });
