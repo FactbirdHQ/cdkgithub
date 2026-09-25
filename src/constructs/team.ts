@@ -76,6 +76,12 @@ export interface TeamProps<Member extends string = VocabularyMember> {
  * Nesting is expressed through the construct tree: a `Team` whose scope is
  * another `Team` becomes a child (GitHub `parent_team_id`) of that team. A team
  * scoped directly under an `Organization` is top-level.
+ *
+ * A child can be added with {@link Team.addSubTeam} or made with
+ * `new Team(parent, …)`, and the two synthesize identically; so does a subclass
+ * that constructs its children in its own constructor. Unlike the other child
+ * constructs there is no record prop for them: a team tree reads as the chain
+ * or the classes that build it, not as a nested literal.
  */
 export class Team<Member extends string = VocabularyMember> extends Construct {
   /** The team name (falls back to the construct id). */
@@ -89,6 +95,11 @@ export class Team<Member extends string = VocabularyMember> extends Construct {
     this.props = props;
     this.teamName = props.name ?? id;
     this.slug = Team.slugify(this.teamName);
+  }
+
+  /** Declare a child team of this one. */
+  addSubTeam(id: string, props: TeamProps<Member> = {}): Team<Member> {
+    return new Team<Member>(this, id, props);
   }
 
   /**

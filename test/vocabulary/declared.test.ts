@@ -45,6 +45,17 @@ describe('a declared vocabulary', () => {
     expect(org).toBeDefined();
   });
 
+  test('addTeam and addSubTeam check the roster the same way', () => {
+    const app = new App();
+    const org = new Organization(app, 'acme', { login: 'acme' });
+    const cloud = org.addTeam('cloud', { members: ['ana'] });
+    // @ts-expect-error 'anna' is not one of USERS
+    org.addTeam('ops', { members: ['anna'] });
+    // @ts-expect-error 'anna' is not one of USERS
+    cloud.addSubTeam('devops', { members: ['anna'] });
+    expect(org).toBeDefined();
+  });
+
   test('a repository that is not declared does not compile', () => {
     // @ts-expect-error 'nset' is not one of REPOSITORIES
     const grant = push('nset');
