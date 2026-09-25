@@ -28,6 +28,18 @@ export interface OrganizationProps {
    * ```
    */
   readonly settings?: OrganizationSettings;
+
+  /**
+   * Own this organization's Actions secrets even when the definition declares none
+   * on it. An {@link ActionsSecret} in the scope owns it already; this keeps it
+   * owned once the last one is removed, so that removal plans a delete (gated
+   * by `--allow-delete=secrets`) instead of dropping the scope from what is
+   * read and leaving the secret on GitHub.
+   */
+  readonly ownsSecrets?: boolean;
+
+  /** The same for Actions variables, gated by `--allow-delete=variables`. */
+  readonly ownsVariables?: boolean;
 }
 
 /**
@@ -37,10 +49,14 @@ export interface OrganizationProps {
 export class Organization extends Construct {
   public readonly login: string;
   public readonly settings?: OrganizationSettings;
+  public readonly ownsSecrets?: boolean;
+  public readonly ownsVariables?: boolean;
 
   constructor(scope: Construct, id: string, props: OrganizationProps) {
     super(scope, id);
     this.login = props.login;
     this.settings = props.settings;
+    this.ownsSecrets = props.ownsSecrets;
+    this.ownsVariables = props.ownsVariables;
   }
 }

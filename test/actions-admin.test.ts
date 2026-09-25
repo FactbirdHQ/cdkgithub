@@ -451,3 +451,53 @@ describe('secrets', () => {
     ).toEqual(['SHARED_EXPORT']);
   });
 });
+
+describe('owned scopes', () => {
+  test('removing the last secret on an owned repository plans its delete', async () => {
+    const app = new App();
+    const org = new Organization(app, 'acme', { login: 'acme' });
+    new Repository(org, 'flight-deck', { ownsSecrets: true });
+    new Repository(org, 'dotfiles');
+
+    const state = synthesize(app);
+    // Ownership shapes what is read, never what a new repository is created with.
+    expect(state.repositories).toEqual([
+      { name: 'flight-deck' },
+      { name: 'dotfiles' },
+    ]);
+    expect(state.ownedSecretScopes).toEqual({ repositories: ['flight-deck'] });
+
+    const client = new FakeClient({
+      repositorySecrets: {
+        'flight-deck': [{ name: 'SENTRY_DSN' }],
+        dotfiles: [{ name: 'HOMEBREW_TOKEN' }],
+      },
+    });
+    const changes = plan(state, await readLiveState(client, state));
+
+    expect(changes.filter((c) => c.kind === 'delete-secret')).toEqual([
+      { kind: 'delete-secret', name: 'SENTRY_DSN', repository: 'flight-deck' },
+    ]);
+  });
+
+  test('an organization that owns its secrets and variables prunes them with none declared', async () => {
+    const app = new App();
+    new Organization(app, 'acme', {
+      login: 'acme',
+      ownsSecrets: true,
+      ownsVariables: true,
+    });
+
+    const state = synthesize(app);
+    const client = new FakeClient({
+      orgSecrets: [{ name: 'LEGACY', visibility: 'all' }],
+      orgVariables: [{ name: 'REGION', value: 'eu-west-1', visibility: 'all' }],
+    });
+    const changes = plan(state, await readLiveState(client, state));
+
+    expect(changes).toEqual([
+      { kind: 'delete-variable', name: 'REGION' },
+      { kind: 'delete-secret', name: 'LEGACY' },
+    ]);
+  });
+});

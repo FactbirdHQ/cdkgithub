@@ -37,6 +37,7 @@ import type {
   RepoPermission,
   RepositoryAccess,
   ExternalGroupBinding,
+  OwnedScopes,
   OwnerType,
   TeamManifest,
 } from './manifest.ts';
@@ -71,10 +72,16 @@ export function synthesize(root: IConstruct): DesiredState {
   assertNoDuplicateGrants(root.node.findAll().filter(isTeam));
 
   const branchProtection = collect(root, BranchProtection, toBranchProtection);
-  const repositories = collect(root, Repository, (r) => ({
-    name: r.repositoryName,
-    ...r.props,
-  }));
+  // Ownership is a planning concern, not something to create a repository
+  // with, so it leaves the repository manifest and becomes the owned scopes.
+  const repositories = collect(root, Repository, (r) => {
+    const { ownsSecrets: _secrets, ownsVariables: _variables, ...props } =
+      r.props;
+    return { name: r.repositoryName, ...props };
+  });
+  const declaredRepositories = root.node
+    .findAll()
+    .filter((c): c is Repository => c instanceof Repository);
   const rulesets = collect(root, Ruleset, toRulesetManifest);
   const customRepositoryRoles = collect(root, CustomRepositoryRole, (r) => ({
     name: r.roleName,
@@ -134,6 +141,14 @@ export function synthesize(root: IConstruct): DesiredState {
     runnerGroups,
     actionsVariables,
     actionsSecrets,
+    ownedVariableScopes: ownedScopes(
+      owner.ownsVariables,
+      declaredRepositories.filter((r) => r.props.ownsVariables),
+    ),
+    ownedSecretScopes: ownedScopes(
+      owner.ownsSecrets,
+      declaredRepositories.filter((r) => r.props.ownsSecrets),
+    ),
     scim: singleScimProvisioning(root, owner.login, teams),
   };
 
@@ -146,6 +161,8 @@ interface ResolvedOwner {
   readonly login: string;
   readonly type: OwnerType;
   readonly settings?: Organization['settings'];
+  readonly ownsSecrets?: boolean;
+  readonly ownsVariables?: boolean;
 }
 
 /** The single Organization or UserAccount the tree is defined against. */
@@ -172,7 +189,13 @@ function resolveOwner(root: IConstruct): ResolvedOwner {
 
   const owner = owners[0]!;
   return owner instanceof Organization
-    ? { login: owner.login, type: 'organization', settings: owner.settings }
+    ? {
+        login: owner.login,
+        type: 'organization',
+        settings: owner.settings,
+        ownsSecrets: owner.ownsSecrets,
+        ownsVariables: owner.ownsVariables,
+      }
     : { login: owner.login, type: 'user' };
 }
 
@@ -246,6 +269,20 @@ function nearestRepository(construct: IConstruct): Repository | undefined {
  * absent collection means the surface is unmanaged, an empty one would mean the
  * definition owns the surface and wants it empty.
  */
+/** The scopes declared owned without an entry, or nothing when none is. */
+function ownedScopes(
+  organization: boolean | undefined,
+  repositories: Repository[],
+): OwnedScopes | undefined {
+  if (!organization && repositories.length === 0) return undefined;
+  return {
+    ...(organization ? { organization: true } : {}),
+    ...(repositories.length > 0
+      ? { repositories: repositories.map((r) => r.repositoryName) }
+      : {}),
+  };
+}
+
 function collect<C extends IConstruct, M>(
   root: IConstruct,
   type: abstract new (...args: never[]) => C,

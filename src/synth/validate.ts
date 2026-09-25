@@ -98,6 +98,27 @@ export function validateManifest(value: unknown, path: string): DesiredState {
     }
   }
 
+  // The owned scopes decide what is read and pruned, so a malformed one would
+  // widen or narrow a deletion rather than fail on its own.
+  for (const field of ['ownedVariableScopes', 'ownedSecretScopes'] as const) {
+    const owned = state[field] as Record<string, unknown> | undefined;
+    if (owned === undefined) continue;
+    if (
+      typeof owned !== 'object' ||
+      owned === null ||
+      Array.isArray(owned) ||
+      (owned.organization !== undefined &&
+        typeof owned.organization !== 'boolean') ||
+      (owned.repositories !== undefined &&
+        (!Array.isArray(owned.repositories) ||
+          owned.repositories.some((r) => typeof r !== 'string')))
+    ) {
+      fail(
+        `"${field}" must be { organization?: boolean, repositories?: string[] }.`,
+      );
+    }
+  }
+
   // The governance collections are arrays when present; their per-entry shapes
   // are diffed field-by-field and fail loudly on their own.
   for (const collection of [
