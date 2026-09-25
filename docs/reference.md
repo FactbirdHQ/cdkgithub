@@ -90,7 +90,7 @@ properties under Custom properties; teams under Members; runner groups under
 Self-hosted runners; organization secrets and variables, read for every
 organization, under the organization Secrets and Variables permissions, and their repository-scoped
 counterparts, with repository rulesets, under the matching repository
-permissions) except one: the SCIM external-group endpoints behind
+permissions, environment variables under Environments) except one: the SCIM external-group endpoints behind
 `--enable-scim` are absent from GitHub's
 [fine-grained permissions index](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens)
 and still want a classic token with `admin:org`.
@@ -130,7 +130,8 @@ on:
   `Repository`, or a repository an entry names, owns that repository's.
   Removing the last secret on a repository therefore plans its delete, and
   a live secret nobody declared is a gated removal the next `plan` shows.
-  Each declared repository costs one read per collection on every `plan`.
+  Each declared repository costs one read per collection on every `plan`,
+  and its variables one more for its environments and one per environment.
 
 Within a resource, only the fields you write are compared. GitHub returns
 every field it knows, defaults included, so `plan` asks whether the live
@@ -374,6 +375,10 @@ new ActionsSecret(org, "NPM_TOKEN", { visibility: "private" });
 
 const deck = new Repository(org, "flow-portal");
 new ActionsVariable(deck, "SENTRY_PROJECT", { value: "deck" });
+new ActionsVariable(deck, "DEPLOY_ROLE_ARN", {
+  environment: "production",            // only jobs running in it read it
+  value: "arn:aws:iam::123456789012:role/deck-deploy",
+});
 new ActionsSecret(deck, "SENTRY_DSN", { valueFrom: "DECK_SENTRY_DSN" });
 ```
 
@@ -383,6 +388,13 @@ organization. An organization entry must declare `visibility` (`all`,
 `private`, or `selected` with `selectedRepositories`), and a repository
 entry must not, because only its own repository reads it. Names compare
 case-insensitively, the way GitHub stores them.
+
+A variable with `environment` lives in that deployment environment of its
+repository and is read only by jobs that run in it. The environment has to
+exist already: cdkgithub declares variables in it and does not create it, and
+`plan` fails on one the repository does not have. Every environment of a
+repository whose variables are owned is owned too, so an environment variable
+nobody declared is a gated removal.
 
 A variable carries its value in the clear and diffs on it. A secret carries
 no value anywhere: `valueFrom` names the environment variable `apply` reads

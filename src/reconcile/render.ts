@@ -161,19 +161,19 @@ export function renderPlan(changes: Change[]): string {
 
       case 'create-variable': {
         const v = change.variable;
-        const scope = v.repository ? `${v.repository} ` : '';
+        const scope = variableScope(v.repository, v.environment);
         lines.push(`  + ${scope}variable ${v.name} = ${compact(v.value, 80)}`);
         break;
       }
       case 'update-variable': {
         const v = change.variable;
-        const scope = v.repository ? `${v.repository} ` : '';
+        const scope = variableScope(v.repository, v.environment);
         lines.push(`  ~ ${scope}variable ${v.name}`);
         lines.push(...renderFields(change.fields));
         break;
       }
       case 'delete-variable': {
-        const scope = change.repository ? `${change.repository} ` : '';
+        const scope = variableScope(change.repository, change.environment);
         lines.push(
           `  - ${scope}variable ${change.name}   (requires --allow-delete)`,
         );
@@ -406,4 +406,10 @@ export function summarize(changes: Change[]): {
     delete: count(BUCKETS.delete),
     link: count(BUCKETS.link),
   };
+}
+
+/** "repo " or "repo (environment) " before a variable, nothing for the organization's. */
+function variableScope(repository?: string, environment?: string): string {
+  if (!repository) return '';
+  return environment ? `${repository} (${environment}) ` : `${repository} `;
 }

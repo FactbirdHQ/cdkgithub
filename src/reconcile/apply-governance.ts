@@ -206,6 +206,27 @@ export async function applyGovernanceChange(
     case 'update-variable': {
       const variable = change.variable;
       const creating = change.kind === 'create-variable';
+      if (variable.repository && variable.environment) {
+        ctx.log(
+          `${creating ? 'Creating' : 'Updating'} variable ${variable.name} on ${variable.repository} (${variable.environment})`,
+        );
+        await (creating
+          ? client.createEnvironmentVariable(
+              org,
+              variable.repository,
+              variable.environment,
+              variable.name,
+              variable.value,
+            )
+          : client.updateEnvironmentVariable(
+              org,
+              variable.repository,
+              variable.environment,
+              variable.name,
+              variable.value,
+            ));
+        return;
+      }
       if (variable.repository) {
         ctx.log(
           `${creating ? 'Creating' : 'Updating'} variable ${variable.name} on ${variable.repository}`,
@@ -239,6 +260,18 @@ export async function applyGovernanceChange(
     }
 
     case 'delete-variable':
+      if (change.repository && change.environment) {
+        ctx.log(
+          `Deleting variable ${change.name} from ${change.repository} (${change.environment})`,
+        );
+        await client.deleteEnvironmentVariable(
+          org,
+          change.repository,
+          change.environment,
+          change.name,
+        );
+        return;
+      }
       ctx.log(
         change.repository
           ? `Deleting variable ${change.name} from ${change.repository}`
