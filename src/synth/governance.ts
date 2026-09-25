@@ -267,6 +267,13 @@ export type RulesetRule =
         readonly allowedMergeMethods?: Array<'merge' | 'squash' | 'rebase'>;
         /** Request a Copilot review on every new pull request. */
         readonly automaticCopilotCodeReviewEnabled?: boolean;
+        /**
+         * GitHub's `require_extra_approval_for_unattributed_changes`. GitHub
+         * reports it on every pull request rule, but a rule written without it
+         * takes whatever GitHub defaults it to, so a rule that relies on it
+         * should declare it.
+         */
+        readonly requireExtraApprovalForUnattributedChanges?: boolean;
       };
     }
   | {
