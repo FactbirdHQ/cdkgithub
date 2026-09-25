@@ -70,13 +70,13 @@ export interface LiveState {
   /** Rulesets of the repositories the definition declares rulesets on, and no others. */
   readonly repositoryRulesets?: LiveRepositoryRuleset[];
   readonly runnerGroups?: LiveRunnerGroup[];
-  /** Read only when the definition owns the organization's variables. */
+  /** The organization's variables, read whenever the owner is an organization. */
   readonly actionsVariables?: LiveOrgVariable[];
-  /** Read only when the definition owns the organization's secrets. */
+  /** The organization's secret names, read whenever the owner is an organization. */
   readonly actionsSecrets?: LiveOrgSecret[];
-  /** Variables of the repositories the definition owns the variables of. */
+  /** Variables of every repository the definition declares or an entry names. */
   readonly repositoryVariables?: LiveRepoVariable[];
-  /** Secret names of the repositories the definition owns the secrets of. */
+  /** Secret names of every repository the definition declares or an entry names. */
   readonly repositorySecrets?: LiveRepoSecret[];
   readonly securityConfigurations?: LiveCodeSecurityConfiguration[];
   readonly defaultSecurityConfigurations?: LiveDefaultSecurityConfiguration[];
@@ -113,14 +113,8 @@ export async function readLiveState(
   const beingCreated = new Set(
     (desired.repositories ?? []).map((r) => r.name),
   );
-  const variableScopes = scopesOf(
-    desired.actionsVariables,
-    desired.ownedVariableScopes,
-  );
-  const secretScopes = scopesOf(
-    desired.actionsSecrets,
-    desired.ownedSecretScopes,
-  );
+  const variableScopes = scopesOf(desired.actionsVariables, desired);
+  const secretScopes = scopesOf(desired.actionsSecrets, desired);
 
   // A team is read back only for the surface it declares, so a definition that
   // names teams without rosters or access maps still costs one call in total.

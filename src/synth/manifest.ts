@@ -12,7 +12,6 @@
 import type {
   ActionsSecretManifest,
   ActionsVariableManifest,
-  OwnedScopes,
   RunnerGroupManifest,
 } from './actions-admin.ts';
 import type { BranchProtectionManifest } from './branch-protection.ts';
@@ -208,10 +207,6 @@ export interface DesiredState {
   readonly actionsVariables?: ActionsVariableManifest[];
   /** Actions secrets, scoped the same way. Values live in the environment, never here. */
   readonly actionsSecrets?: ActionsSecretManifest[];
-  /** Scopes whose variables are owned whether or not `actionsVariables` names them. */
-  readonly ownedVariableScopes?: OwnedScopes;
-  /** Scopes whose secrets are owned whether or not `actionsSecrets` names them. */
-  readonly ownedSecretScopes?: OwnedScopes;
   /**
    * The Entra ID enterprise application that provisions security groups into
    * GitHub. Reconciled by `cdkgithub scim`, not by `apply`: it writes to
