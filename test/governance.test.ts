@@ -671,3 +671,43 @@ describe('ruleset bypass actors', () => {
     ]);
   });
 });
+
+describe('unattributed-changes approval', () => {
+  const declaring = (value: boolean): RulesetManifest => ({
+    ...protectMain,
+    rules: protectMain.rules.map((rule) =>
+      rule.type === 'pull_request'
+        ? { ...rule, parameters: { ...rule.parameters, requireExtraApprovalForUnattributedChanges: value } }
+        : rule,
+    ),
+  });
+  const liveWith = (value: boolean) =>
+    liveProtectMain({
+      rules: liveProtectMain().rules.map((rule) =>
+        rule.type === 'pull_request'
+          ? ({
+              ...rule,
+              parameters: { ...rule.parameters, requireExtraApprovalForUnattributedChanges: value },
+            } as RulesetManifest['rules'][number])
+          : rule,
+      ),
+    });
+
+  test('is compared once declared, and left alone otherwise', () => {
+    expect(plan(desired({ rulesets: [declaring(true)] }), live({ rulesets: [liveWith(true)] }))).toEqual([]);
+    expect(plan(desired({ rulesets: [protectMain] }), live({ rulesets: [liveWith(false)] }))).toEqual([]);
+    expect(
+      plan(desired({ rulesets: [declaring(true)] }), live({ rulesets: [liveWith(false)] })).map((c) => c.kind),
+    ).toEqual(['update-ruleset']);
+  });
+
+  test('reaches GitHub under its snake_case name', () => {
+    const [, , rule] = toSnakeCaseKeys(declaring(true).rules) as Array<{ parameters?: Record<string, unknown> }>;
+    expect(rule?.parameters?.require_extra_approval_for_unattributed_changes).toBe(true);
+    expect(
+      toCamelCaseKeys<unknown>([
+        { type: 'pull_request', parameters: { require_extra_approval_for_unattributed_changes: true } },
+      ]),
+    ).toEqual([{ type: 'pull_request', parameters: { requireExtraApprovalForUnattributedChanges: true } }]);
+  });
+});
