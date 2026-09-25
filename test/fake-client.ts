@@ -216,6 +216,7 @@ export class FakeClient implements GitHubClient {
       name: params.name,
       description: params.description ?? null,
       privacy: params.privacy,
+      notificationSetting: params.notificationSetting,
       parentSlug,
     };
     this.teams.push(created);

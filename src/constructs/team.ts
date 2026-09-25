@@ -1,5 +1,9 @@
 import { Construct } from 'constructs';
-import type { RepositoryAccess, TeamPrivacy } from '../synth/manifest.ts';
+import type {
+  RepositoryAccess,
+  TeamNotificationSetting,
+  TeamPrivacy,
+} from '../synth/manifest.ts';
 import type { VocabularyMember } from '../vocabulary.ts';
 import type { RepositoryGrantList } from './grants.ts';
 import type { ExternalGroupProps } from './external-group.ts';
@@ -33,6 +37,13 @@ export interface TeamProps<Member extends string = VocabularyMember> {
    * required for nested/parent teams.
    */
   readonly privacy?: TeamPrivacy;
+
+  /**
+   * Whether an `@org/team` mention notifies the team's members, the toggle
+   * under the team's settings. Left unset, the live setting is not managed: a
+   * new team starts with GitHub's default, `notifications_enabled`.
+   */
+  readonly notificationSetting?: TeamNotificationSetting;
 
   /** Usernames to add as team maintainers. */
   readonly maintainers?: readonly Member[];

@@ -173,6 +173,7 @@ new Team(engineering, "platform", {
   previousSlug: "infra",                  // rename marker, see the guide
   description: "Platform & infrastructure",
   privacy: "closed",                      // default; "secret" hides the team
+  notificationSetting: "notifications_disabled", // unmanaged when unset
   maintainers: ["casey"],
   members: ["ada"],
   repositories: [maintain("flow-portal")], // or { "flow-portal": "maintain" }
@@ -183,6 +184,11 @@ new Team(engineering, "platform", {
 Nesting is the construct tree: a `Team` scoped under another `Team` becomes a
 child team, and a team under the `Organization` is top-level. Parent teams
 require `closed` privacy.
+
+`notificationSetting` is whether an `@org/team` mention notifies the team's
+members: `notifications_enabled` or `notifications_disabled`. It is compared
+only on a team that declares it, and a team created without it starts with
+GitHub's default, `notifications_enabled`.
 
 ### Grant helpers
 

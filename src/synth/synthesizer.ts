@@ -492,6 +492,7 @@ function toManifest(team: Team): TeamManifest {
     previousSlug: team.props.previousSlug,
     description: team.props.description,
     privacy: team.props.privacy ?? 'closed',
+    notificationSetting: team.props.notificationSetting,
     parentSlug: parent?.slug,
     // Carried through undefined rather than defaulted: the reconciler reads a
     // missing roster or access map as "not managed here" and leaves the live

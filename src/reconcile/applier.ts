@@ -137,6 +137,7 @@ export async function apply(
               name: t.name,
               description: t.description,
               privacy: t.privacy,
+              notificationSetting: t.notificationSetting,
               parentTeamId,
             });
             idBySlug.set(team.slug, team.id);
@@ -175,6 +176,7 @@ export async function apply(
               name: change.team.name,
               description: change.team.description ?? '',
               privacy: change.team.privacy,
+              notificationSetting: change.team.notificationSetting,
               parentTeamId: parentSlug
                 ? (idBySlug.get(parentSlug) ?? null)
                 : null,
