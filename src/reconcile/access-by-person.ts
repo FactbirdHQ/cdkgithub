@@ -12,9 +12,10 @@
  * child team is not membership of the parent, and the live read has already
  * subtracted it.
  *
- * Two things this cannot see, both outside the team structure: an organization
- * owner reaches every repository whatever the teams say, and a collaborator
- * added to one repository by hand holds a grant no team records.
+ * One thing this cannot see: an organization owner reaches every repository
+ * whatever the teams say. A person added to one repository directly is folded
+ * in from the tree's collaborators, which a definition declaring collaborators
+ * reads.
  */
 
 import { comparableRoleName } from '../github/client.ts';
@@ -165,6 +166,27 @@ export function accessByPerson(tree: OrgTree): Map<string, PersonAccess> {
       }
       people.set(login, entry);
     }
+  }
+
+  // Direct collaborators, folded in the same way: only where the grant beats
+  // what the person already reaches, crediting the repository itself.
+  for (const grant of tree.collaborators ?? []) {
+    const entry: Accumulator = people.get(grant.login) ?? {
+      teams: [],
+      reach: new Map(),
+    };
+    const held = entry.reach.get(grant.repository);
+    const heldWins =
+      held !== undefined &&
+      rankOf(held.permission, tree.ranks) >= rankOf(grant.permission, tree.ranks);
+    if (!heldWins) {
+      entry.reach.set(grant.repository, {
+        repository: grant.repository,
+        permission: grant.permission as RepoPermission,
+        through: [...(held?.through ?? []), 'direct collaborator'],
+      });
+    }
+    people.set(grant.login, entry);
   }
 
   return new Map(

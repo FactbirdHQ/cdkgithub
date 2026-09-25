@@ -353,6 +353,44 @@ export async function applyGovernanceChange(
         : client.deleteOrgSecret(org, change.name));
       return;
 
+    case 'set-collaborator': {
+      const { collaborator, current } = change;
+      if (current?.invitationId !== undefined) {
+        ctx.log(
+          `Updating the invitation of ${collaborator.login} to ${collaborator.repository}`,
+        );
+        await client.updateRepositoryInvitation(
+          org,
+          collaborator.repository,
+          current.invitationId,
+          collaborator.permission,
+        );
+        return;
+      }
+      ctx.log(
+        `${current ? 'Updating' : 'Adding'} ${collaborator.login} on ${collaborator.repository} as ${collaborator.permission}`,
+      );
+      await client.putRepositoryCollaborator(
+        org,
+        collaborator.repository,
+        collaborator.login,
+        collaborator.permission,
+      );
+      return;
+    }
+
+    case 'remove-collaborator': {
+      const { live } = change;
+      if (live.invitationId !== undefined) {
+        ctx.log(`Withdrawing the invitation of ${live.login} to ${live.repository}`);
+        await client.deleteRepositoryInvitation(org, live.repository, live.invitationId);
+        return;
+      }
+      ctx.log(`Removing ${live.login} from ${live.repository}`);
+      await client.deleteRepositoryCollaborator(org, live.repository, live.login);
+      return;
+    }
+
     case 'put-environment': {
       const { environment, current } = change;
       ctx.log(

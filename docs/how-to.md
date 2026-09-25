@@ -255,10 +255,11 @@ bun bin/cdkgithub.ts diff --by-person --changed-only  # only people something ha
 bun bin/cdkgithub.ts diff --csv > access.csv          # one row per person per repository
 ```
 
-Two access paths sit outside the team structure and need checking by hand:
-organization owners reach every repository whatever the teams say, and a
-collaborator added to a single repository holds a grant no team records.
-`plan` prints a third: organization role assignments the definition does not
+One access path sits outside the team structure and needs checking by hand:
+organization owners reach every repository whatever the teams say. A
+collaborator added to a single repository shows in the review once the
+definition declares collaborators, credited to `direct collaborator`. `plan`
+prints another: organization role assignments the definition does not
 account for, which reach further than any team grant. The plain `diff` also
 lists repositories no team reaches and the definition does not declare, each
 one a repository with no maintainer written down anywhere.

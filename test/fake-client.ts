@@ -22,6 +22,7 @@ import type {
   LiveTeamRepository,
   UpdateTeamParams,
   EnvironmentSettings,
+  LiveCollaborator,
   LiveEnvironment,
 } from '../src/github/client.ts';
 import type {
@@ -72,6 +73,8 @@ export interface FakeClientState {
   orgSecrets?: LiveOrgSecret[];
   /** Repository variables keyed by repository name. */
   repositoryVariables?: Record<string, Array<{ name: string; value: string }>>;
+  /** Direct collaborators and pending invitations keyed by repository. */
+  collaborators?: Record<string, Array<Omit<LiveCollaborator, 'repository'>>>;
   /** Environments keyed by repository, then name, as getEnvironment reports them. */
   environments?: Record<string, Record<string, LiveEnvironment>>;
   /** Environment secret names keyed by repository, then environment name. */
@@ -121,6 +124,7 @@ export class FakeClient implements GitHubClient {
     Record<string, Array<{ name: string; value: string }>>
   >;
   environments: Record<string, Record<string, LiveEnvironment>>;
+  collaborators: Record<string, Array<Omit<LiveCollaborator, 'repository'>>>;
   environmentSecrets: Record<string, Record<string, Array<{ name: string }>>>;
   repositorySecrets: Record<string, Array<{ name: string }>>;
 
@@ -163,6 +167,7 @@ export class FakeClient implements GitHubClient {
     this.repositoryVariables = state.repositoryVariables ?? {};
     this.environmentVariables = state.environmentVariables ?? {};
     this.environments = state.environments ?? {};
+    this.collaborators = state.collaborators ?? {};
     this.environmentSecrets = state.environmentSecrets ?? {};
     this.repositorySecrets = state.repositorySecrets ?? {};
   }
@@ -624,6 +629,47 @@ export class FakeClient implements GitHubClient {
         ...Object.keys(this.environmentSecrets[repo] ?? {}),
       ]),
     ];
+  }
+
+  async listRepositoryCollaborators(
+    _owner: string,
+    repo: string,
+  ): Promise<Array<Omit<LiveCollaborator, 'repository'>>> {
+    return this.collaborators[repo] ?? [];
+  }
+
+  async putRepositoryCollaborator(
+    _owner: string,
+    repo: string,
+    login: string,
+    permission: string,
+  ): Promise<void> {
+    this.record('putRepositoryCollaborator', { repo, login, permission });
+  }
+
+  async updateRepositoryInvitation(
+    _owner: string,
+    repo: string,
+    invitationId: number,
+    permission: string,
+  ): Promise<void> {
+    this.record('updateRepositoryInvitation', { repo, invitationId, permission });
+  }
+
+  async deleteRepositoryCollaborator(
+    _owner: string,
+    repo: string,
+    login: string,
+  ): Promise<void> {
+    this.record('deleteRepositoryCollaborator', { repo, login });
+  }
+
+  async deleteRepositoryInvitation(
+    _owner: string,
+    repo: string,
+    invitationId: number,
+  ): Promise<void> {
+    this.record('deleteRepositoryInvitation', { repo, invitationId });
   }
 
   async getEnvironment(

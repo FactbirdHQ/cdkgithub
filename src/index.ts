@@ -44,6 +44,10 @@ export {
   type RepositoryGrant,
 } from './constructs/grants.ts';
 export {
+  Collaborator,
+  type CollaboratorProps,
+} from './constructs/collaborator.ts';
+export {
   Environment,
   type EnvironmentProps,
 } from './constructs/environment.ts';
@@ -93,6 +97,7 @@ export type {
   BypassActorType,
   BypassMode,
   CodeScanningTool,
+  CollaboratorManifest,
   CodeSecurityConfigurationManifest,
   CustomPropertyManifest,
   CustomPropertyValueType,

@@ -341,6 +341,19 @@ export interface LiveOrgSecret {
 }
 
 /** One repository's Actions secret: a name and nothing more. */
+/**
+ * A person holding a repository directly, outside any team, or invited to.
+ * `permission` is in the request vocabulary (`pull`, `push`, …), whatever
+ * word GitHub reported it in.
+ */
+export interface LiveCollaborator {
+  readonly repository: string;
+  readonly login: string;
+  readonly permission: string;
+  /** Set while the person has been invited and has not accepted. */
+  readonly invitationId?: number;
+}
+
 export interface LiveRepoSecret {
   readonly repository: string;
   /** The deployment environment it is scoped to. Absent for a repository-wide one. */
@@ -680,6 +693,34 @@ export interface GitHubClient {
     selectedRepositoryIds?: number[],
   ): Promise<void>;
   deleteOrgSecret(org: string, name: string): Promise<void>;
+  /** Direct collaborators and pending invitations, as one list. */
+  listRepositoryCollaborators(
+    owner: string,
+    repo: string,
+  ): Promise<Array<Omit<LiveCollaborator, 'repository'>>>;
+  /** Grant access directly; a person outside the organization is invited. */
+  putRepositoryCollaborator(
+    owner: string,
+    repo: string,
+    login: string,
+    permission: string,
+  ): Promise<void>;
+  updateRepositoryInvitation(
+    owner: string,
+    repo: string,
+    invitationId: number,
+    permission: string,
+  ): Promise<void>;
+  deleteRepositoryCollaborator(
+    owner: string,
+    repo: string,
+    login: string,
+  ): Promise<void>;
+  deleteRepositoryInvitation(
+    owner: string,
+    repo: string,
+    invitationId: number,
+  ): Promise<void>;
   listRepositorySecrets(
     owner: string,
     repo: string,
@@ -2066,6 +2107,91 @@ export class OctokitGitHubClient implements GitHubClient {
     await this.octokit.rest.actions.deleteOrgSecret({
       org,
       secret_name: name,
+    });
+  }
+
+  async listRepositoryCollaborators(
+    owner: string,
+    repo: string,
+  ): Promise<Array<Omit<LiveCollaborator, 'repository'>>> {
+    const [direct, invitations] = await Promise.all([
+      this.octokit.paginate(this.octokit.rest.repos.listCollaborators, {
+        owner,
+        repo,
+        affiliation: 'direct',
+        per_page: 100,
+      }),
+      this.octokit.paginate(this.octokit.rest.repos.listInvitations, {
+        owner,
+        repo,
+        per_page: 100,
+      }),
+    ]);
+    return [
+      ...direct.map((c) => ({
+        login: c.login,
+        permission: comparableRoleName(c.role_name ?? 'read'),
+      })),
+      ...invitations.flatMap((i) =>
+        i.invitee
+          ? [
+              {
+                login: i.invitee.login,
+                permission: comparableRoleName(i.permissions),
+                invitationId: i.id,
+              },
+            ]
+          : [],
+      ),
+    ];
+  }
+
+  async putRepositoryCollaborator(
+    owner: string,
+    repo: string,
+    login: string,
+    permission: string,
+  ): Promise<void> {
+    await this.octokit.rest.repos.addCollaborator({
+      owner,
+      repo,
+      username: login,
+      permission,
+    });
+  }
+
+  async updateRepositoryInvitation(
+    owner: string,
+    repo: string,
+    invitationId: number,
+    permission: string,
+  ): Promise<void> {
+    await this.octokit.rest.repos.updateInvitation({
+      owner,
+      repo,
+      invitation_id: invitationId,
+      // The invitation endpoint takes GitHub's role words, not the request ones.
+      permissions: githubRoleName(permission) as 'read' | 'write' | 'maintain' | 'triage' | 'admin',
+    });
+  }
+
+  async deleteRepositoryCollaborator(
+    owner: string,
+    repo: string,
+    login: string,
+  ): Promise<void> {
+    await this.octokit.rest.repos.removeCollaborator({ owner, repo, username: login });
+  }
+
+  async deleteRepositoryInvitation(
+    owner: string,
+    repo: string,
+    invitationId: number,
+  ): Promise<void> {
+    await this.octokit.rest.repos.deleteInvitation({
+      owner,
+      repo,
+      invitation_id: invitationId,
     });
   }
 

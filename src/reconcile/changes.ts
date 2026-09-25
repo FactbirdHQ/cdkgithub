@@ -5,6 +5,7 @@ import type {
   LiveRunnerGroup,
   LiveRuleset,
   LiveTeam,
+  LiveCollaborator,
   LiveEnvironment,
 } from '../github/client.ts';
 import type {
@@ -14,6 +15,7 @@ import type {
   BranchProtectionManifest,
   CodeSecurityConfigurationManifest,
   CustomPropertyManifest,
+  CollaboratorManifest,
   CustomRepositoryRoleManifest,
   EnvironmentManifest,
   RepositoryManifest,
@@ -245,6 +247,23 @@ export interface DeleteEnvironmentBranchPolicy {
   readonly policy: { id: number; name: string; type: 'branch' | 'tag' };
 }
 
+/**
+ * Grant a declared collaborator, or bring their permission in line. `current`
+ * is what they hold or were invited to; a pending invitation is updated in
+ * place rather than sent again.
+ */
+export interface SetCollaborator {
+  readonly kind: 'set-collaborator';
+  readonly collaborator: CollaboratorManifest;
+  readonly current?: LiveCollaborator;
+}
+
+/** A direct collaborator or pending invitation the definition does not declare. Gated by --allow-delete. */
+export interface RemoveCollaborator {
+  readonly kind: 'remove-collaborator';
+  readonly live: LiveCollaborator;
+}
+
 export interface DeleteSecret {
   readonly kind: 'delete-secret';
   readonly name: string;
@@ -420,6 +439,8 @@ export type Change =
   | PutSecret
   | DeleteSecret
   | PutEnvironment
+  | SetCollaborator
+  | RemoveCollaborator
   | DeleteEnvironmentBranchPolicy
   | CreateSecurityConfiguration
   | UpdateSecurityConfiguration
@@ -481,6 +502,7 @@ export const DESTRUCTIVE_KINDS = [
   'delete-variable',
   'delete-secret',
   'delete-environment-branch-policy',
+  'remove-collaborator',
   'delete-security-config',
   'delete-property',
   'remove-branch-protection',
@@ -505,6 +527,7 @@ export const DELETE_SCOPES = {
   variables: 'delete-variable',
   secrets: 'delete-secret',
   'branch-policies': 'delete-environment-branch-policy',
+  collaborators: 'remove-collaborator',
   'security-configs': 'delete-security-config',
   properties: 'delete-property',
   'branch-protection': 'remove-branch-protection',

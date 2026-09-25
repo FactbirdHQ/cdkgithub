@@ -3,6 +3,7 @@ import type {
   LiveActionsPolicy,
   LiveAppInstallation,
   LiveBranchProtection,
+  LiveCollaborator,
   LiveCodeSecurityConfiguration,
   LiveCustomProperty,
   LiveDefaultSecurityConfiguration,
@@ -85,6 +86,11 @@ export interface LiveState {
   readonly repositoryEnvironments?: LiveRepoEnvironment[];
   /** The environments the definition declares, as they stand; absent ones are missing. */
   readonly environments?: LiveEnvironment[];
+  /**
+   * Direct collaborators and pending invitations of every declared repository,
+   * read only once the definition declares a collaborator.
+   */
+  readonly repositoryCollaborators?: LiveCollaborator[];
   /** Secret names of every repository the definition declares or an entry names. */
   readonly repositorySecrets?: LiveRepoSecret[];
   readonly securityConfigurations?: LiveCodeSecurityConfiguration[];
@@ -169,6 +175,7 @@ export async function readLiveState(
     repositoryVariables,
     repositorySecrets,
     environments,
+    repositoryCollaborators,
   ] = await Promise.all([
     // A personal account has no teams, and asking for them 404s.
     desired.ownerType === 'organization' ? client.listTeams(owner) : [],
@@ -233,6 +240,21 @@ export async function readLiveState(
           ),
         ).then((found) => found.filter((e) => e !== undefined))
       : undefined,
+    desired.collaborators
+      ? readPerRepository(
+          [
+            ...new Set([
+              ...(desired.repositories ?? []).map((r) => r.name),
+              ...desired.collaborators.map((c) => c.repository),
+            ]),
+          ],
+          beingCreated,
+          async (repository) =>
+            (await client.listRepositoryCollaborators(owner, repository)).map(
+              (c) => ({ ...c, repository }),
+            ),
+        )
+      : undefined,
   ]);
 
   // Per-team reads come second: a team the definition creates this run has no
@@ -295,6 +317,7 @@ export async function readLiveState(
     repositoryEnvironments,
     repositorySecrets,
     environments,
+    repositoryCollaborators,
   };
 }
 

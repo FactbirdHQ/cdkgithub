@@ -1,7 +1,8 @@
 import { Construct } from 'constructs';
-import type { RepositoryVisibility } from '../synth/manifest.ts';
+import type { RepoPermission, RepositoryVisibility } from '../synth/manifest.ts';
 import { ActionsSecret } from './actions-secret.ts';
 import { ActionsVariable } from './actions-variable.ts';
+import { Collaborator } from './collaborator.ts';
 import {
   BranchProtection,
   type BranchProtectionProps,
@@ -85,6 +86,9 @@ export interface RepositoryProps {
   /** Repository rulesets, by name. */
   readonly ruleset?: Readonly<Record<string, RepositoryRulesetOptions>>;
 
+  /** Direct collaborators, by login: who holds what on this repository outside any team. */
+  readonly collaborator?: Readonly<Record<string, RepoPermission>>;
+
   /** Legacy branch protection, by branch. */
   readonly branchProtection?: Readonly<Record<string, BranchProtectionOptions>>;
 }
@@ -133,6 +137,9 @@ export class Repository extends Construct {
     for (const [name, options] of Object.entries(props.ruleset ?? {})) {
       this.addRuleset(name, options);
     }
+    for (const [login, permission] of Object.entries(props.collaborator ?? {})) {
+      this.addCollaborator(login, permission);
+    }
     for (const [branch, options] of Object.entries(props.branchProtection ?? {})) {
       this.addBranchProtection(branch, options);
     }
@@ -156,6 +163,11 @@ export class Repository extends Construct {
   /** Declare a ruleset on this repository. */
   addRuleset(name: string, options: RepositoryRulesetOptions): RepositoryRuleset {
     return new RepositoryRuleset(this, name, options);
+  }
+
+  /** Grant a person access to this repository directly, outside any team. */
+  addCollaborator(login: string, permission: RepoPermission): Collaborator {
+    return new Collaborator(this, login, { permission });
   }
 
   /** Declare a branch's legacy protection, or `{ enabled: false }` to retire it. */
