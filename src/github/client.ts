@@ -25,10 +25,20 @@ import type {
   RunnerGroupVisibility,
   SecurityAttachScope,
   SecurityDefaultScope,
+  TeamNotificationSetting,
   TeamPrivacy,
 } from '../synth/manifest.ts';
 import { toCamelCaseKeys, toSnakeCaseKeys } from './casing.ts';
 import { sealSecretValue } from './seal.ts';
+
+/** GitHub reports the setting as a plain string; anything else is unknown. */
+function notificationSettingOf(
+  value: string | undefined,
+): TeamNotificationSetting | undefined {
+  return value === 'notifications_enabled' || value === 'notifications_disabled'
+    ? value
+    : undefined;
+}
 
 /** Live representation of a team as read back from GitHub. */
 export interface LiveTeam {
@@ -37,6 +47,8 @@ export interface LiveTeam {
   readonly name: string;
   readonly description: string | null;
   readonly privacy: TeamPrivacy;
+  /** Absent only when GitHub leaves it out of the response. */
+  readonly notificationSetting?: TeamNotificationSetting;
   /** Slug of the parent team, or null if top-level. */
   readonly parentSlug: string | null;
 }
@@ -171,6 +183,7 @@ export interface CreateTeamParams {
   readonly name: string;
   readonly description?: string;
   readonly privacy: TeamPrivacy;
+  readonly notificationSetting?: TeamNotificationSetting;
   /** Numeric id of the parent team, if nested. */
   readonly parentTeamId?: number;
 }
@@ -179,6 +192,7 @@ export interface UpdateTeamParams {
   readonly name?: string;
   readonly description?: string;
   readonly privacy?: TeamPrivacy;
+  readonly notificationSetting?: TeamNotificationSetting;
   /** Numeric id of the parent team, or null to detach. */
   readonly parentTeamId?: number | null;
 }
@@ -707,6 +721,7 @@ export class OctokitGitHubClient implements GitHubClient {
       name: t.name,
       description: t.description ?? null,
       privacy: (t.privacy as TeamPrivacy) ?? 'closed',
+      notificationSetting: notificationSettingOf(t.notification_setting),
       parentSlug: t.parent?.slug ?? null,
     }));
   }
@@ -717,6 +732,7 @@ export class OctokitGitHubClient implements GitHubClient {
       name: params.name,
       description: params.description,
       privacy: params.privacy,
+      notification_setting: params.notificationSetting,
       parent_team_id: params.parentTeamId,
     });
     return {
@@ -725,6 +741,7 @@ export class OctokitGitHubClient implements GitHubClient {
       name: data.name,
       description: data.description ?? null,
       privacy: (data.privacy as TeamPrivacy) ?? 'closed',
+      notificationSetting: notificationSettingOf(data.notification_setting),
       parentSlug: data.parent?.slug ?? null,
     };
   }
@@ -740,6 +757,7 @@ export class OctokitGitHubClient implements GitHubClient {
       name: params.name,
       description: params.description,
       privacy: params.privacy,
+      notification_setting: params.notificationSetting,
       parent_team_id: params.parentTeamId,
     });
     return {
@@ -748,6 +766,7 @@ export class OctokitGitHubClient implements GitHubClient {
       name: data.name,
       description: data.description ?? null,
       privacy: (data.privacy as TeamPrivacy) ?? 'closed',
+      notificationSetting: notificationSettingOf(data.notification_setting),
       parentSlug: data.parent?.slug ?? null,
     };
   }

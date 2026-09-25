@@ -17,6 +17,8 @@ export function renderPlan(changes: Change[]): string {
         lines.push(`      name       = "${t.name}"`);
         if (t.description) lines.push(`      description = "${t.description}"`);
         lines.push(`      privacy    = "${t.privacy}"`);
+        if (t.notificationSetting)
+          lines.push(`      notifications = "${t.notificationSetting}"`);
         if (t.maintainers?.length)
           lines.push(`      maintainers = ${JSON.stringify(t.maintainers)}`);
         if (t.members?.length)

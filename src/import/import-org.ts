@@ -558,6 +558,10 @@ class Emitter {
       name: team.name !== team.slug ? team.name : undefined,
       description: team.description ?? undefined,
       privacy: team.privacy !== 'closed' ? team.privacy : undefined,
+      notificationSetting:
+        team.notificationSetting === 'notifications_disabled'
+          ? team.notificationSetting
+          : undefined,
       maintainers: maintainers.length > 0 ? maintainers : undefined,
       members: members.length > 0 ? members : undefined,
       repositories:
