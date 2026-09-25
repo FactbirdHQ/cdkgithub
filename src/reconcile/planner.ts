@@ -7,6 +7,7 @@ import { resolveLive } from './live.ts';
 import { planActionsAdmin } from './plan-actions-admin.ts';
 import { planCustomRepositoryRoles } from './plan-custom-roles.ts';
 import { planRepositories } from './plan-repositories.ts';
+import { planEnvironments } from './plan-environments.ts';
 import { planGovernance } from './plan-governance.ts';
 import { planOrganizationRoles } from './plan-org-roles.ts';
 import { planRepositoryRulesets } from './plan-repo-rulesets.ts';
@@ -105,6 +106,9 @@ export function plan(desired: DesiredState, live: LiveState): Change[] {
     // After the repository creates above, so a ruleset, a variable, or a
     // secret declared on a repository this run creates lands on it.
     ...planRepositoryRulesets(desired, live),
+    // Before the variables and secrets, so one declared in an environment this
+    // run creates lands in it.
+    ...planEnvironments(desired, live),
     ...planActionsAdmin(desired, live),
     ...roleDeletes,
     ...planOrganizationRoles(desired.organizationRoles, live),

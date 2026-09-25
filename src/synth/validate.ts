@@ -109,6 +109,7 @@ export function validateManifest(value: unknown, path: string): DesiredState {
     'runnerGroups',
     'actionsVariables',
     'actionsSecrets',
+    'environments',
     'codeSecurityConfigurations',
     'customProperties',
     'branchProtection',
