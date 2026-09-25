@@ -181,3 +181,34 @@ function hash(s: string): number {
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
   return h;
 }
+
+describe('team notification setting', () => {
+  const quiet = { slug: 'eng', ...baseTeam, notificationSetting: 'notifications_disabled' as const };
+
+  test('is diffed only when declared', () => {
+    const current = team({ slug: 'eng', name: 'Engineering', notificationSetting: 'notifications_enabled' });
+
+    expect(plan(desired([quiet]), live([current]))).toEqual([
+      {
+        kind: 'update',
+        slug: 'eng',
+        team: quiet,
+        fields: [{ field: 'notificationSetting', from: 'notifications_enabled', to: 'notifications_disabled' }],
+      },
+    ]);
+    expect(plan(desired([{ slug: 'eng', ...baseTeam }]), live([current]))).toEqual([]);
+  });
+
+  test('is written when a team is created and when one is updated', async () => {
+    const client = new FakeClient({
+      teams: [team({ slug: 'ops', name: 'ops', notificationSetting: 'notifications_enabled' })],
+    });
+    const state = desired([quiet, { slug: 'ops', ...baseTeam, name: 'ops', notificationSetting: 'notifications_disabled' }]);
+    await apply(client, 'acme', plan(state, live(client.teams)), live(client.teams));
+
+    expect(client.teams.find((t) => t.slug === 'engineering')?.notificationSetting).toBe('notifications_disabled');
+    expect(client.callsTo('updateTeam')).toEqual([
+      expect.objectContaining({ slug: 'ops', params: expect.objectContaining({ notificationSetting: 'notifications_disabled' }) }),
+    ]);
+  });
+});

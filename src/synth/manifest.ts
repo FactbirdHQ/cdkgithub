@@ -36,6 +36,11 @@ export * from './scim.ts';
 /** GitHub team visibility. `closed` = visible to all org members; `secret` = hidden. */
 export type TeamPrivacy = 'closed' | 'secret';
 
+/** Whether mentioning the team notifies its members. */
+export type TeamNotificationSetting =
+  | 'notifications_enabled'
+  | 'notifications_disabled';
+
 /** The five permissions GitHub ships with every repository. */
 export type BuiltInRepoPermission =
   | 'pull'
@@ -106,6 +111,8 @@ export interface TeamManifest {
   readonly previousSlug?: string;
   readonly description?: string;
   readonly privacy: TeamPrivacy;
+  /** Absent when unmanaged: the live setting is left as it is. */
+  readonly notificationSetting?: TeamNotificationSetting;
   /** Slug of the parent team, if this team is nested. */
   readonly parentSlug?: string;
   /**
