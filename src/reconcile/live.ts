@@ -12,6 +12,7 @@ import type {
   LiveOrgVariable,
   LiveCustomRepositoryRole,
   LiveRepoSecret,
+  LiveEnvironment,
   LiveRepoEnvironment,
   LiveRepoVariable,
   LiveRepository,
@@ -82,6 +83,8 @@ export interface LiveState {
    * Each one owns its variables the way its repository owns the repository's.
    */
   readonly repositoryEnvironments?: LiveRepoEnvironment[];
+  /** The environments the definition declares, as they stand; absent ones are missing. */
+  readonly environments?: LiveEnvironment[];
   /** Secret names of every repository the definition declares or an entry names. */
   readonly repositorySecrets?: LiveRepoSecret[];
   readonly securityConfigurations?: LiveCodeSecurityConfiguration[];
@@ -122,6 +125,21 @@ export async function readLiveState(
   const variableScopes = scopesOf(desired.actionsVariables, desired);
   const secretScopes = scopesOf(desired.actionsSecrets, desired);
 
+  // Every repository whose variables or secrets are owned owns its
+  // environments' too, so the environments are listed once for both.
+  const repositoryEnvironments = await readPerRepository(
+    [...new Set([...variableScopes.repositories, ...secretScopes.repositories])],
+    beingCreated,
+    async (repository) =>
+      (await client.listRepositoryEnvironments(owner, repository)).map(
+        (name) => ({ repository, name }),
+      ),
+  );
+  const environmentsOf = (repository: string) =>
+    (repositoryEnvironments ?? [])
+      .filter((e) => e.repository === repository)
+      .map((e) => e.name);
+
   // A team is read back only for the surface it declares, so a definition that
   // names teams without rosters or access maps still costs one call in total.
   const namesCustomRole = desired.teams.some((t) =>
@@ -148,8 +166,9 @@ export async function readLiveState(
     runnerGroups,
     actionsVariables,
     actionsSecrets,
-    repositoryVariableReads,
+    repositoryVariables,
     repositorySecrets,
+    environments,
   ] = await Promise.all([
     // A personal account has no teams, and asking for them 404s.
     desired.ownerType === 'organization' ? client.listTeams(owner) : [],
@@ -188,27 +207,33 @@ export async function readLiveState(
     readPerRepository(
       variableScopes.repositories,
       beingCreated,
-      async (repository) => [
-        await readRepositoryVariables(client, owner, repository),
-      ],
+      (repository) =>
+        readRepositoryVariables(
+          client,
+          owner,
+          repository,
+          environmentsOf(repository),
+        ),
     ),
     readPerRepository(
       secretScopes.repositories,
       beingCreated,
-      async (repository) =>
-        (await client.listRepositorySecrets(owner, repository)).map((s) => ({
-          ...s,
+      (repository) =>
+        readRepositorySecrets(
+          client,
+          owner,
           repository,
-        })),
+          environmentsOf(repository),
+        ),
     ),
+    desired.environments
+      ? Promise.all(
+          desired.environments.map((e) =>
+            client.getEnvironment(owner, e.repository, e.name),
+          ),
+        ).then((found) => found.filter((e) => e !== undefined))
+      : undefined,
   ]);
-
-  const repositoryVariables = repositoryVariableReads?.flatMap(
-    (read) => read.variables,
-  );
-  const repositoryEnvironments = repositoryVariableReads?.flatMap(
-    (read) => read.environments,
-  );
 
   // Per-team reads come second: a team the definition creates this run has no
   // live grants or roster to read, and asking for them would 404. A team being
@@ -269,6 +294,7 @@ export async function readLiveState(
     repositoryVariables,
     repositoryEnvironments,
     repositorySecrets,
+    environments,
   };
 }
 
@@ -308,35 +334,46 @@ async function readPerRepository<T>(
 }
 
 /**
- * One repository's variables: the repository-wide ones, and those of every
- * deployment environment it has, each tagged with its environment.
+ * One repository's variables: the repository-wide ones, and those of each of
+ * its deployment environments, tagged with the environment.
  */
 async function readRepositoryVariables(
   client: GitHubClient,
   owner: string,
   repository: string,
-): Promise<{
-  variables: LiveRepoVariable[];
-  environments: LiveRepoEnvironment[];
-}> {
-  const [variables, environments] = await Promise.all([
+  environments: string[],
+): Promise<LiveRepoVariable[]> {
+  const [variables, scoped] = await Promise.all([
     client.listRepositoryVariables(owner, repository),
-    client.listRepositoryEnvironments(owner, repository),
-  ]);
-  const scoped = await Promise.all(
-    environments.map(async (environment) =>
-      (
-        await client.listEnvironmentVariables(owner, repository, environment)
-      ).map((v) => ({ ...v, repository, environment })),
+    Promise.all(
+      environments.map(async (environment) =>
+        (
+          await client.listEnvironmentVariables(owner, repository, environment)
+        ).map((v) => ({ ...v, repository, environment })),
+      ),
     ),
-  );
-  return {
-    variables: [
-      ...variables.map((v) => ({ ...v, repository })),
-      ...scoped.flat(),
-    ],
-    environments: environments.map((name) => ({ repository, name })),
-  };
+  ]);
+  return [...variables.map((v) => ({ ...v, repository })), ...scoped.flat()];
+}
+
+/** The same for secret names. */
+async function readRepositorySecrets(
+  client: GitHubClient,
+  owner: string,
+  repository: string,
+  environments: string[],
+): Promise<LiveRepoSecret[]> {
+  const [secrets, scoped] = await Promise.all([
+    client.listRepositorySecrets(owner, repository),
+    Promise.all(
+      environments.map(async (environment) =>
+        (
+          await client.listEnvironmentSecrets(owner, repository, environment)
+        ).map((s) => ({ ...s, repository, environment })),
+      ),
+    ),
+  ]);
+  return [...secrets.map((s) => ({ ...s, repository })), ...scoped.flat()];
 }
 
 /** The distinct repositories a list of repository-scoped declarations names. */

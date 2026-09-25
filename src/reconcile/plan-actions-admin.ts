@@ -139,7 +139,7 @@ function planVariables(
 
   const wantedVariables = byRepository(variables);
   for (const repository of scopes.repositories) {
-    for (const environment of environmentsOf(repository, variables, live)) {
+    for (const environment of environmentsOf(repository, variables, desired, live, 'variables')) {
       const wanted = (wantedVariables.get(repository) ?? []).filter(
         (v) => v.environment === environment,
       );
@@ -189,25 +189,32 @@ function planVariables(
  */
 function environmentsOf(
   repository: string,
-  variables: ActionsVariableManifest[],
+  entries: ReadonlyArray<{ repository?: string; environment?: string }>,
+  desired: DesiredState,
   live: LiveState,
+  what: 'variables' | 'secrets',
 ): Array<string | undefined> {
-  const named = variables.flatMap((v) =>
-    v.repository === repository && v.environment ? [v.environment] : [],
+  const named = entries.flatMap((e) =>
+    e.repository === repository && e.environment ? [e.environment] : [],
   );
+  // One the definition declares counts as existing: this run creates it
+  // before it writes anything into it.
+  const declared = (desired.environments ?? [])
+    .filter((e) => e.repository === repository)
+    .map((e) => e.name);
   const existing = live.repositoryEnvironments
     ?.filter((e) => e.repository === repository)
     .map((e) => e.name);
   if (existing) {
     for (const environment of named) {
-      if (!existing.includes(environment)) {
+      if (!existing.includes(environment) && !declared.includes(environment)) {
         throw new Error(
-          `Repository "${repository}" has no environment "${environment}". Create it on GitHub before declaring variables in it.`,
+          `Repository "${repository}" has no environment "${environment}". Declare it with an Environment, or create it on GitHub, before declaring ${what} in it.`,
         );
       }
     }
   }
-  return [undefined, ...new Set([...(existing ?? []), ...named])];
+  return [undefined, ...new Set([...(existing ?? []), ...declared, ...named])];
 }
 
 function diffOrgVariable(
@@ -284,9 +291,12 @@ function planSecrets(
 
   const wantedSecrets = byRepository(secrets);
   for (const repository of scopes.repositories) {
-    const wanted = wantedSecrets.get(repository) ?? [];
+    for (const environment of environmentsOf(repository, secrets, desired, live, 'secrets')) {
+    const wanted = (wantedSecrets.get(repository) ?? []).filter(
+      (s) => s.environment === environment,
+    );
     const liveSecrets = (live.repositorySecrets ?? []).filter(
-      (s) => s.repository === repository,
+      (s) => s.repository === repository && s.environment === environment,
     );
     const liveNames = upperNames(liveSecrets);
 
@@ -303,8 +313,10 @@ function planSecrets(
           kind: 'delete-secret',
           name: current.name,
           repository,
+          ...(environment === undefined ? {} : { environment }),
         });
       }
+    }
     }
   }
 

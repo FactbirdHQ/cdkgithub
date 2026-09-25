@@ -43,6 +43,10 @@ export {
   triage,
   type RepositoryGrant,
 } from './constructs/grants.ts';
+export {
+  Environment,
+  type EnvironmentProps,
+} from './constructs/environment.ts';
 export type { ExternalGroupProps } from './constructs/external-group.ts';
 export {
   Organization,
@@ -95,8 +99,11 @@ export type {
   CustomRepositoryRoleManifest,
   DefaultRepositoryPermission,
   DefaultWorkflowPermissions,
+  DeploymentBranchPolicy,
   DesiredState,
   EnabledRepositories,
+  EnvironmentManifest,
+  EnvironmentReviewers,
   ExternalGroupBinding,
   OrgConfigVisibility,
   OrganizationRoleManifest,

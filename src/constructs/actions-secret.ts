@@ -20,6 +20,13 @@ export interface ActionsSecretProps {
   readonly repository?: string;
 
   /**
+   * A deployment environment on the repository, for a secret only jobs running
+   * in that environment read. Declare the environment with an
+   * {@link Environment} or create it on GitHub first.
+   */
+  readonly environment?: string;
+
+  /**
    * Which repositories can read an organization secret. Required there, so
    * nobody finds out at apply time what a default decided; not accepted on a
    * repository secret.
