@@ -12,6 +12,7 @@ import type {
   LiveOrgVariable,
   LiveCustomRepositoryRole,
   LiveRepoSecret,
+  LiveRepoEnvironment,
   LiveRepoVariable,
   LiveRepository,
   LiveRepositoryProperties,
@@ -76,6 +77,11 @@ export interface LiveState {
   readonly actionsSecrets?: LiveOrgSecret[];
   /** Variables of every repository the definition declares or an entry names. */
   readonly repositoryVariables?: LiveRepoVariable[];
+  /**
+   * The deployment environments of every repository whose variables are read.
+   * Each one owns its variables the way its repository owns the repository's.
+   */
+  readonly repositoryEnvironments?: LiveRepoEnvironment[];
   /** Secret names of every repository the definition declares or an entry names. */
   readonly repositorySecrets?: LiveRepoSecret[];
   readonly securityConfigurations?: LiveCodeSecurityConfiguration[];
@@ -142,7 +148,7 @@ export async function readLiveState(
     runnerGroups,
     actionsVariables,
     actionsSecrets,
-    repositoryVariables,
+    repositoryVariableReads,
     repositorySecrets,
   ] = await Promise.all([
     // A personal account has no teams, and asking for them 404s.
@@ -182,11 +188,9 @@ export async function readLiveState(
     readPerRepository(
       variableScopes.repositories,
       beingCreated,
-      async (repository) =>
-        (await client.listRepositoryVariables(owner, repository)).map((v) => ({
-          ...v,
-          repository,
-        })),
+      async (repository) => [
+        await readRepositoryVariables(client, owner, repository),
+      ],
     ),
     readPerRepository(
       secretScopes.repositories,
@@ -198,6 +202,13 @@ export async function readLiveState(
         })),
     ),
   ]);
+
+  const repositoryVariables = repositoryVariableReads?.flatMap(
+    (read) => read.variables,
+  );
+  const repositoryEnvironments = repositoryVariableReads?.flatMap(
+    (read) => read.environments,
+  );
 
   // Per-team reads come second: a team the definition creates this run has no
   // live grants or roster to read, and asking for them would 404. A team being
@@ -256,6 +267,7 @@ export async function readLiveState(
     actionsVariables,
     actionsSecrets,
     repositoryVariables,
+    repositoryEnvironments,
     repositorySecrets,
   };
 }
@@ -293,6 +305,38 @@ async function readPerRepository<T>(
     }),
   );
   return results.flat();
+}
+
+/**
+ * One repository's variables: the repository-wide ones, and those of every
+ * deployment environment it has, each tagged with its environment.
+ */
+async function readRepositoryVariables(
+  client: GitHubClient,
+  owner: string,
+  repository: string,
+): Promise<{
+  variables: LiveRepoVariable[];
+  environments: LiveRepoEnvironment[];
+}> {
+  const [variables, environments] = await Promise.all([
+    client.listRepositoryVariables(owner, repository),
+    client.listRepositoryEnvironments(owner, repository),
+  ]);
+  const scoped = await Promise.all(
+    environments.map(async (environment) =>
+      (
+        await client.listEnvironmentVariables(owner, repository, environment)
+      ).map((v) => ({ ...v, repository, environment })),
+    ),
+  );
+  return {
+    variables: [
+      ...variables.map((v) => ({ ...v, repository })),
+      ...scoped.flat(),
+    ],
+    environments: environments.map((name) => ({ repository, name })),
+  };
 }
 
 /** The distinct repositories a list of repository-scoped declarations names. */

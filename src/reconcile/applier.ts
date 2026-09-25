@@ -379,7 +379,7 @@ export function describeChange(change: Change): string {
     case 'update-variable': {
       const verb = change.kind === 'create-variable' ? 'create' : 'update';
       const where = change.variable.repository
-        ? ` on ${change.variable.repository}`
+        ? ` on ${change.variable.repository}${change.variable.environment ? ` (${change.variable.environment})` : ''}`
         : '';
       return `${verb} variable ${change.variable.name}${where}`;
     }
@@ -434,7 +434,7 @@ function describeDelete(change: Change): string {
       return `delete runner group "${change.live.name}"`;
     case 'delete-variable':
       return change.repository
-        ? `delete variable ${change.name} from ${change.repository}`
+        ? `delete variable ${change.name} from ${change.repository}${change.environment ? ` (${change.environment})` : ''}`
         : `delete organization variable ${change.name}`;
     case 'delete-secret':
       return change.repository

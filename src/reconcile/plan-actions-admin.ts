@@ -139,40 +139,75 @@ function planVariables(
 
   const wantedVariables = byRepository(variables);
   for (const repository of scopes.repositories) {
-    const wanted = wantedVariables.get(repository) ?? [];
-    const liveVariables = (live.repositoryVariables ?? []).filter(
-      (v) => v.repository === repository,
-    );
-    const liveByName = byUpperName(liveVariables);
+    for (const environment of environmentsOf(repository, variables, live)) {
+      const wanted = (wantedVariables.get(repository) ?? []).filter(
+        (v) => v.environment === environment,
+      );
+      const liveVariables = (live.repositoryVariables ?? []).filter(
+        (v) => v.repository === repository && v.environment === environment,
+      );
+      const liveByName = byUpperName(liveVariables);
 
-    for (const variable of wanted) {
-      const current = liveByName.get(variable.name.toUpperCase());
-      if (!current) {
-        changes.push({ kind: 'create-variable', variable });
-      } else if (current.value !== variable.value) {
-        changes.push({
-          kind: 'update-variable',
-          variable,
-          fields: [
-            { field: 'value', from: current.value, to: variable.value },
-          ],
-        });
+      for (const variable of wanted) {
+        const current = liveByName.get(variable.name.toUpperCase());
+        if (!current) {
+          changes.push({ kind: 'create-variable', variable });
+        } else if (current.value !== variable.value) {
+          changes.push({
+            kind: 'update-variable',
+            variable,
+            fields: [
+              { field: 'value', from: current.value, to: variable.value },
+            ],
+          });
+        }
       }
-    }
 
-    const declared = upperNames(wanted);
-    for (const current of liveVariables) {
-      if (!declared.has(current.name.toUpperCase())) {
-        changes.push({
-          kind: 'delete-variable',
-          name: current.name,
-          repository,
-        });
+      const declared = upperNames(wanted);
+      for (const current of liveVariables) {
+        if (!declared.has(current.name.toUpperCase())) {
+          changes.push({
+            kind: 'delete-variable',
+            name: current.name,
+            repository,
+            ...(environment === undefined ? {} : { environment }),
+          });
+        }
       }
     }
   }
 
   return changes;
+}
+
+/**
+ * The variable scopes of one owned repository: the repository itself
+ * (`undefined`), and each of its deployment environments. An environment an
+ * entry names has to exist, since cdkgithub declares variables in an
+ * environment and not the environment; the check runs whenever the
+ * environments were read.
+ */
+function environmentsOf(
+  repository: string,
+  variables: ActionsVariableManifest[],
+  live: LiveState,
+): Array<string | undefined> {
+  const named = variables.flatMap((v) =>
+    v.repository === repository && v.environment ? [v.environment] : [],
+  );
+  const existing = live.repositoryEnvironments
+    ?.filter((e) => e.repository === repository)
+    .map((e) => e.name);
+  if (existing) {
+    for (const environment of named) {
+      if (!existing.includes(environment)) {
+        throw new Error(
+          `Repository "${repository}" has no environment "${environment}". Create it on GitHub before declaring variables in it.`,
+        );
+      }
+    }
+  }
+  return [undefined, ...new Set([...(existing ?? []), ...named])];
 }
 
 function diffOrgVariable(
