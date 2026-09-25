@@ -32,3 +32,38 @@ describe('a team bound to a list of people', () => {
     expect(props).toBeDefined();
   });
 });
+
+describe('addTeam and addSubTeam', () => {
+  test('props, methods and nested constructs build the same team tree', () => {
+    const asProps = new App();
+    new Organization(asProps, 'acme', {
+      login: 'acme',
+      team: {
+        Engineering: {
+          maintainers: ['casey'],
+          subTeam: { Cloud: { members: ['ada'], subTeam: { DevOps: {} } } },
+        },
+      },
+    });
+
+    const asMethods = new App();
+    new Organization(asMethods, 'acme', { login: 'acme' })
+      .addTeam('Engineering', { maintainers: ['casey'] })
+      .addSubTeam('Cloud', { members: ['ada'] })
+      .addSubTeam('DevOps');
+
+    const asConstructs = new App();
+    const org = new Organization(asConstructs, 'acme', { login: 'acme' });
+    const engineering = new Team(org, 'Engineering', { maintainers: ['casey'] });
+    new Team(new Team(engineering, 'Cloud', { members: ['ada'] }), 'DevOps');
+
+    const teams = synthesize(asConstructs).teams;
+    expect(teams.map((t) => [t.slug, t.parentSlug])).toEqual([
+      ['engineering', undefined],
+      ['cloud', 'engineering'],
+      ['devops', 'cloud'],
+    ]);
+    expect(synthesize(asMethods).teams).toEqual(teams);
+    expect(synthesize(asProps).teams).toEqual(teams);
+  });
+});

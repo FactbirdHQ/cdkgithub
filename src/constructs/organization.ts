@@ -17,6 +17,7 @@ import {
 } from './organization-role.ts';
 import { Ruleset, type RulesetProps } from './ruleset.ts';
 import { RunnerGroup, type RunnerGroupProps } from './runner-group.ts';
+import { Team, type TeamProps } from './team.ts';
 
 /** An organization variable, as `Organization.addVariable` takes it. */
 export type OrganizationVariableOptions = Omit<
@@ -87,6 +88,9 @@ export interface OrganizationProps {
   readonly customRepositoryRole?: Readonly<
     Record<string, CustomRepositoryRoleProps>
   >;
+
+  /** Top-level teams, by construct id. Each may declare its own `subTeam`s. */
+  readonly team?: Readonly<Record<string, TeamProps>>;
 }
 
 /**
@@ -134,6 +138,18 @@ export class Organization extends Construct {
     )) {
       this.addCustomRepositoryRole(name, options);
     }
+    for (const [id, options] of Object.entries(props.team ?? {})) {
+      this.addTeam(id, options);
+    }
+  }
+
+  /**
+   * Declare a top-level team. Its roster is checked against the declared
+   * vocabulary, the same as the `team` prop, and its `addSubTeam` children
+   * inherit that check.
+   */
+  addTeam(id: string, props: TeamProps = {}): Team {
+    return new Team(this, id, props);
   }
 
   /** Declare an organization variable. */

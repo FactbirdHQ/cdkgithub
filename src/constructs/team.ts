@@ -68,6 +68,12 @@ export interface TeamProps<Member extends string = VocabularyMember> {
    * is expected to be driven by the IdP rather than the `members` list.
    */
   readonly externalGroup?: ExternalGroupProps;
+
+  /**
+   * Child teams, by construct id. The same as calling
+   * {@link Team.addSubTeam} for each.
+   */
+  readonly subTeam?: Readonly<Record<string, TeamProps<Member>>>;
 }
 
 /**
@@ -76,6 +82,11 @@ export interface TeamProps<Member extends string = VocabularyMember> {
  * Nesting is expressed through the construct tree: a `Team` whose scope is
  * another `Team` becomes a child (GitHub `parent_team_id`) of that team. A team
  * scoped directly under an `Organization` is top-level.
+ *
+ * A child can be written as a `subTeam` prop, added with {@link Team.addSubTeam},
+ * or made with `new Team(parent, …)`; the three synthesize identically. A
+ * subclass that constructs its children in its own constructor is the fourth
+ * spelling of the same thing.
  */
 export class Team<Member extends string = VocabularyMember> extends Construct {
   /** The team name (falls back to the construct id). */
@@ -89,6 +100,14 @@ export class Team<Member extends string = VocabularyMember> extends Construct {
     this.props = props;
     this.teamName = props.name ?? id;
     this.slug = Team.slugify(this.teamName);
+    for (const [childId, childProps] of Object.entries(props.subTeam ?? {})) {
+      this.addSubTeam(childId, childProps);
+    }
+  }
+
+  /** Declare a child team of this one. */
+  addSubTeam(id: string, props: TeamProps<Member> = {}): Team<Member> {
+    return new Team<Member>(this, id, props);
   }
 
   /**
