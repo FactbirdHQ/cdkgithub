@@ -183,7 +183,7 @@ export function renderPlan(changes: Change[]): string {
       case 'put-secret': {
         // The value is a name pointing into the environment, and stays one.
         const s = change.secret;
-        const scope = s.repository ? `${s.repository} ` : '';
+        const scope = variableScope(s.repository, s.environment);
         const mark = change.exists ? '~' : '+';
         lines.push(
           `  ${mark} ${scope}secret ${s.name}   (value from $${s.valueFrom})`,
@@ -192,9 +192,24 @@ export function renderPlan(changes: Change[]): string {
         break;
       }
       case 'delete-secret': {
-        const scope = change.repository ? `${change.repository} ` : '';
+        const scope = variableScope(change.repository, change.environment);
         lines.push(
           `  - ${scope}secret ${change.name}   (requires --allow-delete)`,
+        );
+        break;
+      }
+
+      case 'put-environment': {
+        const e = change.environment;
+        lines.push(
+          `  ${change.current ? '~' : '+'} ${e.repository} environment ${e.name}`,
+        );
+        lines.push(...renderFields(change.fields));
+        break;
+      }
+      case 'delete-environment-branch-policy': {
+        lines.push(
+          `  - ${change.repository} (${change.environment}) ${change.policy.type} ${change.policy.name}   (requires --allow-delete)`,
         );
         break;
       }
@@ -363,6 +378,7 @@ const BUCKETS = {
     'update-runner-group',
     'update-variable',
     'put-secret',
+    'put-environment',
     'update-security-config',
     'update-property',
     'update-repo-role',
@@ -381,6 +397,7 @@ const BUCKETS = {
     'delete-runner-group',
     'delete-variable',
     'delete-secret',
+    'delete-environment-branch-policy',
     'delete-security-config',
     'delete-property',
     'remove-branch-protection',
@@ -408,7 +425,7 @@ export function summarize(changes: Change[]): {
   };
 }
 
-/** "repo " or "repo (environment) " before a variable, nothing for the organization's. */
+/** "repo " or "repo (environment) " before a variable or secret, nothing for the organization's. */
 function variableScope(repository?: string, environment?: string): string {
   if (!repository) return '';
   return environment ? `${repository} (${environment}) ` : `${repository} `;

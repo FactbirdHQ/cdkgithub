@@ -12,6 +12,7 @@
 import type {
   ActionsSecretManifest,
   ActionsVariableManifest,
+  EnvironmentManifest,
   RunnerGroupManifest,
 } from './actions-admin.ts';
 import type { BranchProtectionManifest } from './branch-protection.ts';
@@ -214,6 +215,12 @@ export interface DesiredState {
   readonly actionsVariables?: ActionsVariableManifest[];
   /** Actions secrets, scoped the same way. Values live in the environment, never here. */
   readonly actionsSecrets?: ActionsSecretManifest[];
+  /**
+   * Deployment environments, keyed by repository and name. A declared one is
+   * created when missing and its declared settings are enforced; an
+   * environment nothing declares is never deleted.
+   */
+  readonly environments?: EnvironmentManifest[];
   /**
    * The Entra ID enterprise application that provisions security groups into
    * GitHub. Reconciled by `cdkgithub scim`, not by `apply`: it writes to

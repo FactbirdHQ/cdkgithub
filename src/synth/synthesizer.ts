@@ -2,6 +2,7 @@ import type { IConstruct } from 'constructs';
 import { ActionsPolicy } from '../constructs/actions-policy.ts';
 import { ActionsSecret } from '../constructs/actions-secret.ts';
 import { ActionsVariable } from '../constructs/actions-variable.ts';
+import { Environment } from '../constructs/environment.ts';
 import { BranchProtection } from '../constructs/branch-protection.ts';
 import { CodeSecurityConfiguration } from '../constructs/code-security.ts';
 import { CustomProperty } from '../constructs/custom-property.ts';
@@ -22,6 +23,7 @@ import { UserAccount } from '../constructs/user-account.ts';
 import type {
   ActionsSecretManifest,
   ActionsVariableManifest,
+  EnvironmentManifest,
 } from './actions-admin.ts';
 import type { BranchProtectionManifest } from './branch-protection.ts';
 import type {
@@ -105,6 +107,7 @@ export function synthesize(root: IConstruct): DesiredState {
   }));
   const actionsVariables = collect(root, ActionsVariable, toVariableManifest);
   const actionsSecrets = collect(root, ActionsSecret, toSecretManifest);
+  const environments = collect(root, Environment, toEnvironmentManifest);
 
   assertUniqueNames(repositories, 'repository');
   assertUniqueNames(rulesets, 'ruleset');
@@ -116,6 +119,7 @@ export function synthesize(root: IConstruct): DesiredState {
   assertUniquePerRepository(repositoryRulesets, 'repository ruleset', false);
   assertUniquePerRepository(actionsVariables, 'variable');
   assertUniquePerRepository(actionsSecrets, 'secret');
+  assertUniquePerRepository(environments, 'environment', false);
 
   const state: DesiredState = {
     owner: owner.login,
@@ -134,6 +138,7 @@ export function synthesize(root: IConstruct): DesiredState {
     runnerGroups,
     actionsVariables,
     actionsSecrets,
+    environments,
     scim: singleScimProvisioning(root, owner.login, teams),
   };
 
@@ -440,12 +445,42 @@ function toSecretManifest(secret: ActionsSecret): ActionsSecretManifest {
     repository,
     secret.props.visibility,
   );
+  if (secret.props.environment !== undefined && repository === undefined) {
+    throw new Error(
+      `Secret "${secret.secretName}" names environment "${secret.props.environment}" but no repository. An environment belongs to one repository: netcore the secret under it or pass \`repository\`.`,
+    );
+  }
   return {
     ...secret.props,
     name: secret.secretName,
     valueFrom: secret.props.valueFrom ?? secret.secretName,
     repository,
   };
+}
+
+function toEnvironmentManifest(environment: Environment): EnvironmentManifest {
+  const { repository: named, name: _name, ...settings } = environment.props;
+  const repository = named ?? nearestRepository(environment)?.repositoryName;
+  if (repository === undefined) {
+    throw new Error(
+      `Environment "${environment.environmentName}" names no repository. Nest it under a Repository or pass \`repository\`.`,
+    );
+  }
+  const reviewers =
+    (settings.reviewers?.teams?.length ?? 0) +
+    (settings.reviewers?.users?.length ?? 0);
+  if (reviewers > 6) {
+    throw new Error(
+      `Environment "${environment.environmentName}" on "${repository}" names ${reviewers} reviewers; GitHub allows six.`,
+    );
+  }
+  const wait = settings.waitTimer;
+  if (wait !== undefined && (!Number.isInteger(wait) || wait < 0 || wait > 43200)) {
+    throw new Error(
+      `Environment "${environment.environmentName}" on "${repository}" waits ${wait} minutes; GitHub accepts a whole number from 0 to 43200.`,
+    );
+  }
+  return { repository, name: environment.environmentName, ...settings };
 }
 
 /**

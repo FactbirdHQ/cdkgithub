@@ -197,6 +197,22 @@ const SAMPLES: Record<Change['kind'], Change> = {
     kind: 'delete-secret',
     name: 'NPM_TOKEN',
   },
+  'put-environment': {
+    kind: 'put-environment',
+    environment: {
+      repository: 'flow-portal',
+      name: 'production',
+      deploymentBranchPolicy: { branches: ['main'] },
+    },
+    fields: [],
+    addPolicies: [{ name: 'main', type: 'branch' }],
+  },
+  'delete-environment-branch-policy': {
+    kind: 'delete-environment-branch-policy',
+    repository: 'flow-portal',
+    environment: 'production',
+    policy: { id: 7, name: 'release/*', type: 'branch' },
+  },
   'create-security-config': {
     kind: 'create-security-config',
     config: { name: 'baseline', description: 'Baseline' },

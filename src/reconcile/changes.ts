@@ -5,6 +5,7 @@ import type {
   LiveRunnerGroup,
   LiveRuleset,
   LiveTeam,
+  LiveEnvironment,
 } from '../github/client.ts';
 import type {
   ActionsPolicyManifest,
@@ -14,6 +15,7 @@ import type {
   CodeSecurityConfigurationManifest,
   CustomPropertyManifest,
   CustomRepositoryRoleManifest,
+  EnvironmentManifest,
   RepositoryManifest,
   ExternalGroupBinding,
   OrgSettingsManifest,
@@ -221,11 +223,35 @@ export interface PutSecret {
 }
 
 /** A secret absent from a declared scope. Gated by --allow-delete. */
+/**
+ * Create a declared environment, or bring an existing one's declared settings
+ * in line. `addPolicies` are the branch and tag patterns to add after the
+ * write, which a `custom` policy needs before it admits anything.
+ */
+export interface PutEnvironment {
+  readonly kind: 'put-environment';
+  readonly environment: EnvironmentManifest;
+  /** Absent when the environment does not exist yet. */
+  readonly current?: LiveEnvironment;
+  readonly fields: FieldChange[];
+  readonly addPolicies: Array<{ name: string; type: 'branch' | 'tag' }>;
+}
+
+/** A branch or tag pattern an environment admits that the declaration does not. */
+export interface DeleteEnvironmentBranchPolicy {
+  readonly kind: 'delete-environment-branch-policy';
+  readonly repository: string;
+  readonly environment: string;
+  readonly policy: { id: number; name: string; type: 'branch' | 'tag' };
+}
+
 export interface DeleteSecret {
   readonly kind: 'delete-secret';
   readonly name: string;
   /** Absent for an organization secret. */
   readonly repository?: string;
+  /** The environment on `repository`, absent for a repository-wide secret. */
+  readonly environment?: string;
 }
 
 export interface CreateSecurityConfiguration {
@@ -393,6 +419,8 @@ export type Change =
   | DeleteVariable
   | PutSecret
   | DeleteSecret
+  | PutEnvironment
+  | DeleteEnvironmentBranchPolicy
   | CreateSecurityConfiguration
   | UpdateSecurityConfiguration
   | DeleteSecurityConfiguration
@@ -452,6 +480,7 @@ export const DESTRUCTIVE_KINDS = [
   'delete-runner-group',
   'delete-variable',
   'delete-secret',
+  'delete-environment-branch-policy',
   'delete-security-config',
   'delete-property',
   'remove-branch-protection',
@@ -475,6 +504,7 @@ export const DELETE_SCOPES = {
   'runner-groups': 'delete-runner-group',
   variables: 'delete-variable',
   secrets: 'delete-secret',
+  'branch-policies': 'delete-environment-branch-policy',
   'security-configs': 'delete-security-config',
   properties: 'delete-property',
   'branch-protection': 'remove-branch-protection',

@@ -25,6 +25,7 @@ import type {
   LiveTeam,
   LiveTeamMember,
   LiveTeamRepository,
+  LiveEnvironment,
 } from '../github/client.ts';
 import { comparableRoleName } from '../github/client.ts';
 import type {
@@ -302,23 +303,23 @@ async function importRepositories(
     a.name.localeCompare(b.name);
 
   for (const repository of names) {
-    const [rulesets, variables, environmentVariables, secrets] = await Promise.all([
+    const [rulesets, variables, environments, secrets] = await Promise.all([
       attempt('rulesets', repository, () =>
         client.listRepositoryRulesets(org, repository),
       ),
       attempt('variables', repository, () =>
         client.listRepositoryVariables(org, repository),
       ),
-      attempt('environment variables', repository, async () => {
-        const environments = await client.listRepositoryEnvironments(org, repository);
-        const scoped = await Promise.all(
-          environments.map(async (environment) =>
-            (await client.listEnvironmentVariables(org, repository, environment)).map(
-              (variable) => ({ ...variable, environment }),
-            ),
-          ),
+      attempt('environments', repository, async () => {
+        const names = await client.listRepositoryEnvironments(org, repository);
+        return Promise.all(
+          names.map(async (name) => ({
+            name,
+            settings: await client.getEnvironment(org, repository, name),
+            variables: await client.listEnvironmentVariables(org, repository, name),
+            secrets: await client.listEnvironmentSecrets(org, repository, name),
+          })),
         );
-        return scoped.flat();
       }),
       attempt('secrets', repository, () =>
         client.listRepositorySecrets(org, repository),
@@ -342,27 +343,41 @@ async function importRepositories(
         id: variable.name,
         props: { value: variable.value },
       })),
-      // The id carries the environment, because a repository-wide variable and
-      // an environment's may share a name under the one repository scope.
-      ...[...(environmentVariables ?? [])]
-        .sort((a, b) => a.environment.localeCompare(b.environment) || byName(a, b))
-        .map((variable) => ({
-          type: 'ActionsVariable',
-          id: `${variable.environment}--${variable.name}`,
-          props: {
-            name: variable.name,
-            environment: variable.environment,
-            value: variable.value,
-          },
-        })),
       ...[...(secrets ?? [])].sort(byName).map((secret) => ({
         type: 'ActionsSecret',
         id: secret.name,
         props: {},
       })),
+      // Each environment, then what lives in it. The ids carry the environment,
+      // because a repository-wide entry and an environment's may share a name
+      // under the one repository scope.
+      ...[...(environments ?? [])].sort(byName).flatMap((environment) => [
+        {
+          type: 'Environment',
+          id: environment.name,
+          props: environmentProps(environment.settings),
+        },
+        ...[...environment.variables].sort(byName).map((variable) => ({
+          type: 'ActionsVariable',
+          id: `${environment.name}--${variable.name}`,
+          props: {
+            name: variable.name,
+            environment: environment.name,
+            value: variable.value,
+          },
+        })),
+        ...[...environment.secrets].sort(byName).map((secret) => ({
+          type: 'ActionsSecret',
+          id: `${environment.name}--${secret.name}`,
+          props: { name: secret.name, environment: environment.name },
+        })),
+      ]),
     ];
     if (children.length === 0) continue;
-    if ((secrets ?? []).length > 0) emit.secretNote();
+    const anySecret =
+      (secrets ?? []).length > 0 ||
+      (environments ?? []).some((e) => e.secrets.length > 0);
+    if (anySecret) emit.secretNote();
     emit.repository(repository, children);
   }
 
@@ -417,6 +432,38 @@ function unresolveBypassActors(
   });
 }
 
+/**
+ * An environment's settings as `Environment` props, leaving out what matches
+ * GitHub's defaults so the import reads like something written by hand.
+ */
+function environmentProps(
+  settings: LiveEnvironment | undefined,
+): Record<string, unknown> {
+  if (!settings) return {};
+  const props: Record<string, unknown> = {};
+  if (settings.deploymentBranchPolicy === 'protected') {
+    props.deploymentBranchPolicy = 'protected';
+  }
+  if (settings.deploymentBranchPolicy === 'custom') {
+    const branches = settings.branchPolicies.filter((p) => p.type === 'branch').map((p) => p.name);
+    const tags = settings.branchPolicies.filter((p) => p.type === 'tag').map((p) => p.name);
+    props.deploymentBranchPolicy = {
+      ...(branches.length > 0 ? { branches } : {}),
+      ...(tags.length > 0 ? { tags } : {}),
+    };
+  }
+  const { teams, users } = settings.reviewers;
+  if (teams.length > 0 || users.length > 0) {
+    props.reviewers = {
+      ...(teams.length > 0 ? { teams } : {}),
+      ...(users.length > 0 ? { users } : {}),
+    };
+  }
+  if (settings.preventSelfReview) props.preventSelfReview = true;
+  if (settings.waitTimer > 0) props.waitTimer = settings.waitTimer;
+  return props;
+}
+
 // ---------------------------------------------------------------------------
 // Code emission
 // ---------------------------------------------------------------------------
@@ -430,6 +477,7 @@ const IMPORT_ORDER = [
   'CodeSecurityConfiguration',
   'CustomProperty',
   'CustomRepositoryRole',
+  'Environment',
   'Organization',
   'OrganizationRole',
   'Repository',
