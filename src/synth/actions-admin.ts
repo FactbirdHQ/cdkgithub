@@ -50,6 +50,11 @@ export interface ActionsVariableManifest {
   readonly value: string;
   /** The repository the variable lives on. Absent for an organization variable. */
   readonly repository?: string;
+  /**
+   * The deployment environment on `repository` the variable is scoped to,
+   * read only by jobs that run in it. Absent for a repository-wide variable.
+   */
+  readonly environment?: string;
   /** Required on an organization variable; a repository variable has no visibility. */
   readonly visibility?: OrgConfigVisibility;
   /** Repository names that can read it. Only read with `visibility: "selected"`. */

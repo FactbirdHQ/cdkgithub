@@ -320,8 +320,16 @@ export interface LiveOrgVariable {
 /** One repository's Actions variable. */
 export interface LiveRepoVariable {
   readonly repository: string;
+  /** The deployment environment it is scoped to. Absent for a repository-wide one. */
+  readonly environment?: string;
   readonly name: string;
   readonly value: string;
+}
+
+/** A deployment environment on one repository. */
+export interface LiveRepoEnvironment {
+  readonly repository: string;
+  readonly name: string;
 }
 
 /** An organization Actions secret. GitHub never returns the value. */
@@ -561,6 +569,33 @@ export interface GitHubClient {
   deleteRepositoryVariable(
     owner: string,
     repo: string,
+    name: string,
+  ): Promise<void>;
+  /** Names of a repository's deployment environments. */
+  listRepositoryEnvironments(owner: string, repo: string): Promise<string[]>;
+  listEnvironmentVariables(
+    owner: string,
+    repo: string,
+    environment: string,
+  ): Promise<Array<{ name: string; value: string }>>;
+  createEnvironmentVariable(
+    owner: string,
+    repo: string,
+    environment: string,
+    name: string,
+    value: string,
+  ): Promise<void>;
+  updateEnvironmentVariable(
+    owner: string,
+    repo: string,
+    environment: string,
+    name: string,
+    value: string,
+  ): Promise<void>;
+  deleteEnvironmentVariable(
+    owner: string,
+    repo: string,
+    environment: string,
     name: string,
   ): Promise<void>;
 
@@ -1638,6 +1673,83 @@ export class OctokitGitHubClient implements GitHubClient {
     name: string,
   ): Promise<void> {
     await this.octokit.rest.actions.deleteRepoVariable({ owner, repo, name });
+  }
+
+  async listRepositoryEnvironments(
+    owner: string,
+    repo: string,
+  ): Promise<string[]> {
+    // Octokit's paginate does not type this endpoint as a list, so page by hand.
+    const names: string[] = [];
+    for (let page = 1; ; page++) {
+      const { data } = await this.octokit.rest.repos.getAllEnvironments({
+        owner,
+        repo,
+        per_page: 100,
+        page,
+      });
+      const environments = data.environments ?? [];
+      names.push(...environments.map((e) => e.name));
+      if (environments.length < 100) return names;
+    }
+  }
+
+  async listEnvironmentVariables(
+    owner: string,
+    repo: string,
+    environment: string,
+  ): Promise<Array<{ name: string; value: string }>> {
+    const variables = await this.octokit.paginate(
+      this.octokit.rest.actions.listEnvironmentVariables,
+      { owner, repo, environment_name: environment, per_page: 30 },
+    );
+    return variables.map((v) => ({ name: v.name, value: v.value }));
+  }
+
+  async createEnvironmentVariable(
+    owner: string,
+    repo: string,
+    environment: string,
+    name: string,
+    value: string,
+  ): Promise<void> {
+    await this.octokit.rest.actions.createEnvironmentVariable({
+      owner,
+      repo,
+      environment_name: environment,
+      name,
+      value,
+    });
+  }
+
+  async updateEnvironmentVariable(
+    owner: string,
+    repo: string,
+    environment: string,
+    name: string,
+    value: string,
+  ): Promise<void> {
+    await this.octokit.rest.actions.updateEnvironmentVariable({
+      owner,
+      repo,
+      environment_name: environment,
+      name,
+      value,
+    });
+  }
+
+  async deleteEnvironmentVariable(
+    owner: string,
+    repo: string,
+    environment: string,
+    name: string,
+  ): Promise<void> {
+    await this.octokit.rest.actions.deleteEnvironmentVariable({
+      owner,
+      repo,
+      environment_name: environment,
+      name,
+    });
   }
 
   // ---- Actions secrets ---------------------------------------------------------

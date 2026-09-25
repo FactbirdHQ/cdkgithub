@@ -302,13 +302,24 @@ async function importRepositories(
     a.name.localeCompare(b.name);
 
   for (const repository of names) {
-    const [rulesets, variables, secrets] = await Promise.all([
+    const [rulesets, variables, environmentVariables, secrets] = await Promise.all([
       attempt('rulesets', repository, () =>
         client.listRepositoryRulesets(org, repository),
       ),
       attempt('variables', repository, () =>
         client.listRepositoryVariables(org, repository),
       ),
+      attempt('environment variables', repository, async () => {
+        const environments = await client.listRepositoryEnvironments(org, repository);
+        const scoped = await Promise.all(
+          environments.map(async (environment) =>
+            (await client.listEnvironmentVariables(org, repository, environment)).map(
+              (variable) => ({ ...variable, environment }),
+            ),
+          ),
+        );
+        return scoped.flat();
+      }),
       attempt('secrets', repository, () =>
         client.listRepositorySecrets(org, repository),
       ),
@@ -331,6 +342,19 @@ async function importRepositories(
         id: variable.name,
         props: { value: variable.value },
       })),
+      // The id carries the environment, because a repository-wide variable and
+      // an environment's may share a name under the one repository scope.
+      ...[...(environmentVariables ?? [])]
+        .sort((a, b) => a.environment.localeCompare(b.environment) || byName(a, b))
+        .map((variable) => ({
+          type: 'ActionsVariable',
+          id: `${variable.environment}--${variable.name}`,
+          props: {
+            name: variable.name,
+            environment: variable.environment,
+            value: variable.value,
+          },
+        })),
       ...[...(secrets ?? [])].sort(byName).map((secret) => ({
         type: 'ActionsSecret',
         id: secret.name,

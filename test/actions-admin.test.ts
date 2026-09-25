@@ -463,3 +463,90 @@ describe('secrets', () => {
     ).toEqual(['SHARED_EXPORT']);
   });
 });
+
+describe('environment variables', () => {
+  test('scope to an environment of a repository, and only there', () => {
+    const app = new App();
+    const org = new Organization(app, 'acme', { login: 'acme' });
+    const deck = new Repository(org, 'flight-deck');
+    new ActionsVariable(deck, 'ROLE_ARN', { value: 'arn:repo' });
+    new ActionsVariable(deck, 'prod-ROLE_ARN', {
+      name: 'ROLE_ARN',
+      environment: 'production',
+      value: 'arn:prod',
+    });
+    expect(synthesize(app).actionsVariables).toEqual([
+      { name: 'ROLE_ARN', value: 'arn:repo', repository: 'flight-deck', visibility: undefined },
+      { name: 'ROLE_ARN', value: 'arn:prod', repository: 'flight-deck', environment: 'production', visibility: undefined },
+    ]);
+
+    const orgScoped = new App();
+    const acme = new Organization(orgScoped, 'acme', { login: 'acme' });
+    new ActionsVariable(acme, 'ROLE_ARN', { value: 'x', visibility: 'all', environment: 'production' });
+    expect(() => synthesize(orgScoped)).toThrow('but no repository');
+  });
+
+  test('are created, updated and pruned per environment', async () => {
+    const client = new FakeClient({
+      repositoryVariables: { 'flight-deck': [{ name: 'REGION', value: 'eu' }] },
+      environmentVariables: {
+        'flight-deck': {
+          production: [
+            { name: 'ROLE_ARN', value: 'arn:old' },
+            { name: 'LEGACY', value: '1' },
+          ],
+          staging: [{ name: 'ROLE_ARN', value: 'arn:staging' }],
+        },
+      },
+    });
+    const state = desired({
+      repositories: [{ name: 'flight-deck' }],
+      actionsVariables: [
+        { name: 'REGION', value: 'eu', repository: 'flight-deck' },
+        { name: 'ROLE_ARN', value: 'arn:new', repository: 'flight-deck', environment: 'production' },
+        { name: 'DEPLOY', value: 'yes', repository: 'flight-deck', environment: 'staging' },
+      ],
+    });
+    const changes = plan(state, await readLiveState(client, state)).filter((c) =>
+      c.kind.endsWith('-variable'),
+    );
+
+    expect(changes).toEqual([
+      {
+        kind: 'update-variable',
+        variable: { name: 'ROLE_ARN', value: 'arn:new', repository: 'flight-deck', environment: 'production' },
+        fields: [{ field: 'value', from: 'arn:old', to: 'arn:new' }],
+      },
+      {
+        kind: 'create-variable',
+        variable: { name: 'DEPLOY', value: 'yes', repository: 'flight-deck', environment: 'staging' },
+      },
+      { kind: 'delete-variable', name: 'LEGACY', repository: 'flight-deck', environment: 'production' },
+      { kind: 'delete-variable', name: 'ROLE_ARN', repository: 'flight-deck', environment: 'staging' },
+    ]);
+
+    await apply(client, 'acme', changes, live(), { allowDelete: true });
+    expect(client.callsTo('updateEnvironmentVariable')).toEqual([
+      { repo: 'flight-deck', environment: 'production', name: 'ROLE_ARN', value: 'arn:new' },
+    ]);
+    expect(client.callsTo('createEnvironmentVariable')).toEqual([
+      { repo: 'flight-deck', environment: 'staging', name: 'DEPLOY', value: 'yes' },
+    ]);
+    expect(client.callsTo('deleteEnvironmentVariable')).toEqual([
+      { repo: 'flight-deck', environment: 'production', name: 'LEGACY' },
+      { repo: 'flight-deck', environment: 'staging', name: 'ROLE_ARN' },
+    ]);
+  });
+
+  test('refuse an environment the repository does not have', async () => {
+    const client = new FakeClient({ environmentVariables: { 'flight-deck': {} } });
+    const state = desired({
+      repositories: [{ name: 'flight-deck' }],
+      actionsVariables: [
+        { name: 'ROLE_ARN', value: 'arn', repository: 'flight-deck', environment: 'production' },
+      ],
+    });
+    const liveState = await readLiveState(client, state);
+    expect(() => plan(state, liveState)).toThrow('has no environment "production"');
+  });
+});

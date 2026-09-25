@@ -201,6 +201,8 @@ export interface DeleteVariable {
   readonly name: string;
   /** Absent for an organization variable. */
   readonly repository?: string;
+  /** The environment on `repository`, absent for a repository-wide variable. */
+  readonly environment?: string;
 }
 
 /**
