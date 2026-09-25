@@ -73,10 +73,17 @@ export function synthesize(root: IConstruct): DesiredState {
   assertNoDuplicateGrants(root.node.findAll().filter(isTeam));
 
   const branchProtection = collect(root, BranchProtection, toBranchProtection);
-  const repositories = collect(root, Repository, (r) => ({
-    name: r.repositoryName,
-    ...r.props,
-  }));
+  // What a repository contains is collected from the constructs it made, so
+  // only what it is created with reaches its manifest.
+  const repositories = collect(root, Repository, (r) => {
+    const {
+      environments: _environments,
+      variables: _variables,
+      secrets: _secrets,
+      ...props
+    } = r.props;
+    return { name: r.repositoryName, ...props };
+  });
   const rulesets = collect(root, Ruleset, toRulesetManifest);
   const customRepositoryRoles = collect(root, CustomRepositoryRole, (r) => ({
     name: r.roleName,
@@ -234,6 +241,48 @@ function toBranchProtection(
 
   const { repository: _ignored, branch: _branch, ...rest } = protection.props;
   return { repository, branch: protection.branch, ...rest };
+}
+
+/** The repository an environment belongs to: the one it names, or the one it sits in. */
+function repositoryOf(environment: Environment): string | undefined {
+  return (
+    environment.props.repository ??
+    nearestRepository(environment)?.repositoryName
+  );
+}
+
+/** The environment a variable or secret sits in, if any. */
+function nearestEnvironment(construct: IConstruct): Environment | undefined {
+  let scope = construct.node.scope;
+  while (scope) {
+    if (scope instanceof Environment) return scope;
+    scope = scope.node.scope;
+  }
+  return undefined;
+}
+
+/**
+ * Where a variable or secret lives. One nested under an {@link Environment}
+ * takes the environment and its repository from there, and naming a different
+ * environment of its own is a contradiction worth failing on.
+ */
+function scopeOf(
+  construct: IConstruct,
+  props: { repository?: string; environment?: string },
+  what: string,
+): { repository?: string; environment?: string } {
+  const around = nearestEnvironment(construct);
+  if (around && props.environment && props.environment !== around.environmentName) {
+    throw new Error(
+      `${what} sits in environment "${around.environmentName}" but names environment "${props.environment}".`,
+    );
+  }
+  return {
+    repository:
+      props.repository ??
+      (around ? repositoryOf(around) : nearestRepository(construct)?.repositoryName),
+    environment: props.environment ?? around?.environmentName,
+  };
 }
 
 function nearestRepository(construct: IConstruct): Repository | undefined {
@@ -418,36 +467,43 @@ function assertScopedVisibility(
 function toVariableManifest(
   variable: ActionsVariable,
 ): ActionsVariableManifest {
-  const repository =
-    variable.props.repository ?? nearestRepository(variable)?.repositoryName;
+  const { repository, environment } = scopeOf(
+    variable,
+    variable.props,
+    `Variable "${variable.variableName}"`,
+  );
   assertScopedVisibility(
     `variable "${variable.variableName}"`,
     repository,
     variable.props.visibility,
   );
-  if (variable.props.environment !== undefined && repository === undefined) {
+  if (environment !== undefined && repository === undefined) {
     throw new Error(
-      `Variable "${variable.variableName}" names environment "${variable.props.environment}" but no repository. An environment belongs to one repository: nest the variable under it or pass \`repository\`.`,
+      `Variable "${variable.variableName}" names environment "${environment}" but no repository. An environment belongs to one repository: nest the variable under it or pass \`repository\`.`,
     );
   }
   return {
     ...variable.props,
     name: variable.variableName,
     repository,
+    ...(environment === undefined ? {} : { environment }),
   };
 }
 
 function toSecretManifest(secret: ActionsSecret): ActionsSecretManifest {
-  const repository =
-    secret.props.repository ?? nearestRepository(secret)?.repositoryName;
+  const { repository, environment } = scopeOf(
+    secret,
+    secret.props,
+    `Secret "${secret.secretName}"`,
+  );
   assertScopedVisibility(
     `secret "${secret.secretName}"`,
     repository,
     secret.props.visibility,
   );
-  if (secret.props.environment !== undefined && repository === undefined) {
+  if (environment !== undefined && repository === undefined) {
     throw new Error(
-      `Secret "${secret.secretName}" names environment "${secret.props.environment}" but no repository. An environment belongs to one repository: nest the secret under it or pass \`repository\`.`,
+      `Secret "${secret.secretName}" names environment "${environment}" but no repository. An environment belongs to one repository: nest the secret under it or pass \`repository\`.`,
     );
   }
   return {
@@ -455,12 +511,19 @@ function toSecretManifest(secret: ActionsSecret): ActionsSecretManifest {
     name: secret.secretName,
     valueFrom: secret.props.valueFrom ?? secret.secretName,
     repository,
+    ...(environment === undefined ? {} : { environment }),
   };
 }
 
 function toEnvironmentManifest(environment: Environment): EnvironmentManifest {
-  const { repository: named, name: _name, ...settings } = environment.props;
-  const repository = named ?? nearestRepository(environment)?.repositoryName;
+  const {
+    repository: _repository,
+    name: _name,
+    variables: _variables,
+    secrets: _secrets,
+    ...settings
+  } = environment.props;
+  const repository = repositoryOf(environment);
   if (repository === undefined) {
     throw new Error(
       `Environment "${environment.environmentName}" names no repository. Nest it under a Repository or pass \`repository\`.`,

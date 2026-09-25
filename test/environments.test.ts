@@ -173,3 +173,76 @@ describe('plan and apply', () => {
     ]);
   });
 });
+
+describe('props and methods', () => {
+  /** The environment-related parts of a definition, for comparing two spellings of it. */
+  function declared(app: App) {
+    const state = synthesize(app);
+    return {
+      repositories: state.repositories,
+      environments: state.environments,
+      variables: state.actionsVariables,
+      secrets: state.actionsSecrets,
+    };
+  }
+
+  test('props, methods and nested constructs declare the same thing', () => {
+    const asProps = new App();
+    new Repository(new Organization(asProps, 'acme', { login: 'acme' }), 'flight-deck', {
+      variables: { REGION: 'eu' },
+      secrets: { NPM_TOKEN: {} },
+      environments: {
+        production: {
+          deploymentBranchPolicy: { branches: ['main'] },
+          variables: { ROLE_ARN: 'arn:prod' },
+          secrets: { SENTRY_DSN: { valueFrom: 'PROD_SENTRY_DSN' } },
+        },
+      },
+    });
+
+    const asMethods = new App();
+    const deck = new Repository(new Organization(asMethods, 'acme', { login: 'acme' }), 'flight-deck');
+    deck.addVariable('REGION', 'eu');
+    deck.addSecret('NPM_TOKEN');
+    const production = deck.addEnvironment('production', { deploymentBranchPolicy: { branches: ['main'] } });
+    production.addVariable('ROLE_ARN', 'arn:prod');
+    production.addSecret('SENTRY_DSN', { valueFrom: 'PROD_SENTRY_DSN' });
+
+    const asConstructs = new App();
+    const repo = new Repository(new Organization(asConstructs, 'acme', { login: 'acme' }), 'flight-deck');
+    new ActionsVariable(repo, 'REGION', { value: 'eu' });
+    new ActionsSecret(repo, 'NPM_TOKEN');
+    const env = new Environment(repo, 'production', { deploymentBranchPolicy: { branches: ['main'] } });
+    new ActionsVariable(env, 'ROLE_ARN', { value: 'arn:prod' });
+    new ActionsSecret(env, 'SENTRY_DSN', { valueFrom: 'PROD_SENTRY_DSN' });
+
+    const expected = declared(asConstructs);
+    expect(expected.repositories).toEqual([{ name: 'flight-deck' }]);
+    expect(expected.environments).toEqual([
+      { repository: 'flight-deck', name: 'production', deploymentBranchPolicy: { branches: ['main'] } },
+    ]);
+    expect(expected.variables).toContainEqual({
+      name: 'ROLE_ARN',
+      value: 'arn:prod',
+      repository: 'flight-deck',
+      environment: 'production',
+    });
+    expect(declared(asMethods)).toEqual(expected);
+    expect(sortedBy(declared(asProps))).toEqual(sortedBy(expected));
+  });
+
+  test('a variable cannot sit in one environment and name another', () => {
+    const app = new App();
+    const deck = new Repository(new Organization(app, 'acme', { login: 'acme' }), 'flight-deck');
+    new ActionsVariable(deck.addEnvironment('production'), 'X', { value: '1', environment: 'staging' });
+    expect(() => synthesize(app)).toThrow('sits in environment "production" but names environment "staging"');
+  });
+});
+
+/** Props create the environment before the repository-wide entries, so compare order-free. */
+function sortedBy<T extends Record<string, unknown[] | undefined>>(state: T): T {
+  const key = (x: unknown) => JSON.stringify(x);
+  return Object.fromEntries(
+    Object.entries(state).map(([k, v]) => [k, v ? [...v].sort((a, b) => key(a).localeCompare(key(b))) : v]),
+  ) as T;
+}
