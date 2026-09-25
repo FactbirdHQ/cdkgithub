@@ -54,6 +54,7 @@ Each scope names one destructive change kind for `--allow-delete=<scopes>`:
 | `security-configs` | A code security configuration. |
 | `properties` | A custom property. |
 | `branch-protection` | A branch's legacy protection, from `enabled: false`. |
+| `collaborators` | A direct collaborator or pending invitation on a declared repository the definition does not declare. |
 | `branch-policies` | A branch or tag pattern a declared environment admits and its declaration no longer lists. |
 
 Every change of these kinds is planned after every change that adds or updates something, in one run as in the plan. `apply` stops at its first failure, so an addition that fails leaves what it was replacing in place: a team's successor is created and granted before the team goes, and a ruleset is in force before the legacy protection it replaces is removed.
@@ -168,6 +169,7 @@ the construct it creates.
 | `Repository` | `secret` | `addSecret(name, options)` | `ActionsSecret` |
 | `Repository` | `ruleset` | `addRuleset(name, options)` | `RepositoryRuleset` |
 | `Repository` | `branchProtection` | `addBranchProtection(branch, options)` | `BranchProtection` |
+| `Repository` | `collaborator` | `addCollaborator(login, permission)` | `Collaborator` |
 | `Environment` | `variable` | `addVariable(name, value)` | `ActionsVariable` |
 | `Environment` | `secret` | `addSecret(name, options)` | `ActionsSecret` |
 
@@ -443,6 +445,33 @@ no value anywhere: `valueFrom` names the environment variable `apply` reads
 at the moment of writing, and the plan diffs existence and visibility, the
 whole of what GitHub can report back. See
 [Declare Actions secrets without their values](how-to.md#declare-actions-secrets-without-their-values).
+
+### Collaborator
+
+```ts
+const atat = new Repository(org, "atat", {
+  collaborator: { dbrgn: "triage" },   // login: permission
+});
+atat.addCollaborator("casey", "push"); // the same, a piece at a time
+```
+
+A person granted one repository directly, outside any team: an organization
+member added by hand, or an outside collaborator. The permission is a
+built-in (`pull`, `triage`, `push`, `maintain`, `admin`) or a custom
+repository role's name, and compares in that vocabulary, so a declared `push`
+matches GitHub's `write`. Logins compare case-insensitively.
+
+The surface is unmanaged until the definition declares a collaborator. From
+then on every declared repository owns its direct collaborators and pending
+invitations: one the definition does not declare is a gated removal
+(`collaborators`), whether it holds the repository or was only invited. A
+person outside the organization is invited and holds nothing until they
+accept; a pending invitation is updated in place, not sent again. Reading
+them costs two requests per declared repository on every `plan`, and `import
+--repositories` writes the live ones out, invitations included.
+
+`diff --by-person` folds the grants into each person's reach, credited to
+`direct collaborator`; the live side leaves pending invitations out.
 
 ### Environment
 

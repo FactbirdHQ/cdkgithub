@@ -7,6 +7,7 @@ import { resolveLive } from './live.ts';
 import { planActionsAdmin } from './plan-actions-admin.ts';
 import { planCustomRepositoryRoles } from './plan-custom-roles.ts';
 import { planRepositories } from './plan-repositories.ts';
+import { planCollaborators } from './plan-collaborators.ts';
 import { planEnvironments } from './plan-environments.ts';
 import { planGovernance } from './plan-governance.ts';
 import { planOrganizationRoles } from './plan-org-roles.ts';
@@ -100,6 +101,7 @@ export function plan(desired: DesiredState, live: LiveState): Change[] {
     ...planRepositories(desired.repositories, live),
     ...roleUpserts,
     ...planTeamAccess(desired.teams, live),
+    ...planCollaborators(desired, live),
     ...links,
     ...deletes,
     ...planGovernance(desired, live),

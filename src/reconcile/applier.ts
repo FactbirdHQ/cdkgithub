@@ -383,6 +383,8 @@ export function describeChange(change: Change): string {
         : '';
       return `${verb} variable ${change.variable.name}${where}`;
     }
+    case 'set-collaborator':
+      return `${change.current ? 'update' : 'add'} collaborator ${change.collaborator.login} on ${change.collaborator.repository}`;
     case 'put-environment':
       return `${change.current ? 'update' : 'create'} environment ${change.environment.name} on ${change.environment.repository}`;
     case 'put-secret': {
@@ -434,6 +436,8 @@ function describeDelete(change: Change): string {
       return `delete ruleset "${change.live.name}" from ${change.repository}`;
     case 'delete-runner-group':
       return `delete runner group "${change.live.name}"`;
+    case 'remove-collaborator':
+      return `${change.live.invitationId !== undefined ? 'withdraw the invitation of' : 'remove collaborator'} ${change.live.login} from ${change.live.repository}`;
     case 'delete-environment-branch-policy':
       return `remove ${change.policy.type} ${change.policy.name} from environment ${change.environment} on ${change.repository}`;
     case 'delete-variable':

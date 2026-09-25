@@ -20,6 +20,7 @@ import type { ScimProvisioningManifest } from './scim.ts';
 import type {
   ActionsPolicyManifest,
   CodeSecurityConfigurationManifest,
+  CollaboratorManifest,
   CustomPropertyManifest,
   CustomRepositoryRoleManifest,
   OrganizationRoleManifest,
@@ -221,6 +222,11 @@ export interface DesiredState {
    * environment nothing declares is never deleted.
    */
   readonly environments?: EnvironmentManifest[];
+  /**
+   * Direct collaborators, keyed by repository and login. Once any is declared,
+   * every declared repository owns its collaborators and pending invitations.
+   */
+  readonly collaborators?: CollaboratorManifest[];
   /**
    * The Entra ID enterprise application that provisions security groups into
    * GitHub. Reconciled by `cdkgithub scim`, not by `apply`: it writes to

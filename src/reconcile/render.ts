@@ -199,6 +199,24 @@ export function renderPlan(changes: Change[]): string {
         break;
       }
 
+      case 'set-collaborator': {
+        const { collaborator: c, current } = change;
+        const invited = current?.invitationId !== undefined ? ' (invited)' : '';
+        lines.push(
+          current
+            ? `  ~ ${c.repository} collaborator ${c.login}${invited}: "${current.permission}" -> "${c.permission}"`
+            : `  + ${c.repository} collaborator ${c.login} = "${c.permission}"`,
+        );
+        break;
+      }
+      case 'remove-collaborator': {
+        const { live } = change;
+        const invited = live.invitationId !== undefined ? ' (invited)' : '';
+        lines.push(
+          `  - ${live.repository} collaborator ${live.login}${invited} ("${live.permission}")   (requires --allow-delete)`,
+        );
+        break;
+      }
       case 'put-environment': {
         const e = change.environment;
         lines.push(
@@ -379,6 +397,7 @@ const BUCKETS = {
     'update-variable',
     'put-secret',
     'put-environment',
+    'set-collaborator',
     'update-security-config',
     'update-property',
     'update-repo-role',
@@ -398,6 +417,7 @@ const BUCKETS = {
     'delete-variable',
     'delete-secret',
     'delete-environment-branch-policy',
+    'remove-collaborator',
     'delete-security-config',
     'delete-property',
     'remove-branch-protection',
