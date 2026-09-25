@@ -562,7 +562,22 @@ function readManifest(path: string): DesiredState {
 async function diffCommand(flags: Flags): Promise<number> {
   const desired = readManifest(flags.manifest);
   const client = new OctokitGitHubClient(resolveToken());
-  const live = await readLiveTree(client, desired.owner, desired.ownerType);
+  // Direct collaborators are read only for a definition that manages them,
+  // and only on the repositories it declares, the same scope `plan` reads.
+  const collaboratorRepositories = desired.collaborators
+    ? [
+        ...new Set([
+          ...(desired.repositories ?? []).map((r) => r.name),
+          ...desired.collaborators.map((c) => c.repository),
+        ]),
+      ]
+    : [];
+  const live = await readLiveTree(
+    client,
+    desired.owner,
+    desired.ownerType,
+    collaboratorRepositories,
+  );
   const palette = choosePalette({
     flag: flags.color,
     isTTY: process.stdout.isTTY === true,

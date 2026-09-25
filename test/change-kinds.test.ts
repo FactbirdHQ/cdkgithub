@@ -197,6 +197,14 @@ const SAMPLES: Record<Change['kind'], Change> = {
     kind: 'delete-secret',
     name: 'NPM_TOKEN',
   },
+  'set-collaborator': {
+    kind: 'set-collaborator',
+    collaborator: { repository: 'flow-portal', login: 'casey', permission: 'triage' },
+  },
+  'remove-collaborator': {
+    kind: 'remove-collaborator',
+    live: { repository: 'flow-portal', login: 'ada', permission: 'push', invitationId: 12 },
+  },
   'put-environment': {
     kind: 'put-environment',
     environment: {
