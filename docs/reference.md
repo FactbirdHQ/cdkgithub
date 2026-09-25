@@ -301,6 +301,11 @@ pattern rules. Each takes the parameters of GitHub's REST payload in
 camelCase, and a test round-trips one of every type through the conversion so
 a schema change breaks the build rather than an apply.
 
+A rule is written whole, so a parameter it leaves out takes GitHub's
+default on every create and update, whatever the live rule had. On
+`pull_request`, declare `requireExtraApprovalForUnattributedChanges` rather
+than relying on that default.
+
 `enforcement: "evaluate"` records violations without blocking anyone.
 
 Bypass actors are named, and cdkgithub resolves the team slug or app slug to
