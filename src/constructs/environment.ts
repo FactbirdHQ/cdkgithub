@@ -32,10 +32,10 @@ export interface EnvironmentOptions {
   readonly waitTimer?: number;
 
   /** Variables only jobs in this environment read, by name and value. */
-  readonly variables?: Readonly<Record<string, string>>;
+  readonly variable?: Readonly<Record<string, string>>;
 
   /** Secrets only jobs in this environment read, by name. */
-  readonly secrets?: Readonly<Record<string, SecretOptions>>;
+  readonly secret?: Readonly<Record<string, SecretOptions>>;
 }
 
 export interface EnvironmentProps extends EnvironmentOptions {
@@ -65,11 +65,11 @@ export interface EnvironmentProps extends EnvironmentOptions {
  *
  * ```ts
  * const deck = new Repository(org, 'flow-portal', {
- *   environments: {
+ *   environment: {
  *     production: {
  *       deploymentBranchPolicy: { branches: ['main'] },
- *       variables: { DEPLOY_ROLE_ARN: 'arn:aws:iam::123456789012:role/deploy' },
- *       secrets: { SENTRY_DSN: {} },
+ *       variable: { DEPLOY_ROLE_ARN: 'arn:aws:iam::123456789012:role/deploy' },
+ *       secret: { SENTRY_DSN: {} },
  *     },
  *   },
  * });
@@ -89,10 +89,10 @@ export class Environment extends Construct {
     super(scope, id);
     this.props = props;
     this.environmentName = props.name ?? id;
-    for (const [name, value] of Object.entries(props.variables ?? {})) {
+    for (const [name, value] of Object.entries(props.variable ?? {})) {
       this.addVariable(name, value);
     }
-    for (const [name, options] of Object.entries(props.secrets ?? {})) {
+    for (const [name, options] of Object.entries(props.secret ?? {})) {
       this.addSecret(name, options);
     }
   }

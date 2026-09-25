@@ -77,9 +77,11 @@ export function synthesize(root: IConstruct): DesiredState {
   // only what it is created with reaches its manifest.
   const repositories = collect(root, Repository, (r) => {
     const {
-      environments: _environments,
-      variables: _variables,
-      secrets: _secrets,
+      environment: _environment,
+      variable: _variable,
+      secret: _secret,
+      ruleset: _ruleset,
+      branchProtection: _branchProtection,
       ...props
     } = r.props;
     return { name: r.repositoryName, ...props };
@@ -519,8 +521,8 @@ function toEnvironmentManifest(environment: Environment): EnvironmentManifest {
   const {
     repository: _repository,
     name: _name,
-    variables: _variables,
-    secrets: _secrets,
+    variable: _variable,
+    secret: _secret,
     ...settings
   } = environment.props;
   const repository = repositoryOf(environment);

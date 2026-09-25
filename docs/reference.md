@@ -144,6 +144,34 @@ are identical. Adopting one setting does not reset its neighbours.
 
 ## Constructs
 
+A construct that belongs to a parent can be written three ways, which
+synthesize identically: as a record prop on the parent keyed by name, with
+the parent's `add*` method, or with `new` under the parent. The prop is named
+after the construct and the method adds one, the way an AWS CDK Lambda
+function takes `environment` and has `addEnvironment`. Each method returns
+the construct it creates.
+
+| Parent | Prop | Method | Creates |
+| --- | --- | --- | --- |
+| `Organization` | `variable` | `addVariable(name, options)` | `ActionsVariable` |
+| `Organization` | `secret` | `addSecret(name, options)` | `ActionsSecret` |
+| `Organization` | `ruleset` | `addRuleset(name, options)` | `Ruleset` |
+| `Organization` | `runnerGroup` | `addRunnerGroup(name, options)` | `RunnerGroup` |
+| `Organization` | `customProperty` | `addCustomProperty(name, options)` | `CustomProperty` |
+| `Organization` | `codeSecurityConfiguration` | `addCodeSecurityConfiguration(name, options)` | `CodeSecurityConfiguration` |
+| `Organization` | `organizationRole` | `addOrganizationRole(name, options)` | `OrganizationRole` |
+| `Organization` | `customRepositoryRole` | `addCustomRepositoryRole(name, options)` | `CustomRepositoryRole` |
+| `Repository` | `environment` | `addEnvironment(name, options)` | `Environment` |
+| `Repository` | `variable` | `addVariable(name, value)` | `ActionsVariable` |
+| `Repository` | `secret` | `addSecret(name, options)` | `ActionsSecret` |
+| `Repository` | `ruleset` | `addRuleset(name, options)` | `RepositoryRuleset` |
+| `Repository` | `branchProtection` | `addBranchProtection(branch, options)` | `BranchProtection` |
+| `Environment` | `variable` | `addVariable(name, value)` | `ActionsVariable` |
+| `Environment` | `secret` | `addSecret(name, options)` | `ActionsSecret` |
+
+Teams keep their own shape: a child team is a `Team` scoped under its parent,
+and rosters and grants are props of the team itself.
+
 The authoring API, all exported from `src/index.ts`.
 
 ### Organization and UserAccount
@@ -410,16 +438,16 @@ whole of what GitHub can report back. See
 
 ```ts
 const deck = new Repository(org, "flow-portal", {
-  variables: { REGION: "eu-west-1" },
-  secrets: { NPM_TOKEN: {} },                        // value from $NPM_TOKEN
-  environments: {
+  variable: { REGION: "eu-west-1" },
+  secret: { NPM_TOKEN: {} },                        // value from $NPM_TOKEN
+  environment: {
     production: {
       deploymentBranchPolicy: { branches: ["main"] }, // or "protected", or "all"
       reviewers: { teams: ["platform"], users: ["casey"] },
       preventSelfReview: true,
       waitTimer: 10,                                   // minutes, 0 to 43200
-      variables: { DEPLOY_ROLE_ARN: "arn:aws:iam::123456789012:role/deploy" },
-      secrets: { SENTRY_DSN: { valueFrom: "PROD_SENTRY_DSN" } },
+      variable: { DEPLOY_ROLE_ARN: "arn:aws:iam::123456789012:role/deploy" },
+      secret: { SENTRY_DSN: { valueFrom: "PROD_SENTRY_DSN" } },
     },
   },
 });

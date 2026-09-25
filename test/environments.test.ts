@@ -189,13 +189,13 @@ describe('props and methods', () => {
   test('props, methods and nested constructs declare the same thing', () => {
     const asProps = new App();
     new Repository(new Organization(asProps, 'acme', { login: 'acme' }), 'flow-portal', {
-      variables: { REGION: 'eu' },
-      secrets: { NPM_TOKEN: {} },
-      environments: {
+      variable: { REGION: 'eu' },
+      secret: { NPM_TOKEN: {} },
+      environment: {
         production: {
           deploymentBranchPolicy: { branches: ['main'] },
-          variables: { ROLE_ARN: 'arn:prod' },
-          secrets: { SENTRY_DSN: { valueFrom: 'PROD_SENTRY_DSN' } },
+          variable: { ROLE_ARN: 'arn:prod' },
+          secret: { SENTRY_DSN: { valueFrom: 'PROD_SENTRY_DSN' } },
         },
       },
     });
@@ -236,6 +236,82 @@ describe('props and methods', () => {
     const deck = new Repository(new Organization(app, 'acme', { login: 'acme' }), 'flow-portal');
     new ActionsVariable(deck.addEnvironment('production'), 'X', { value: '1', environment: 'staging' });
     expect(() => synthesize(app)).toThrow('sits in environment "production" but names environment "staging"');
+  });
+});
+
+describe('the same pattern elsewhere', () => {
+  test('repository rulesets and branch protection, as props or methods', () => {
+    const rules = [{ type: 'deletion' as const }];
+
+    const asProps = new App();
+    new Repository(new Organization(asProps, 'acme', { login: 'acme' }), 'flow-portal', {
+      ruleset: { Default: { rules } },
+      branchProtection: { main: { enabled: false } },
+    });
+
+    const asMethods = new App();
+    const deck = new Repository(new Organization(asMethods, 'acme', { login: 'acme' }), 'flow-portal');
+    deck.addRuleset('Default', { rules });
+    deck.addBranchProtection('main', { enabled: false });
+
+    const props = synthesize(asProps);
+    expect(props.repositories).toEqual([{ name: 'flow-portal' }]);
+    expect(props.repositoryRulesets).toEqual([
+      expect.objectContaining({ name: 'Default', repository: 'flow-portal', rules }),
+    ]);
+    expect(props.branchProtection).toEqual([
+      expect.objectContaining({ repository: 'flow-portal', branch: 'main', enabled: false }),
+    ]);
+    const methods = synthesize(asMethods);
+    expect(methods.repositoryRulesets).toEqual(props.repositoryRulesets);
+    expect(methods.branchProtection).toEqual(props.branchProtection);
+  });
+
+  test('every organization-scoped construct, as props or methods', () => {
+    const asProps = new App();
+    new Organization(asProps, 'acme', {
+      login: 'acme',
+      variable: { REGION: { value: 'eu', visibility: 'all' } },
+      secret: { NPM_TOKEN: { visibility: 'private' } },
+      ruleset: { guard: { rules: [{ type: 'deletion' }] } },
+      runnerGroup: { deploy: { visibility: 'selected', selectedRepositories: ['flow-portal'] } },
+      customProperty: { tier: { valueType: 'string' } },
+      codeSecurityConfiguration: { baseline: { description: 'Baseline' } },
+      organizationRole: { all_repo_read: { teams: ['auditors'] } },
+      customRepositoryRole: {
+        Jumper: { baseRole: 'push', description: 'Jumps the queue', permissions: ['jump_merge_queue'] },
+      },
+    });
+
+    const asMethods = new App();
+    const org = new Organization(asMethods, 'acme', { login: 'acme' });
+    org.addVariable('REGION', { value: 'eu', visibility: 'all' });
+    org.addSecret('NPM_TOKEN', { visibility: 'private' });
+    org.addRuleset('guard', { rules: [{ type: 'deletion' }] });
+    org.addRunnerGroup('deploy', { visibility: 'selected', selectedRepositories: ['flow-portal'] });
+    org.addCustomProperty('tier', { valueType: 'string' });
+    org.addCodeSecurityConfiguration('baseline', { description: 'Baseline' });
+    org.addOrganizationRole('all_repo_read', { teams: ['auditors'] });
+    org.addCustomRepositoryRole('Jumper', {
+      baseRole: 'push',
+      description: 'Jumps the queue',
+      permissions: ['jump_merge_queue'],
+    });
+
+    const props = synthesize(asProps);
+    for (const collection of [
+      'actionsVariables',
+      'actionsSecrets',
+      'rulesets',
+      'runnerGroups',
+      'customProperties',
+      'codeSecurityConfigurations',
+      'organizationRoles',
+      'customRepositoryRoles',
+    ] as const) {
+      expect(props[collection]).toHaveLength(1);
+    }
+    expect(synthesize(asMethods)).toEqual(props);
   });
 });
 
