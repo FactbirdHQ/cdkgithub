@@ -409,18 +409,39 @@ whole of what GitHub can report back. See
 ### Environment
 
 ```ts
-const deck = new Repository(org, "flow-portal");
-new Environment(deck, "production", {
-  deploymentBranchPolicy: { branches: ["main"] }, // or "protected", or "all"
-  reviewers: { teams: ["platform"], users: ["casey"] },
-  preventSelfReview: true,
-  waitTimer: 10,                                   // minutes, 0 to 43200
-});
-new ActionsSecret(deck, "prod-DEPLOY_TOKEN", {
-  name: "DEPLOY_TOKEN",
-  environment: "production",
+const deck = new Repository(org, "flow-portal", {
+  variables: { REGION: "eu-west-1" },
+  secrets: { NPM_TOKEN: {} },                        // value from $NPM_TOKEN
+  environments: {
+    production: {
+      deploymentBranchPolicy: { branches: ["main"] }, // or "protected", or "all"
+      reviewers: { teams: ["platform"], users: ["casey"] },
+      preventSelfReview: true,
+      waitTimer: 10,                                   // minutes, 0 to 43200
+      variables: { DEPLOY_ROLE_ARN: "arn:aws:iam::123456789012:role/deploy" },
+      secrets: { SENTRY_DSN: { valueFrom: "PROD_SENTRY_DSN" } },
+    },
+  },
 });
 ```
+
+The same, a piece at a time:
+
+```ts
+const deck = new Repository(org, "flow-portal");
+deck.addVariable("REGION", "eu-west-1");
+deck.addSecret("NPM_TOKEN");
+const production = deck.addEnvironment("production", {
+  deploymentBranchPolicy: { branches: ["main"] },
+});
+production.addVariable("DEPLOY_ROLE_ARN", "arn:aws:iam::123456789012:role/deploy");
+production.addSecret("SENTRY_DSN", { valueFrom: "PROD_SENTRY_DSN" });
+```
+
+Each `add*` returns the construct it creates, and both spellings synthesize to
+what `new Environment`, `new ActionsVariable` and `new ActionsSecret` nested
+under the repository would. A variable or secret nested under an environment
+lives in it; naming a different `environment` of its own fails synthesis.
 
 A declared environment is created when the repository lacks it, and every
 field written is held to what it says. A field left out is sent back as it
