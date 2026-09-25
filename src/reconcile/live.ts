@@ -24,6 +24,7 @@ import type {
 } from '../github/client.ts';
 import type { DesiredState, TeamManifest } from '../synth/manifest.ts';
 import { isBuiltInRepoPermission } from '../synth/manifest.ts';
+import { scopesOf } from './owned-scopes.ts';
 
 /**
  * Everything read back from the live organization, ready to diff.
@@ -69,13 +70,13 @@ export interface LiveState {
   /** Rulesets of the repositories the definition declares rulesets on, and no others. */
   readonly repositoryRulesets?: LiveRepositoryRuleset[];
   readonly runnerGroups?: LiveRunnerGroup[];
-  /** Read only when the definition declares an organization-scoped variable. */
+  /** Read only when the definition owns the organization's variables. */
   readonly actionsVariables?: LiveOrgVariable[];
-  /** Read only when the definition declares an organization-scoped secret. */
+  /** Read only when the definition owns the organization's secrets. */
   readonly actionsSecrets?: LiveOrgSecret[];
-  /** Variables of the repositories the definition declares variables on. */
+  /** Variables of the repositories the definition owns the variables of. */
   readonly repositoryVariables?: LiveRepoVariable[];
-  /** Secret names of the repositories the definition declares secrets on. */
+  /** Secret names of the repositories the definition owns the secrets of. */
   readonly repositorySecrets?: LiveRepoSecret[];
   readonly securityConfigurations?: LiveCodeSecurityConfiguration[];
   readonly defaultSecurityConfigurations?: LiveDefaultSecurityConfiguration[];
@@ -112,11 +113,13 @@ export async function readLiveState(
   const beingCreated = new Set(
     (desired.repositories ?? []).map((r) => r.name),
   );
-  const declaresOrgVariables = (desired.actionsVariables ?? []).some(
-    (v) => v.repository === undefined,
+  const variableScopes = scopesOf(
+    desired.actionsVariables,
+    desired.ownedVariableScopes,
   );
-  const declaresOrgSecrets = (desired.actionsSecrets ?? []).some(
-    (s) => s.repository === undefined,
+  const secretScopes = scopesOf(
+    desired.actionsSecrets,
+    desired.ownedSecretScopes,
   );
 
   // A team is read back only for the surface it declares, so a definition that
@@ -171,7 +174,7 @@ export async function readLiveState(
       ? readOrganizationRoles(client, owner)
       : undefined,
     readPerRepository(
-      desired.repositoryRulesets,
+      namedRepositories(desired.repositoryRulesets),
       beingCreated,
       async (repository) =>
         (await client.listRepositoryRulesets(owner, repository)).map((r) => ({
@@ -180,10 +183,10 @@ export async function readLiveState(
         })),
     ),
     desired.runnerGroups ? client.listRunnerGroups(owner) : undefined,
-    declaresOrgVariables ? client.listOrgVariables(owner) : undefined,
-    declaresOrgSecrets ? client.listOrgSecrets(owner) : undefined,
+    variableScopes.organization ? client.listOrgVariables(owner) : undefined,
+    secretScopes.organization ? client.listOrgSecrets(owner) : undefined,
     readPerRepository(
-      desired.actionsVariables,
+      variableScopes.repositories,
       beingCreated,
       async (repository) =>
         (await client.listRepositoryVariables(owner, repository)).map((v) => ({
@@ -192,7 +195,7 @@ export async function readLiveState(
         })),
     ),
     readPerRepository(
-      desired.actionsSecrets,
+      secretScopes.repositories,
       beingCreated,
       async (repository) =>
         (await client.listRepositorySecrets(owner, repository)).map((s) => ({
@@ -264,9 +267,9 @@ export async function readLiveState(
 }
 
 /**
- * Read one repository-scoped surface for every repository the declarations
- * name. Absent declarations leave the surface unread, and a repository nobody
- * names is never touched, which is what scopes the pruning below to the
+ * Read one repository-scoped surface for every repository the definition owns
+ * it on. An empty list leaves the surface unread, and a repository outside the
+ * list is never touched, which is what scopes the pruning below to the
  * repositories the definition speaks for.
  *
  * A 404 on a repository this run is about to create is an empty surface; on
@@ -274,16 +277,10 @@ export async function readLiveState(
  * turn every declaration into a create against a repository that is not there.
  */
 async function readPerRepository<T>(
-  declared: ReadonlyArray<{ repository?: string }> | undefined,
+  repositories: readonly string[],
   beingCreated: ReadonlySet<string>,
   read: (repository: string) => Promise<T[]>,
 ): Promise<T[] | undefined> {
-  if (!declared) return undefined;
-  const repositories = [
-    ...new Set(
-      declared.flatMap((d) => (d.repository ? [d.repository] : [])),
-    ),
-  ];
   if (repositories.length === 0) return undefined;
 
   const results = await Promise.all(
@@ -302,6 +299,17 @@ async function readPerRepository<T>(
     }),
   );
   return results.flat();
+}
+
+/** The distinct repositories a list of repository-scoped declarations names. */
+function namedRepositories(
+  declared: ReadonlyArray<{ repository?: string }> | undefined,
+): string[] {
+  return [
+    ...new Set(
+      (declared ?? []).flatMap((d) => (d.repository ? [d.repository] : [])),
+    ),
+  ];
 }
 
 function isNotFound(error: unknown): boolean {

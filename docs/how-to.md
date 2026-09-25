@@ -187,6 +187,29 @@ GitHub cannot report whether a stored value is current, so `plan` diffs a
 secret's existence and visibility only. To rotate a value in place, change
 any declared field, or delete and redeclare the secret.
 
+## Delete the last secret in a scope
+
+Removing a secret's declaration plans its delete only while something else
+still owns the scope. Remove the last one on a repository and nothing names
+that repository any more, so its secrets are not read and the secret stays.
+Declare the scope owned first:
+
+```ts
+new Repository(org, "flow-portal", { ownsSecrets: true });
+new Organization(app, "acme", { login: "acme", ownsSecrets: true });
+```
+
+Then remove the declaration and apply with deletes allowed for secrets:
+
+```bash
+bun bin/cdkgithub.ts plan
+bun bin/cdkgithub.ts apply --yes --allow-delete=secrets
+```
+
+`ownsVariables` and `--allow-delete=variables` do the same for variables.
+An owned scope stays owned with nothing declared in it, so every secret
+added to it outside the definition afterwards plans as a delete too.
+
 ## Adopt an organization built by hand
 
 Bootstrap a definition from the live organization instead of writing it from

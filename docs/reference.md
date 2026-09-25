@@ -124,6 +124,9 @@ on:
   secrets and variables) own one scope at a time. An organization-scoped
   secret owns the organization's secrets; an entry naming `flow-portal` owns
   `flow-portal`'s; a repository nothing names is never read or pruned.
+  `ownsSecrets` and `ownsVariables` on the `Organization` or a
+  `Repository` own that scope with no entry in it, so removing its last
+  entry plans a delete.
 
 Within a resource, only the fields you write are compared. GitHub returns
 every field it knows, defaults included, so `plan` asks whether the live
@@ -370,6 +373,14 @@ organization. An organization entry must declare `visibility` (`all`,
 `private`, or `selected` with `selectedRepositories`), and a repository
 entry must not, because only its own repository reads it. Names compare
 case-insensitively, the way GitHub stores them.
+
+| Prop | On | Effect |
+| --- | --- | --- |
+| `ownsSecrets` | `Organization`, `Repository` | Reads and prunes the scope's secrets with no `ActionsSecret` in it. Emitted as `ownedSecretScopes`. |
+| `ownsVariables` | `Organization`, `Repository` | The same for variables. Emitted as `ownedVariableScopes`. |
+
+Neither is written to a repository GitHub creates; both stay out of the
+repository's manifest entry.
 
 A variable carries its value in the clear and diffs on it. A secret carries
 no value anywhere: `valueFrom` names the environment variable `apply` reads
