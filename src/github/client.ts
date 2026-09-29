@@ -823,8 +823,14 @@ const ThrottledOctokit = Octokit.plugin(retry, throttling);
 /** How many times a rate-limited request is retried before giving up. */
 const RATE_LIMIT_RETRIES = 3;
 
+/**
+ * The REST API version every request pins. GitHub serves an unversioned
+ * request as `2022-11-28` and flags its responses as deprecated.
+ */
+export const GITHUB_API_VERSION = '2026-03-10';
+
 function createOctokit(token: string, baseUrl?: string): Octokit {
-  return new ThrottledOctokit({
+  const octokit = new ThrottledOctokit({
     auth: token,
     baseUrl,
     throttle: {
@@ -844,6 +850,10 @@ function createOctokit(token: string, baseUrl?: string): Octokit {
       },
     },
   });
+  octokit.hook.before('request', (options) => {
+    options.headers['x-github-api-version'] = GITHUB_API_VERSION;
+  });
+  return octokit;
 }
 
 /** Default {@link GitHubClient} backed by Octokit against api.github.com. */
