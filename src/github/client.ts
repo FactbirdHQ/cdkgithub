@@ -2661,13 +2661,42 @@ function runnerGroupPayload(group: RunnerGroupManifest): {
   };
 }
 
+/**
+ * Ruleset conditions with both pattern lists present on every condition.
+ * GitHub rejects a condition that omits `include` or `exclude` with a 422, so
+ * an omitted list is sent as an empty one.
+ */
+function rulesetConditionsPayload(
+  conditions: RulesetConditions | undefined,
+): RulesetConditions {
+  const { refName, repositoryName, repositoryProperty } = conditions ?? {};
+  return {
+    ...(refName && {
+      refName: { ...refName, include: refName.include ?? [], exclude: refName.exclude ?? [] },
+    }),
+    ...(repositoryName && {
+      repositoryName: {
+        ...repositoryName,
+        include: repositoryName.include ?? [],
+        exclude: repositoryName.exclude ?? [],
+      },
+    }),
+    ...(repositoryProperty && {
+      repositoryProperty: {
+        include: repositoryProperty.include ?? [],
+        exclude: repositoryProperty.exclude ?? [],
+      },
+    }),
+  };
+}
+
 /** The write payload for a ruleset: the manifest, minus its name-as-identity, in GitHub's casing. */
 function rulesetPayload(ruleset: ResolvedRuleset): Record<string, unknown> {
   return {
     name: ruleset.name,
     target: ruleset.target,
     enforcement: ruleset.enforcement,
-    conditions: toSnakeCaseKeys(ruleset.conditions ?? {}),
+    conditions: toSnakeCaseKeys(rulesetConditionsPayload(ruleset.conditions)),
     rules: toSnakeCaseKeys(ruleset.rules),
     bypass_actors: toSnakeCaseKeys(ruleset.bypassActors ?? []),
   };
