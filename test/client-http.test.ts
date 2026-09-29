@@ -123,3 +123,38 @@ describe('updateTeam', () => {
     expect(team.slug).toBe('infra-1');
   });
 });
+
+describe('createRuleset', () => {
+  test('sends an empty list for each include or exclude the definition omits', async () => {
+    const sent: Array<Record<string, unknown>> = [];
+    const client = clientWith({
+      rest: {
+        repos: {
+          createOrgRuleset: async (params: Record<string, unknown>) => {
+            sent.push(params);
+            return { data: {} };
+          },
+        },
+      },
+    });
+    await client.createRuleset('acme', {
+      name: 'critical-default-branches',
+      target: 'branch',
+      enforcement: 'active',
+      conditions: {
+        refName: { include: ['~DEFAULT_BRANCH'] },
+        repositoryProperty: {
+          include: [{ name: 'critical', propertyValues: ['true'] }],
+        },
+      },
+      rules: [],
+    });
+    expect(sent[0]?.conditions).toEqual({
+      ref_name: { include: ['~DEFAULT_BRANCH'], exclude: [] },
+      repository_property: {
+        include: [{ name: 'critical', property_values: ['true'] }],
+        exclude: [],
+      },
+    });
+  });
+});
