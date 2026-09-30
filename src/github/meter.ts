@@ -5,10 +5,12 @@
  * GitHub meters REST requests and GraphQL queries as separate budgets, each
  * reported in the headers of every response. Those headers are what GitHub
  * enforces, and the meter reads nothing else: `GET /rate_limit` has been seen
- * reporting a full budget while requests were being refused for an empty one. A reader of the meter can show
- * progress, say when a limit is being waited out, and judge whether a set of
- * writes fits in what remains.
+ * reporting a full budget while requests were being refused for an empty one.
+ * A reader of the meter can show progress, say when a limit is being waited
+ * out, and judge whether a set of writes fits in what remains.
  */
+
+import { CACHE_HIT_HEADER } from './etag-cache.ts';
 
 /** A budget GitHub meters on its own: `core` for REST, `graphql` for GraphQL. */
 export type RateResource = 'core' | 'graphql';
@@ -27,16 +29,18 @@ export interface RateWait {
 }
 
 export interface MeterSnapshot {
-  readonly requests: Record<RateResource, number>;
+  /** GitHub's metered requests, and the `cached` ones answered with a free 304. */
+  readonly requests: Record<RateResource | 'cached', number>;
   readonly budgets: Partial<Record<RateResource, RateBudget>>;
   /** Set while at least one request is waiting out a rate limit. */
   readonly waiting?: RateWait;
 }
 
 export class RequestMeter {
-  private readonly requests: Record<RateResource, number> = {
+  private readonly requests: Record<RateResource | 'cached', number> = {
     core: 0,
     graphql: 0,
+    cached: 0,
   };
   private readonly budgets: Partial<Record<RateResource, RateBudget>> = {};
   private readonly routes = new Map<string, number>();
@@ -57,7 +61,7 @@ export class RequestMeter {
       route.endsWith(' /graphql') || headers?.['x-ratelimit-resource'] === 'graphql'
         ? 'graphql'
         : 'core';
-    this.requests[resource] += 1;
+    this.requests[headers?.[CACHE_HIT_HEADER] === 'hit' ? 'cached' : resource] += 1;
     this.routes.set(route, (this.routes.get(route) ?? 0) + 1);
     this.waiting = undefined;
 

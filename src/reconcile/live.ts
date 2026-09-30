@@ -136,14 +136,13 @@ export async function readLiveState(
   const secretScopes = scopesOf(desired.actionsSecrets, desired);
 
   // Every repository whose variables or secrets are owned owns its
-  // environments' too, so the environments are listed once for both.
-  const repositoryEnvironments = await readPerRepository(
+  // environments' too, so the environments are listed once for both, in
+  // batched GraphQL queries rather than one REST request per repository.
+  const repositoryEnvironments = await readEnvironments(
+    client,
+    owner,
     [...new Set([...variableScopes.repositories, ...secretScopes.repositories])],
     beingCreated,
-    async (repository) =>
-      (await client.listRepositoryEnvironments(owner, repository)).map(
-        (name) => ({ repository, name }),
-      ),
   );
   const environmentsOf = (repository: string) =>
     (repositoryEnvironments ?? [])
@@ -346,6 +345,29 @@ export async function readLiveState(
  * any other it is a typo or a permissions gap, and reading it as empty would
  * turn every declaration into a create against a repository that is not there.
  */
+/**
+ * The environments of each repository, missing ones treated the way
+ * {@link readPerRepository} treats them: empty when this run creates the
+ * repository, and a failure otherwise.
+ */
+async function readEnvironments(
+  client: GitHubClient,
+  owner: string,
+  repositories: readonly string[],
+  beingCreated: ReadonlySet<string>,
+): Promise<Array<{ repository: string; name: string }> | undefined> {
+  if (repositories.length === 0) return undefined;
+  const found = await client.listEnvironmentsOfRepositories(owner, repositories);
+  return repositories.flatMap((repository) => {
+    const names = found.get(repository);
+    if (names) return names.map((name) => ({ repository, name }));
+    if (beingCreated.has(repository)) return [];
+    throw new Error(
+      `Repository "${repository}" was not found: it does not exist, or the token cannot see it.`,
+    );
+  });
+}
+
 async function readPerRepository<T>(
   repositories: readonly string[],
   beingCreated: ReadonlySet<string>,

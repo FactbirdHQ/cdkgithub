@@ -29,6 +29,7 @@ import type {
   TeamPrivacy,
 } from '../synth/manifest.ts';
 import { toCamelCaseKeys, toSnakeCaseKeys } from './casing.ts';
+import { type EtagCache, CACHE_HIT_HEADER } from './etag-cache.ts';
 import { RequestMeter } from './meter.ts';
 import { sealSecretValue } from './seal.ts';
 
@@ -636,6 +637,14 @@ export interface GitHubClient {
   ): Promise<void>;
   /** Names of a repository's deployment environments. */
   listRepositoryEnvironments(owner: string, repo: string): Promise<string[]>;
+  /**
+   * Environment names for many repositories at once. A repository that does
+   * not exist, or that the token cannot see, is absent from the result.
+   */
+  listEnvironmentsOfRepositories(
+    owner: string,
+    repositories: readonly string[],
+  ): Promise<Map<string, string[]>>;
   /** One environment, or undefined when the repository has no such environment. */
   getEnvironment(
     owner: string,
@@ -866,6 +875,7 @@ function createOctokit(
   token: string,
   meter: RequestMeter,
   baseUrl?: string,
+  cache?: EtagCache,
 ): Octokit {
   const octokit = new ThrottledOctokit({
     auth: token,
@@ -888,6 +898,9 @@ function createOctokit(
   octokit.hook.before('request', (options) => {
     options.headers['x-github-api-version'] = GITHUB_API_VERSION;
   });
+  // Registered before the meter, so the meter sees a cache hit as one and the
+  // throttling beneath still paces the conditional request.
+  if (cache) answerFromCache(octokit, cache);
   octokit.hook.after('request', (response, options) => {
     meter.record(`${options.method} ${options.url}`, response.headers);
   });
@@ -899,6 +912,55 @@ function createOctokit(
   });
   return octokit;
 }
+
+/**
+ * Ask for every GET conditionally and answer a 304 from the cache. The answer
+ * is the cached body with the 304's own headers, which carry the current rate
+ * budget, and the cached pagination link.
+ */
+function answerFromCache(octokit: Octokit, cache: EtagCache): void {
+  octokit.hook.wrap('request', async (request, options) => {
+    if (options.method !== 'GET') return request(options);
+    const { url } = octokit.request.endpoint.parse(options);
+    const cached = cache.get(url);
+    if (cached) options.headers['if-none-match'] = cached.etag;
+    try {
+      const response = await request(options);
+      const etag = response.headers.etag;
+      if (etag) {
+        cache.set(url, { etag, data: response.data, link: response.headers.link });
+      }
+      return response;
+    } catch (error) {
+      const failed = error as { status?: number; response?: { headers?: Record<string, string> } };
+      if (!cached || failed.status !== 304) throw error;
+      return {
+        status: 200,
+        url,
+        data: cached.data,
+        headers: {
+          ...failed.response?.headers,
+          etag: cached.etag,
+          ...(cached.link ? { link: cached.link } : {}),
+          [CACHE_HIT_HEADER]: 'hit',
+        },
+      };
+    }
+  });
+}
+
+/** How many repositories one GraphQL query lists environments for. */
+const ENVIRONMENT_BATCH = 50;
+
+type EnvironmentsData = Record<
+  string,
+  {
+    environments?: {
+      pageInfo: { hasNextPage: boolean };
+      nodes: Array<{ name: string }>;
+    };
+  } | null
+>;
 
 interface GraphqlConnection<Edge> {
   readonly pageInfo: { hasNextPage: boolean; endCursor: string | null };
@@ -933,8 +995,17 @@ export class OctokitGitHubClient implements GitHubClient {
   /** What this client has asked GitHub for, and the budget left. */
   readonly meter = new RequestMeter();
 
-  constructor(token: string, baseUrl?: string, octokit?: Octokit) {
-    this.octokit = octokit ?? createOctokit(token, this.meter, baseUrl);
+  /**
+   * `cache` answers unchanged GET requests for free across runs. The caller
+   * owns it and saves it once the reads it should keep are done.
+   */
+  constructor(
+    token: string,
+    baseUrl?: string,
+    octokit?: Octokit,
+    cache?: EtagCache,
+  ) {
+    this.octokit = octokit ?? createOctokit(token, this.meter, baseUrl, cache);
   }
 
   async listTeams(org: string): Promise<LiveTeam[]> {
@@ -1953,6 +2024,85 @@ export class OctokitGitHubClient implements GitHubClient {
       const environments = data.environments ?? [];
       names.push(...environments.map((e) => e.name));
       if (environments.length < 100) return names;
+    }
+  }
+
+  async listEnvironmentsOfRepositories(
+    owner: string,
+    repositories: readonly string[],
+  ): Promise<Map<string, string[]>> {
+    const batches: string[][] = [];
+    for (let i = 0; i < repositories.length; i += ENVIRONMENT_BATCH) {
+      batches.push(repositories.slice(i, i + ENVIRONMENT_BATCH));
+    }
+    const found = new Map<string, string[]>();
+    for (const [repository, environments] of (
+      await Promise.all(batches.map((batch) => this.environmentBatch(owner, batch)))
+    ).flat()) {
+      found.set(repository, environments);
+    }
+    return found;
+  }
+
+  /**
+   * One GraphQL query for up to {@link ENVIRONMENT_BATCH} repositories, each
+   * aliased by position. A repository with more environments than one page
+   * holds is listed over REST instead.
+   */
+  private async environmentBatch(
+    owner: string,
+    batch: readonly string[],
+  ): Promise<Array<[string, string[]]>> {
+    const variables = Object.fromEntries(batch.map((name, i) => [`r${i}`, name]));
+    const query = `query ($owner: String!, ${batch.map((_, i) => `$r${i}: String!`).join(', ')}) {
+${batch
+  .map(
+    (_, i) =>
+      `  r${i}: repository(owner: $owner, name: $r${i}) { environments(first: 100) { pageInfo { hasNextPage } nodes { name } } }`,
+  )
+  .join('\n')}
+}`;
+    const data = await this.graphqlAllowingNotFound<EnvironmentsData>(query, {
+      owner,
+      ...variables,
+    });
+    return Promise.all(
+      batch.flatMap((repository, i) => {
+        const environments = data[`r${i}`]?.environments;
+        if (!environments) return [];
+        return [
+          (async (): Promise<[string, string[]]> => [
+            repository,
+            environments.pageInfo.hasNextPage
+              ? await this.listRepositoryEnvironments(owner, repository)
+              : environments.nodes.map((e) => e.name),
+          ])(),
+        ];
+      }),
+    );
+  }
+
+  /**
+   * A GraphQL query whose missing repositories come back as null rather than
+   * failing it. GitHub answers them with NOT_FOUND errors beside the data it
+   * found, and Octokit throws on any error, so those are the ones let through.
+   */
+  private async graphqlAllowingNotFound<T>(
+    query: string,
+    variables: Record<string, unknown>,
+  ): Promise<T> {
+    try {
+      return await this.octokit.graphql<T>(query, variables);
+    } catch (error) {
+      const failed = error as { name?: string; data?: T; errors?: Array<{ type?: string }> };
+      if (
+        failed.name === 'GraphqlResponseError' &&
+        failed.data &&
+        (failed.errors ?? []).every((e) => e.type === 'NOT_FOUND')
+      ) {
+        return failed.data;
+      }
+      throw error;
     }
   }
 

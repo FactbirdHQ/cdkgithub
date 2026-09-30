@@ -257,3 +257,48 @@ describe('listRepositoryCollaborators', () => {
     expect(cursors).toEqual([null, 'c1']);
   });
 });
+
+describe('listEnvironmentsOfRepositories', () => {
+  const graphqlError = (data: unknown, errors: Array<{ type: string }>) =>
+    Object.assign(new Error('partial'), { name: 'GraphqlResponseError', data, errors });
+
+  test('asks for fifty repositories a query and leaves out the missing ones', async () => {
+    const repositories = Array.from({ length: 51 }, (_, i) => `repo-${i}`);
+    const batches: string[][] = [];
+    const client = clientWith({
+      graphql: async (_query: string, vars: Record<string, string>) => {
+        const names = Object.entries(vars)
+          .filter(([key]) => key !== 'owner')
+          .map(([, name]) => name);
+        batches.push(names);
+        const data = Object.fromEntries(
+          names.map((name, i) => [
+            `r${i}`,
+            name === 'repo-3'
+              ? null
+              : { environments: { pageInfo: { hasNextPage: false }, nodes: [{ name: `${name}-prod` }] } },
+          ]),
+        );
+        if (names.includes('repo-3')) throw graphqlError(data, [{ type: 'NOT_FOUND' }]);
+        return data;
+      },
+    });
+
+    const found = await client.listEnvironmentsOfRepositories('acme', repositories);
+    expect(batches.map((b) => b.length)).toEqual([50, 1]);
+    expect(found.size).toBe(50);
+    expect(found.has('repo-3')).toBe(false);
+    expect(found.get('repo-50')).toEqual(['repo-50-prod']);
+  });
+
+  test('an error other than NOT_FOUND still fails the read', async () => {
+    const client = clientWith({
+      graphql: async () => {
+        throw graphqlError({ r0: null }, [{ type: 'FORBIDDEN' }]);
+      },
+    });
+    await expect(
+      client.listEnvironmentsOfRepositories('acme', ['deck']),
+    ).rejects.toThrow('partial');
+  });
+});

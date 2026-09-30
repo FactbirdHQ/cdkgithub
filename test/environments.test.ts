@@ -322,3 +322,32 @@ function sortedBy<T extends Record<string, unknown[] | undefined>>(state: T): T 
     Object.entries(state).map(([k, v]) => [k, v ? [...v].sort((a, b) => key(a).localeCompare(key(b))) : v]),
   ) as T;
 }
+
+describe('reading the environments of owned repositories', () => {
+  // Variables scoped by name own each repository's environments without
+  // declaring the repository, which would mark it as one this run creates.
+  function owning(repositories: string[]) {
+    const app = new App();
+    const org = new Organization(app, 'acme', { login: 'acme' });
+    for (const name of repositories) {
+      new ActionsVariable(org, `REGION_${name}`.replace(/-/g, '_'), {
+        repository: name,
+        value: 'eu-west-1',
+      });
+    }
+    return synthesize(app);
+  }
+
+  test('lists them for every repository in one call', async () => {
+    const client = new FakeClient({});
+    await readLiveState(client, owning(['deck', 'pad']));
+    expect(client.callsTo('listEnvironmentsOfRepositories')).toEqual([['deck', 'pad']]);
+  });
+
+  test('a repository GitHub does not find fails the read', async () => {
+    const client = new FakeClient({ missingRepositories: ['typo'] });
+    await expect(readLiveState(client, owning(['typo']))).rejects.toThrow(
+      'Repository "typo" was not found',
+    );
+  });
+});

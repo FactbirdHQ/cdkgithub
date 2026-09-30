@@ -20,6 +20,7 @@ import {
 } from './reconcile/changes.ts';
 import { readLiveState } from './reconcile/live.ts';
 import { budgetNote, reportProgress, waitLine } from './progress.ts';
+import { EtagCache } from './github/etag-cache.ts';
 import { unmanagedRoleAssignments } from './reconcile/plan-org-roles.ts';
 import { plan } from './reconcile/planner.ts';
 import { diffAccessByPerson } from './reconcile/access-by-person.ts';
@@ -86,6 +87,8 @@ Options:
   --csv               Emit --by-person as CSV, one row per person per repository.
   --color / --no-color  Force color on or off. The default colors a terminal and
                       leaves a pipe or a file plain; NO_COLOR is honoured.
+  --no-cache          Send every request unconditionally, ignoring the ETags
+                      kept in github.out/cache/.
 
 Every apply that writes first saves a backup under github.out/backups/<time>/:
 the live state it read, a rollback manifest that restores the team structure
@@ -201,8 +204,9 @@ async function importCommand(flags: Flags): Promise<number> {
     );
     return 1;
   }
-  const client = new OctokitGitHubClient(resolveToken());
-  const definition = await readWithProgress(client, () =>
+  const github = githubClient(flags);
+  const { client } = github;
+  const definition = await readWithProgress(github, () =>
     importOrganization(client, org, { repositories: flags.repositories }),
   );
   if (flags.output) {
@@ -303,18 +307,37 @@ async function reportProvisionedGroups(
   }
 }
 
-/** Read with a progress line on stderr and a summary of what the read cost. */
+/**
+ * A client for the command, answering unchanged GET requests from the ETag
+ * cache under github.out unless `--no-cache` was passed.
+ */
+function githubClient(flags: Flags): {
+  client: OctokitGitHubClient;
+  cache?: EtagCache;
+} {
+  const token = resolveToken();
+  const cache = flags.cache ? EtagCache.open('github.out', token) : undefined;
+  return { client: new OctokitGitHubClient(token, undefined, undefined, cache), cache };
+}
+
+/**
+ * Read with a progress line on stderr and a summary of what the read cost,
+ * then keep the ETags the read collected for the next run.
+ */
 async function readWithProgress<T>(
-  client: OctokitGitHubClient,
+  { client, cache }: { client: OctokitGitHubClient; cache?: EtagCache },
   read: () => Promise<T>,
 ): Promise<T> {
-  return reportProgress('Reading live state', client.meter, read);
+  const result = await reportProgress('Reading live state', client.meter, read);
+  cache?.save();
+  return result;
 }
 
 async function planCommand(flags: Flags): Promise<number> {
   const desired = readManifest(flags.manifest);
-  const client = new OctokitGitHubClient(resolveToken());
-  const live = await readWithProgress(client, () =>
+  const github = githubClient(flags);
+  const { client } = github;
+  const live = await readWithProgress(github, () =>
     readLiveState(client, desired),
   );
   const changes = plan(desired, live);
@@ -352,8 +375,9 @@ function printUnmanagedRoles(
 
 async function applyCommand(flags: Flags): Promise<number> {
   const desired = readManifest(flags.manifest);
-  const client = new OctokitGitHubClient(resolveToken());
-  const live = await readWithProgress(client, () =>
+  const github = githubClient(flags);
+  const { client } = github;
+  const live = await readWithProgress(github, () =>
     readLiveState(client, desired),
   );
   const changes = plan(desired, live);
@@ -578,7 +602,8 @@ function readManifest(path: string): DesiredState {
  */
 async function diffCommand(flags: Flags): Promise<number> {
   const desired = readManifest(flags.manifest);
-  const client = new OctokitGitHubClient(resolveToken());
+  const github = githubClient(flags);
+  const { client } = github;
   // Direct collaborators are read only for a definition that manages them,
   // and only on the repositories it declares, the same scope `plan` reads.
   const collaboratorRepositories = desired.collaborators
@@ -589,7 +614,7 @@ async function diffCommand(flags: Flags): Promise<number> {
         ]),
       ]
     : [];
-  const live = await readWithProgress(client, () =>
+  const live = await readWithProgress(github, () =>
     readLiveTree(
       client,
       desired.owner,
@@ -692,6 +717,8 @@ interface Flags {
   repositories: boolean | string[];
   /** The command's positional argument, for the commands that take one. */
   positional?: string;
+  /** Answer unchanged GET requests from github.out/cache. Off with `--no-cache`. */
+  cache: boolean;
 }
 
 export function parseFlags(args: string[], command?: string): Flags {
@@ -708,6 +735,7 @@ export function parseFlags(args: string[], command?: string): Flags {
     byPerson: false,
     csv: false,
     repositories: false,
+    cache: true,
   };
   // `synth` takes a config path and `import` an org login; the rest take none.
   const positionalsAllowed = command === 'synth' || command === 'import' ? 1 : 0;
@@ -765,6 +793,9 @@ export function parseFlags(args: string[], command?: string): Flags {
         break;
       case '--no-color':
         flags.color = 'never';
+        break;
+      case '--no-cache':
+        flags.cache = false;
         break;
       case '--by-person':
         flags.byPerson = true;
