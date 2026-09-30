@@ -2,6 +2,12 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+/**
+ * The cache file's format. A file of any other version is discarded on open,
+ * which is how bodies saved by an earlier, wrong version stop being served.
+ */
+const CACHE_VERSION = 2;
+
 /** Marks a response the cache answered, for whoever counts requests. */
 export const CACHE_HIT_HEADER = 'x-cdkgithub-cache';
 
@@ -38,16 +44,21 @@ export class EtagCache {
   }
 
   /**
-   * The cache for `token` under `dir`. A missing or unreadable file starts an
-   * empty cache: the cost of losing one is a full-price read, not a wrong one.
+   * The cache for `token` under `dir`. A missing, unreadable or outdated file
+   * starts an empty cache: the cost of losing one is a full-price read, not a
+   * wrong one.
    */
   static open(dir: string, token: string): EtagCache {
     const fingerprint = createHash('sha256').update(token).digest('hex').slice(0, 16);
     const path = join(dir, 'cache', `etags-${fingerprint}.json`);
     if (!existsSync(path)) return new EtagCache(path);
     try {
-      const stored = JSON.parse(readFileSync(path, 'utf8')) as Record<string, CachedResponse>;
-      return new EtagCache(path, Object.entries(stored));
+      const stored = JSON.parse(readFileSync(path, 'utf8')) as {
+        version?: number;
+        entries?: Record<string, CachedResponse>;
+      };
+      if (stored.version !== CACHE_VERSION || !stored.entries) return new EtagCache(path);
+      return new EtagCache(path, Object.entries(stored.entries));
     } catch {
       return new EtagCache(path);
     }
@@ -67,7 +78,10 @@ export class EtagCache {
     if (!this.path || !this.dirty) return;
     mkdirSync(join(this.path, '..'), { recursive: true });
     const partial = `${this.path}.partial`;
-    writeFileSync(partial, JSON.stringify(Object.fromEntries(this.entries)));
+    writeFileSync(
+      partial,
+      JSON.stringify({ version: CACHE_VERSION, entries: Object.fromEntries(this.entries) }),
+    );
     renameSync(partial, this.path);
     this.dirty = false;
   }
