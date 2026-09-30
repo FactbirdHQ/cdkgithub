@@ -57,6 +57,8 @@ export interface LiveState {
    * on holding once the run has been applied.
    */
   readonly teamMembers?: Map<string, LiveTeamMember[]>;
+  /** Logins of the organization's owners, read when a team declares a roster. */
+  readonly organizationOwners?: string[];
   /**
    * Every organization role and who holds it, read when the definition names
    * one. Roles are org-wide, so this is read whole rather than per declaration:
@@ -294,11 +296,13 @@ export async function readLiveState(
   const [
     teamRepositories,
     teamMembers,
+    organizationOwners,
     appInstallations,
     securityConfigurations,
   ] = await Promise.all([
     readSlugs(accessSlugs, (slug) => client.listTeamRepositories(owner, slug)),
     readSlugs(rosterSlugs, (slug) => client.listTeamMembers(owner, slug)),
+    rosterSlugs.size > 0 ? client.listOrganizationOwners(owner) : undefined,
     readInstallationRepositories(client, installations, desired),
     readAttachedRepositories(client, owner, configurations, desired),
   ]);
@@ -307,6 +311,7 @@ export async function readLiveState(
     teams,
     teamRepositories,
     teamMembers,
+    organizationOwners,
     repositories,
     customRepositoryRoles,
     organizationRoles,

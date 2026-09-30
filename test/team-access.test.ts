@@ -390,6 +390,27 @@ describe('team roster', () => {
     ]);
   });
 
+  test('takes an organization owner reported as maintainer as the declared member', () => {
+    const state = (organizationOwners: string[]) =>
+      live([team('everyone')], {
+        teamMembers: members({
+          everyone: [{ login: 'ada', role: 'maintainer', inherited: false }],
+        }),
+        organizationOwners,
+      });
+    const wanted = desired([manifest('everyone', { members: ['ada'] })]);
+    expect(plan(wanted, state(['ada']))).toEqual([]);
+    expect(plan(wanted, state([]))).toEqual([
+      {
+        kind: 'set-membership',
+        slug: 'everyone',
+        username: 'ada',
+        role: 'member',
+        from: 'maintainer',
+      },
+    ]);
+  });
+
   test('is owned by Entra rather than the definition when the team is synced', () => {
     const changes = plan(
       desired([
