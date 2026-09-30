@@ -50,6 +50,7 @@ export interface FakeClientState {
   teamRepositories?: Record<string, LiveTeamRepository[]>;
   /** Live rosters keyed by team slug. */
   teamMembers?: Record<string, LiveTeamMember[]>;
+  organizationOwners?: string[];
   customRepositoryRoles?: LiveCustomRepositoryRole[];
   organizationRoles?: LiveOrganizationRole[];
   internalRepositoriesAllowed?: boolean;
@@ -106,6 +107,7 @@ export class FakeClient implements GitHubClient {
   teams: LiveTeam[];
   teamRepositories: Record<string, LiveTeamRepository[]>;
   teamMembers: Record<string, LiveTeamMember[]>;
+  organizationOwners: string[];
   customRepositoryRoles: LiveCustomRepositoryRole[];
   organizationRoles: LiveOrganizationRole[];
   internalRepositoriesAllowed: boolean;
@@ -150,6 +152,7 @@ export class FakeClient implements GitHubClient {
     this.teams = state.teams ?? [];
     this.teamRepositories = state.teamRepositories ?? {};
     this.teamMembers = state.teamMembers ?? {};
+    this.organizationOwners = state.organizationOwners ?? [];
     this.customRepositoryRoles = state.customRepositoryRoles ?? [];
     this.organizationRoles = state.organizationRoles ?? [];
     this.internalRepositoriesAllowed =
@@ -328,6 +331,10 @@ export class FakeClient implements GitHubClient {
 
   async listTeamMembers(_org: string, slug: string): Promise<LiveTeamMember[]> {
     return this.teamMembers[slug] ?? [];
+  }
+
+  async listOrganizationOwners(): Promise<string[]> {
+    return this.organizationOwners;
   }
 
   async listTeamRepositories(

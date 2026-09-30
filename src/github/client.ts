@@ -435,6 +435,9 @@ export interface GitHubClient {
   /** A team's direct roster, read back only when the definition declares one. */
   listTeamMembers(org: string, slug: string): Promise<LiveTeamMember[]>;
 
+  /** Logins of the organization's owners. */
+  listOrganizationOwners(org: string): Promise<string[]>;
+
   /** A team's repository grants, read back only when the definition declares them. */
   listTeamRepositories(
     org: string,
@@ -1061,6 +1064,15 @@ export class OctokitGitHubClient implements GitHubClient {
       (data) => (data as TeamMembersData).organization?.team?.members,
       `team "${slug}"`,
     );
+  }
+
+  async listOrganizationOwners(org: string): Promise<string[]> {
+    const owners = await this.octokit.paginate(this.octokit.rest.orgs.listMembers, {
+      org,
+      role: 'admin',
+      per_page: 100,
+    });
+    return owners.map((o) => o.login);
   }
 
   /**

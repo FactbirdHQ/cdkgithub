@@ -191,6 +191,7 @@ function planRoster(
     liveBySlug,
     declaredByLiveSlug,
   );
+  const owners = new Set(live.organizationOwners ?? []);
 
   const changes: Change[] = [];
   for (const [username, role] of declared) {
@@ -200,7 +201,12 @@ function planRoster(
     // someone up from a child fails both, which is the point: the child drops
     // them this run, so this team has to hold them itself.
     const held = direct.has(username) || explainedAfter.has(username);
-    if (effective === role && held) continue;
+    // GitHub reports an organization owner as maintainer whatever role was
+    // written, so for an owner any membership satisfies the declaration.
+    const roleHolds =
+      effective === role ||
+      (owners.has(username) && effective === 'maintainer');
+    if (roleHolds && held) continue;
     changes.push({
       kind: 'set-membership',
       slug: team.slug,

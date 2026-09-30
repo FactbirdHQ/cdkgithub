@@ -121,7 +121,9 @@ on:
 - A team with no `repositories` map keeps its grants unread and untouched;
   declaring the map, `{}` included, owns it.
 - Declaring `members` or `maintainers` owns the whole roster; a team with an
-  `externalGroup` never has its roster diffed.
+  `externalGroup` never has its roster diffed. GitHub reports an
+  organization owner as `maintainer` on every team they belong to, so `plan`
+  takes that as satisfying a declared `member`.
 - Write no `Ruleset` and the org's rulesets are never read, reported, or
   pruned. Declare one and the definition owns the surface: live rulesets
   missing from it become deletes, gated like everything else.
@@ -661,8 +663,9 @@ What the comparison is made of:
 - **Rosters, direct rather than reported.** GitHub reports a descendant's
   members on every team above it, marked as inherited; the live read drops
   those, so each roster is the people a team holds in its own right.
-  Maintainer roles are taken as they come. An Entra-bound team has no roster
-  compared at all.
+  Maintainer roles are taken as they come, which shows an organization owner
+  declared as `member` as a maintainer here, though `plan` accepts it. An
+  Entra-bound team has no roster compared at all.
 - **Everything else about a team**: name, description, privacy, and its place
   in the hierarchy.
 
