@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { RequestMeter } from '../src/github/meter.ts';
-import { budgetNote, progressLine, reportProgress } from '../src/progress.ts';
+import { budgetNote, fit, progressLine, reportProgress } from '../src/progress.ts';
 
 const resetAt = 1_900_000_000;
 const headers = (remaining: number, resource = 'core') => ({
@@ -112,5 +112,32 @@ describe('budgetNote', () => {
     expect(budgetNote(40, meter.snapshot())).toMatch(
       /^GitHub's REST budget has 12 requests left until \d\d:\d\d, and these 40 changes need at least 40\./,
     );
+  });
+});
+
+describe('the redrawn line on a terminal', () => {
+  test('stays one column inside the terminal, so it never wraps', async () => {
+    const written: string[] = [];
+    let release: () => void = () => {};
+    const done = reportProgress(
+      'Reading live state',
+      new RequestMeter(),
+      () => new Promise<void>((resolve) => (release = resolve)),
+      { write: (text: string) => written.push(text), isTTY: true, columns: 30 },
+    );
+    release();
+    await done;
+    const clear = '\r\x1b[2K';
+    const redraws = written.filter((w) => w.startsWith(clear) && w.length > clear.length);
+    expect(redraws.length).toBeGreaterThan(0);
+    for (const redraw of redraws) {
+      expect(redraw.slice(clear.length).length).toBeLessThanOrEqual(29);
+      expect(redraw.endsWith('…')).toBe(true);
+    }
+  });
+
+  test('fit leaves a short line alone and marks a cut one', () => {
+    expect(fit('short', 10)).toBe('short');
+    expect(fit('a longer line', 8)).toBe('a longe…');
   });
 });

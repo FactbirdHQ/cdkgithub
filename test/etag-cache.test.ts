@@ -95,3 +95,49 @@ describe('the ETag cache', () => {
     }
   });
 });
+
+describe('a wrapped list answered from the cache', () => {
+  test('unwraps the same on a 304 as on the first read', async () => {
+    const etag = '"installations"';
+    globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+      if (new Headers(init?.headers).get('if-none-match') === etag) {
+        return new Response(null, { status: 304, headers: { etag, ...rate } });
+      }
+      return new Response(
+        JSON.stringify({
+          total_count: 1,
+          installations: [
+            { id: 7, app_id: 150926, app_slug: 'ci-token-generator', repository_selection: 'all' },
+          ],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json', etag, ...rate } },
+      );
+    }) as typeof fetch;
+
+    const cache = new EtagCache();
+    const cold = await new OctokitGitHubClient('token', undefined, undefined, cache).listAppInstallations('acme');
+    const warmClient = new OctokitGitHubClient('token', undefined, undefined, cache);
+    const warm = await warmClient.listAppInstallations('acme');
+
+    expect(cold).toEqual([
+      { id: 7, appId: 150926, slug: 'ci-token-generator', repositorySelection: 'all' },
+    ]);
+    expect(warm).toEqual(cold);
+    expect(warmClient.meter.snapshot().requests.cached).toBe(1);
+  });
+
+  test('a cache file written before the format version is discarded', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cdkgithub-cache-'));
+    try {
+      const cache = EtagCache.open(dir, 'token');
+      cache.set('u', { etag: '"a"', data: 1 });
+      cache.save();
+      const [file] = readdirSync(join(dir, 'cache'));
+      // The shape the first release wrote: entries at the top level, unversioned.
+      writeFileSync(join(dir, 'cache', file!), JSON.stringify({ u: { etag: '"a"', data: { installations: [] } } }));
+      expect(EtagCache.open(dir, 'token').get('u')).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
