@@ -472,7 +472,9 @@ A person granted one repository directly, outside any team: an organization
 member added by hand, or an outside collaborator. The permission is a
 built-in (`pull`, `triage`, `push`, `maintain`, `admin`) or a custom
 repository role's name, and compares in that vocabulary, so a declared `push`
-matches GitHub's `write`. Logins compare case-insensitively.
+matches GitHub's `write`. The live side is the role granted on the repository
+itself, not a stronger one the person also holds through a team or the
+organization. Logins compare case-insensitively.
 
 The surface is unmanaged until the definition declares a collaborator. From
 then on every declared repository owns its direct collaborators and pending
