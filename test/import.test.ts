@@ -35,10 +35,10 @@ function orgClient(): FakeClient {
     teamMembers: {
       // ada is really platform's; GitHub reports her on the parent too.
       engineering: [
-        { login: 'casey', role: 'maintainer' },
-        { login: 'ada', role: 'member' },
+        { login: 'casey', role: 'maintainer', inherited: false },
+        { login: 'ada', role: 'member', inherited: false },
       ],
-      platform: [{ login: 'ada', role: 'member' }],
+      platform: [{ login: 'ada', role: 'member', inherited: false }],
     },
     settings: { defaultRepositoryPermission: 'read' },
     actions: {

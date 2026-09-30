@@ -89,7 +89,7 @@ describe('coloring the diff', () => {
           parentSlug: null,
         },
       ],
-      teamMembers: { cloud: [{ login: 'leaver', role: 'member' }] },
+      teamMembers: { cloud: [{ login: 'leaver', role: 'member', inherited: false }] },
       teamRepositories: { cloud: [{ name: 'old', roleName: 'read' }] },
     });
     const live = await readLiveTree(client, 'acme');

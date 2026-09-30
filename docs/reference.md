@@ -659,9 +659,9 @@ What the comparison is made of:
   and the report under the tree names those redundant grants, since deleting
   one changes nothing.
 - **Rosters, direct rather than reported.** GitHub reports a descendant's
-  members on every team above it; the live read subtracts them, so each
-  roster is the people a team holds in its own right. Maintainer roles are
-  not inherited and are taken as they come. An Entra-bound team has no roster
+  members on every team above it, marked as inherited; the live read drops
+  those, so each roster is the people a team holds in its own right.
+  Maintainer roles are taken as they come. An Entra-bound team has no roster
   compared at all.
 - **Everything else about a team**: name, description, privacy, and its place
   in the hierarchy.

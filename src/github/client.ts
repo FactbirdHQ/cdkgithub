@@ -69,7 +69,10 @@ export interface LiveTeamRepository {
 /** One member of a team, with the role GitHub records for them. */
 export interface LiveTeamMember {
   readonly login: string;
+  /** An organization owner reads as `maintainer` on every team, whatever was written. */
   readonly role: 'member' | 'maintainer';
+  /** True when the person is on the team only through a team below it. */
+  readonly inherited: boolean;
 }
 
 /** Shape of `GET /orgs/{org}/custom-repository-roles` (not a typed Octokit method). */
@@ -882,6 +885,19 @@ function createOctokit(token: string, baseUrl?: string): Octokit {
   return octokit;
 }
 
+interface GraphqlConnection<Edge> {
+  readonly pageInfo: { hasNextPage: boolean; endCursor: string | null };
+  readonly edges: Edge[];
+}
+
+interface TeamMembersData {
+  organization?: {
+    team?: {
+      members?: GraphqlConnection<{ role: string; node: { login: string } }>;
+    } | null;
+  } | null;
+}
+
 /** Default {@link GitHubClient} backed by Octokit against api.github.com. */
 export class OctokitGitHubClient implements GitHubClient {
   private readonly octokit: Octokit;
@@ -1010,20 +1026,68 @@ export class OctokitGitHubClient implements GitHubClient {
   }
 
   async listTeamMembers(org: string, slug: string): Promise<LiveTeamMember[]> {
-    // Two calls rather than one: the unfiltered listing reports every member
-    // with the same role, so the maintainers have to be asked for by name.
-    const byRole = async (role: 'maintainer' | 'member') => {
-      const users = await this.octokit.paginate(
-        this.octokit.rest.teams.listMembersInOrg,
-        { org, team_slug: slug, role, per_page: 100 },
-      );
-      return users.map((u) => ({ login: u.login, role }));
-    };
-    const [maintainers, members] = await Promise.all([
-      byRole('maintainer'),
-      byRole('member'),
+    // GraphQL rather than REST: REST lists a child team's members on every team
+    // above it with nothing to tell them from the team's own. Comparing the
+    // ALL listing against the IMMEDIATE one marks each inherited member.
+    const [all, immediate] = await Promise.all([
+      this.teamMemberEdges(org, slug, 'ALL'),
+      this.teamMemberEdges(org, slug, 'IMMEDIATE'),
     ]);
-    return [...maintainers, ...members];
+    const direct = new Set(immediate.map((e) => e.node.login));
+    return all.map((e) => ({
+      login: e.node.login,
+      role: e.role === 'MAINTAINER' ? 'maintainer' : 'member',
+      inherited: !direct.has(e.node.login),
+    }));
+  }
+
+  private async teamMemberEdges(
+    org: string,
+    slug: string,
+    membership: 'ALL' | 'IMMEDIATE',
+  ): Promise<Array<{ role: string; node: { login: string } }>> {
+    return this.graphqlPages(
+      `query ($org: String!, $slug: String!, $membership: TeamMembershipType!, $after: String) {
+        organization(login: $org) {
+          team(slug: $slug) {
+            members(membership: $membership, first: 100, after: $after) {
+              pageInfo { hasNextPage endCursor }
+              edges { role node { login } }
+            }
+          }
+        }
+      }`,
+      { org, slug, membership },
+      (data) => (data as TeamMembersData).organization?.team?.members,
+      `team "${slug}"`,
+    );
+  }
+
+  /**
+   * Every edge of a paginated GraphQL connection. A null connection means the
+   * team or repository does not exist or is hidden from the token, and throws
+   * with status 404 so callers treat it the way they treat a REST 404.
+   */
+  private async graphqlPages<Edge>(
+    query: string,
+    variables: Record<string, unknown>,
+    connectionOf: (data: unknown) => GraphqlConnection<Edge> | null | undefined,
+    what: string,
+  ): Promise<Edge[]> {
+    const edges: Edge[] = [];
+    let after: string | null = null;
+    do {
+      const data: unknown = await this.octokit.graphql(query, { ...variables, after });
+      const connection = connectionOf(data);
+      if (!connection) {
+        throw Object.assign(new Error(`GitHub has no ${what}, or the token cannot see it.`), {
+          status: 404,
+        });
+      }
+      edges.push(...connection.edges);
+      after = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
+    } while (after);
+    return edges;
   }
 
   async listTeamRepositories(

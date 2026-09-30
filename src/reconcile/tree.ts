@@ -229,9 +229,10 @@ function seedFromLive(
     repositories[repo.name] = comparableRoleName(repo.roleName);
   }
 
+  // A member held through a team below is that team's, and is not declared here.
   const logins = (role: LiveTeamMember['role']) =>
     roster
-      .filter((m) => m.role === role)
+      .filter((m) => m.role === role && !m.inherited)
       .map((m) => m.login)
       .sort();
 
@@ -300,12 +301,11 @@ export function desiredTree(
 }
 
 /**
- * Subtract inherited entries from a live read.
+ * Subtract inherited grants from a live read.
  *
- * GitHub reports a descendant team's members as members of every team above it,
- * and an ancestor team's grants as grants of every team below it. A definition
- * declares neither, so both are removed here; the grants come back as
- * `effectiveRepositories` once the tree is assembled.
+ * GitHub reports an ancestor team's grants as grants of every team below it. A
+ * definition does not declare those, so they are removed here, and come back
+ * as `effectiveRepositories` once the tree is assembled.
  */
 function narrowLiveSeeds(
   seeds: TeamSeed[],
@@ -330,14 +330,6 @@ function narrowLiveSeeds(
   const ancestorsOf = new Map(seeds.map((s) => [s.slug, ancestors(s.slug)]));
 
   return seeds.map((seed) => {
-    const inheritedMembers = new Set<string>();
-    for (const other of seeds) {
-      const above = ancestorsOf.get(other.slug) ?? [];
-      if (!above.some((a) => a.slug === seed.slug)) continue;
-      for (const m of other.members) inheritedMembers.add(m);
-      for (const m of other.maintainers) inheritedMembers.add(m);
-    }
-
     // A grant is the team's own when no ancestor makes it at the same strength
     // or better. An ancestor holding `pull` where the child shows `admin` means
     // the child was granted `admin` in its own right.
@@ -359,11 +351,7 @@ function narrowLiveSeeds(
       }
     }
 
-    return {
-      ...seed,
-      members: seed.members.filter((m) => !inheritedMembers.has(m)),
-      repositories: own,
-    };
+    return { ...seed, repositories: own };
   });
 }
 
