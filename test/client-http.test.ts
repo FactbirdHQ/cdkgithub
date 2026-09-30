@@ -195,3 +195,65 @@ describe('listTeamMembers', () => {
     });
   });
 });
+
+describe('listRepositoryCollaborators', () => {
+  test('reads the role granted on the repository, not the highest one', async () => {
+    const pages = [
+      {
+        pageInfo: { hasNextPage: true, endCursor: 'c1' },
+        edges: [
+          {
+            node: { login: 'MonaAH' },
+            permissionSources: [
+              { permission: 'READ', roleName: null, source: { __typename: 'Organization' } },
+              {
+                permission: 'READ',
+                roleName: 'read',
+                source: { __typename: 'Repository', nameWithOwner: 'acme/afterkit' },
+              },
+              { permission: 'WRITE', roleName: 'write', source: { __typename: 'Team' } },
+            ],
+          },
+        ],
+      },
+      {
+        pageInfo: { hasNextPage: false, endCursor: null },
+        edges: [
+          {
+            node: { login: 'ahmed' },
+            permissionSources: [
+              {
+                permission: 'WRITE',
+                roleName: 'Merge Queue Jumper',
+                source: { __typename: 'Repository', nameWithOwner: 'Acme/Afterkit' },
+              },
+            ],
+          },
+          {
+            // Reached only through a team: not a direct collaborator.
+            node: { login: 'teamonly' },
+            permissionSources: [
+              { permission: 'WRITE', roleName: 'write', source: { __typename: 'Team' } },
+            ],
+          },
+        ],
+      },
+    ];
+    const cursors: unknown[] = [];
+    const client = clientWith({
+      graphql: async (_query: string, vars: { after: string | null }) => {
+        cursors.push(vars.after);
+        return { repository: { collaborators: pages[cursors.length - 1] } };
+      },
+      paginate: async () => [],
+      rest: { repos: { listInvitations: () => undefined } },
+    });
+    await expect(
+      client.listRepositoryCollaborators('acme', 'afterkit'),
+    ).resolves.toEqual([
+      { login: 'MonaAH', permission: 'pull' },
+      { login: 'ahmed', permission: 'Merge Queue Jumper' },
+    ]);
+    expect(cursors).toEqual([null, 'c1']);
+  });
+});

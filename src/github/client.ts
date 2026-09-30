@@ -901,6 +901,19 @@ interface TeamMembersData {
   } | null;
 }
 
+interface CollaboratorEdge {
+  readonly node: { login: string };
+  readonly permissionSources: Array<{
+    permission: string;
+    roleName: string | null;
+    source: { __typename: string; nameWithOwner?: string };
+  }>;
+}
+
+interface CollaboratorsData {
+  repository?: { collaborators?: GraphqlConnection<CollaboratorEdge> } | null;
+}
+
 /** Default {@link GitHubClient} backed by Octokit against api.github.com. */
 export class OctokitGitHubClient implements GitHubClient {
   private readonly octokit: Octokit;
@@ -2240,12 +2253,7 @@ export class OctokitGitHubClient implements GitHubClient {
     repo: string,
   ): Promise<Array<Omit<LiveCollaborator, 'repository'>>> {
     const [direct, invitations] = await Promise.all([
-      this.octokit.paginate(this.octokit.rest.repos.listCollaborators, {
-        owner,
-        repo,
-        affiliation: 'direct',
-        per_page: 100,
-      }),
+      this.directCollaborators(owner, repo),
       this.octokit.paginate(this.octokit.rest.repos.listInvitations, {
         owner,
         repo,
@@ -2253,10 +2261,7 @@ export class OctokitGitHubClient implements GitHubClient {
       }),
     ]);
     return [
-      ...direct.map((c) => ({
-        login: c.login,
-        permission: comparableRoleName(c.role_name ?? 'read'),
-      })),
+      ...direct,
       ...invitations.flatMap((i) =>
         i.invitee
           ? [
@@ -2269,6 +2274,55 @@ export class OctokitGitHubClient implements GitHubClient {
           : [],
       ),
     ];
+  }
+
+  /**
+   * Each direct collaborator with the role granted on the repository itself.
+   * REST reports a collaborator's highest role from any source, teams and
+   * organization included, so the direct grant is read from GraphQL's
+   * permission sources instead.
+   */
+  private async directCollaborators(
+    owner: string,
+    repo: string,
+  ): Promise<Array<{ login: string; permission: string }>> {
+    const edges = await this.graphqlPages<CollaboratorEdge>(
+      `query ($owner: String!, $repo: String!, $after: String) {
+        repository(owner: $owner, name: $repo) {
+          collaborators(affiliation: DIRECT, first: 100, after: $after) {
+            pageInfo { hasNextPage endCursor }
+            edges {
+              node { login }
+              permissionSources {
+                permission
+                roleName
+                source { __typename ... on Repository { nameWithOwner } }
+              }
+            }
+          }
+        }
+      }`,
+      { owner, repo },
+      (data) => (data as CollaboratorsData).repository?.collaborators,
+      `repository "${owner}/${repo}"`,
+    );
+    const self = `${owner}/${repo}`.toLowerCase();
+    return edges.flatMap((edge) => {
+      const grant = edge.permissionSources.find(
+        (s) =>
+          s.source.__typename === 'Repository' &&
+          s.source.nameWithOwner?.toLowerCase() === self,
+      );
+      if (!grant) return [];
+      return [
+        {
+          login: edge.node.login,
+          permission: comparableRoleName(
+            grant.roleName ?? grant.permission.toLowerCase(),
+          ),
+        },
+      ];
+    });
   }
 
   async putRepositoryCollaborator(
