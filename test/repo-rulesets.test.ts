@@ -297,3 +297,85 @@ describe('applying', () => {
     ]);
   });
 });
+
+describe('app bypass actors', () => {
+  const releaseBot = {
+    id: 42,
+    appId: 4345,
+    slug: 'release-bot',
+    repositorySelection: 'selected' as const,
+  };
+  const withBot: RepositoryRulesetManifest = {
+    ...mergeQueue,
+    bypassActors: [{ actorType: 'Integration', app: 'release-bot' }],
+  };
+
+  test('the live read lists the repositories a selected installation covers', async () => {
+    const client = new FakeClient({
+      appInstallations: [releaseBot],
+      installationRepositories: { 42: ['launch-pad'] },
+    });
+    const state = await readLiveState(
+      client,
+      desired({ repositoryRulesets: [withBot] }),
+    );
+    expect(state.appInstallations).toEqual([
+      { ...releaseBot, repositories: ['launch-pad'] },
+    ]);
+  });
+
+  test('an app whose installation leaves the repository out fails the plan', () => {
+    expect(() =>
+      plan(
+        desired({ repositoryRulesets: [withBot] }),
+        live({
+          repositoryRulesets: [],
+          appInstallations: [{ ...releaseBot, repositories: ['launch-pad'] }],
+        }),
+      ),
+    ).toThrow('the app is not installed on "flight-deck"');
+  });
+
+  test('a numeric app id is checked the same way', () => {
+    expect(() =>
+      plan(
+        desired({
+          repositoryRulesets: [
+            {
+              ...mergeQueue,
+              bypassActors: [{ actorType: 'Integration', app: 4345 }],
+            },
+          ],
+        }),
+        live({
+          repositoryRulesets: [],
+          appInstallations: [{ ...releaseBot, repositories: ['launch-pad'] }],
+        }),
+      ),
+    ).toThrow('lets app "release-bot" bypass it');
+  });
+
+  test('an installation on the repository, or on every repository, plans', () => {
+    for (const installation of [
+      { ...releaseBot, repositories: ['flight-deck'] },
+      { ...releaseBot, repositorySelection: 'all' as const },
+    ]) {
+      const changes = plan(
+        desired({ repositoryRulesets: [withBot] }),
+        live({ repositoryRulesets: [], appInstallations: [installation] }),
+      );
+      expect(changes.map((c) => c.kind)).toContain('create-repo-ruleset');
+    }
+  });
+
+  test('an installation the token cannot list is left for GitHub to judge', async () => {
+    const client = new FakeClient({ appInstallations: [releaseBot] });
+    const state = await readLiveState(
+      client,
+      desired({ repositoryRulesets: [withBot] }),
+    );
+    expect(state.appInstallations).toEqual([releaseBot]);
+    const changes = plan(desired({ repositoryRulesets: [withBot] }), state);
+    expect(changes.map((c) => c.kind)).toContain('create-repo-ruleset');
+  });
+});

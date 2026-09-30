@@ -17,21 +17,56 @@ import type { LiveState } from './live.ts';
  * applier writes what the plan already showed.
  *
  * A name that resolves to nothing throws here, which is the right moment: the
- * plan has not been shown yet and nothing has been written.
+ * plan has not been shown yet and nothing has been written. So does an app
+ * bypass on a repository ruleset whose installation does not cover that
+ * repository, which GitHub would otherwise reject mid-apply.
+ *
+ * `repository` is the repository a repository ruleset lives on, and is
+ * absent for an organization ruleset.
  */
 export function resolveRuleset(
   ruleset: RulesetManifest,
   live: LiveState,
+  repository?: string,
 ): ResolvedRuleset {
   const { bypassActors, ...rest } = ruleset;
   if (!bypassActors) return rest;
 
   return {
     ...rest,
-    bypassActors: bypassActors.map((actor) =>
-      resolveActor(actor, ruleset.name, live),
-    ),
+    bypassActors: bypassActors.map((actor) => {
+      if (actor.actorType === 'Integration' && repository !== undefined) {
+        assertAppCovers(actor.app, ruleset.name, repository, live);
+      }
+      return resolveActor(actor, ruleset.name, live);
+    }),
   };
+}
+
+/**
+ * Throw when the app's installation provably leaves `repository` out. An
+ * installation this token cannot list is let through, and GitHub decides.
+ */
+function assertAppCovers(
+  app: string | number,
+  rulesetName: string,
+  repository: string,
+  live: LiveState,
+): void {
+  const installation = (live.appInstallations ?? []).find((i) =>
+    typeof app === 'number' ? i.appId === app : i.slug === app,
+  );
+  if (
+    installation?.repositorySelection !== 'selected' ||
+    installation.repositories === undefined ||
+    installation.repositories.includes(repository)
+  ) {
+    return;
+  }
+  throw new Error(
+    `Ruleset "${rulesetName}" on repository "${repository}" lets app "${installation.slug}" bypass it, but the app is not installed on "${repository}". ` +
+      `GitHub only accepts an app that can see the repository: add "${repository}" to the app's installation, or drop the bypass actor.`,
+  );
 }
 
 function resolveActor(

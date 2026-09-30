@@ -351,6 +351,13 @@ would do; this one is for the rule that belongs to a single repository, such
 as a merge queue or a release-tag pattern, and for personal accounts, which
 have no organization to inherit from.
 
+An `Integration` bypass actor must be installed on the ruleset's
+repository, not only on the organization. When the app's installation covers
+selected repositories, `plan` reads that list and fails if the repository
+is not on it. GitHub serves the list to user tokens only, such as `gh auth
+token` or a classic personal access token. With any other token the check
+is skipped, and GitHub rejects the ruleset at `apply` instead.
+
 ### CustomProperty
 
 ```ts
