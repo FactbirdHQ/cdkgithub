@@ -250,6 +250,11 @@ export type LiveCodeSecurityConfiguration =
     readonly name: string;
     /** `global` configurations are GitHub's own presets and are never managed here. */
     readonly targetType?: 'global' | 'organization' | 'enterprise';
+    /**
+     * Repositories attached to this configuration or on their way to it. Read
+     * only for a configuration the definition attaches to named repositories.
+     */
+    readonly attachedRepositories?: string[];
   };
 
 /** Which configuration new repositories of a given scope inherit. */
@@ -760,6 +765,11 @@ export interface GitHubClient {
   listDefaultSecurityConfigurations(
     org: string,
   ): Promise<LiveDefaultSecurityConfiguration[]>;
+  /** Each repository a configuration applies to, with GitHub's attachment status. */
+  listSecurityConfigurationRepositories(
+    org: string,
+    id: number,
+  ): Promise<Array<{ name: string; status: string }>>;
   createSecurityConfiguration(
     org: string,
     config: CodeSecurityConfigurationManifest,
@@ -2277,6 +2287,19 @@ export class OctokitGitHubClient implements GitHubClient {
   }
 
   // ---- Code security configurations ---------------------------------------
+
+  async listSecurityConfigurationRepositories(
+    org: string,
+    id: number,
+  ): Promise<Array<{ name: string; status: string }>> {
+    const repositories = await this.octokit.paginate(
+      this.octokit.rest.codeSecurity.getRepositoriesForConfiguration,
+      { org, configuration_id: id, per_page: 100 },
+    );
+    return repositories.flatMap((r) =>
+      r.repository ? [{ name: r.repository.name, status: r.status ?? '' }] : [],
+    );
+  }
 
   async listSecurityConfigurations(
     org: string,

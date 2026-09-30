@@ -1,4 +1,8 @@
-import type { LiveBranchProtection, LiveRuleset } from '../github/client.ts';
+import type {
+  LiveBranchProtection,
+  LiveCodeSecurityConfiguration,
+  LiveRuleset,
+} from '../github/client.ts';
 import type { ResolvedBypassActor } from '../synth/governance.ts';
 import type {
   ActionsPolicyManifest,
@@ -270,12 +274,15 @@ function planSecurityConfigurations(
         scope: config.attach,
       });
     } else if (config.attachRepositories?.length) {
-      changes.push({
-        kind: 'attach-security-config',
-        configName: config.name,
-        scope: 'selected',
-        repositories: config.attachRepositories,
-      });
+      const pending = unattached(config.attachRepositories, current);
+      if (pending.length > 0) {
+        changes.push({
+          kind: 'attach-security-config',
+          configName: config.name,
+          scope: 'selected',
+          repositories: pending,
+        });
+      }
     }
   }
 
@@ -287,6 +294,21 @@ function planSecurityConfigurations(
   }
 
   return changes;
+}
+
+/**
+ * The named repositories not yet on the live configuration, compared the way
+ * GitHub compares repository names. A configuration with no attachments read,
+ * such as one this run creates, has every repository still to attach.
+ */
+function unattached(
+  repositories: string[],
+  live: LiveCodeSecurityConfiguration | undefined,
+): string[] {
+  const attached = new Set(
+    (live?.attachedRepositories ?? []).map((r) => r.toLowerCase()),
+  );
+  return repositories.filter((r) => !attached.has(r.toLowerCase()));
 }
 
 /** The feature settings, without the attachment fields that live on repositories. */

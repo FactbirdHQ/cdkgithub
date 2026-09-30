@@ -556,9 +556,11 @@ new CodeSecurityConfiguration(org, "baseline", {
 });
 ```
 
-`defaultForNewRepos` is diffed against the org's current defaults. Attachment
-is recorded on the repositories rather than the configuration, so `apply`
-re-issues it every run, the way it re-issues external-group links. GitHub's
+`defaultForNewRepos` is diffed against the org's current defaults.
+`attachRepositories` is diffed against the repositories GitHub reports as
+attached, so `plan` attaches only the ones missing and shows nothing once all
+are on. `attach` names a scope rather than repositories, so `apply` re-issues
+it every run, the way it re-issues external-group links. GitHub's
 own `global` presets cannot be edited or deleted, so they are never proposed
 for pruning.
 

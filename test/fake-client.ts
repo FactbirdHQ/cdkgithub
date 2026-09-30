@@ -64,6 +64,11 @@ export interface FakeClientState {
   actions?: LiveActionsPolicy;
   rulesets?: LiveRuleset[];
   securityConfigurations?: LiveCodeSecurityConfiguration[];
+  /** Repositories and attachment status per configuration id. */
+  securityConfigurationRepositories?: Record<
+    number,
+    Array<{ name: string; status: string }>
+  >;
   defaultSecurityConfigurations?: LiveDefaultSecurityConfiguration[];
   customProperties?: LiveCustomProperty[];
   repositoryProperties?: LiveRepositoryProperties[];
@@ -113,6 +118,10 @@ export class FakeClient implements GitHubClient {
   actions: LiveActionsPolicy;
   rulesets: LiveRuleset[];
   securityConfigurations: LiveCodeSecurityConfiguration[];
+  securityConfigurationRepositories: Record<
+    number,
+    Array<{ name: string; status: string }>
+  >;
   defaultSecurityConfigurations: LiveDefaultSecurityConfiguration[];
   customProperties: LiveCustomProperty[];
   repositoryProperties: LiveRepositoryProperties[];
@@ -159,6 +168,8 @@ export class FakeClient implements GitHubClient {
     };
     this.rulesets = state.rulesets ?? [];
     this.securityConfigurations = state.securityConfigurations ?? [];
+    this.securityConfigurationRepositories =
+      state.securityConfigurationRepositories ?? {};
     this.defaultSecurityConfigurations =
       state.defaultSecurityConfigurations ?? [];
     this.customProperties = state.customProperties ?? [];
@@ -849,6 +860,13 @@ export class FakeClient implements GitHubClient {
 
   async listSecurityConfigurations(): Promise<LiveCodeSecurityConfiguration[]> {
     return this.securityConfigurations;
+  }
+
+  async listSecurityConfigurationRepositories(
+    _org: string,
+    id: number,
+  ): Promise<Array<{ name: string; status: string }>> {
+    return this.securityConfigurationRepositories[id] ?? [];
   }
 
   async listDefaultSecurityConfigurations(): Promise<
