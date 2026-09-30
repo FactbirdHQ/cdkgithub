@@ -29,6 +29,7 @@ import type {
   TeamPrivacy,
 } from '../synth/manifest.ts';
 import { toCamelCaseKeys, toSnakeCaseKeys } from './casing.ts';
+import { RequestMeter } from './meter.ts';
 import { sealSecretValue } from './seal.ts';
 
 /** GitHub reports the setting as a plain string; anything else is unknown. */
@@ -861,29 +862,40 @@ const RATE_LIMIT_RETRIES = 3;
  */
 export const GITHUB_API_VERSION = '2026-03-10';
 
-function createOctokit(token: string, baseUrl?: string): Octokit {
+function createOctokit(
+  token: string,
+  meter: RequestMeter,
+  baseUrl?: string,
+): Octokit {
   const octokit = new ThrottledOctokit({
     auth: token,
     baseUrl,
+    // The request log prints a line for every failed request. A failure is
+    // either retried, which the meter reports as a wait, or thrown to the
+    // caller, so the line only repeats what is said elsewhere.
+    log: { debug: () => {}, info: () => {}, warn: console.warn, error: () => {} },
     throttle: {
-      onRateLimit: (retryAfter, options, _octokit, retryCount) => {
-        console.error(
-          `warning: rate limited on ${options.method} ${options.url}, ` +
-            `retrying in ${retryAfter}s`,
-        );
+      onRateLimit: (retryAfter, _options, _octokit, retryCount) => {
+        meter.wait(retryAfter, false);
         return retryCount < RATE_LIMIT_RETRIES;
       },
-      onSecondaryRateLimit: (retryAfter, options, _octokit, retryCount) => {
-        console.error(
-          `warning: secondary rate limit on ${options.method} ${options.url}, ` +
-            `retrying in ${retryAfter}s`,
-        );
+      onSecondaryRateLimit: (retryAfter, _options, _octokit, retryCount) => {
+        meter.wait(retryAfter, true);
         return retryCount < RATE_LIMIT_RETRIES;
       },
     },
   });
   octokit.hook.before('request', (options) => {
     options.headers['x-github-api-version'] = GITHUB_API_VERSION;
+  });
+  octokit.hook.after('request', (response, options) => {
+    meter.record(`${options.method} ${options.url}`, response.headers);
+  });
+  octokit.hook.error('request', (error, options) => {
+    const response = (error as { response?: { headers?: Record<string, string> } })
+      .response;
+    meter.record(`${options.method} ${options.url}`, response?.headers);
+    throw error;
   });
   return octokit;
 }
@@ -918,8 +930,11 @@ interface CollaboratorsData {
 export class OctokitGitHubClient implements GitHubClient {
   private readonly octokit: Octokit;
 
+  /** What this client has asked GitHub for, and the budget left. */
+  readonly meter = new RequestMeter();
+
   constructor(token: string, baseUrl?: string, octokit?: Octokit) {
-    this.octokit = octokit ?? createOctokit(token, baseUrl);
+    this.octokit = octokit ?? createOctokit(token, this.meter, baseUrl);
   }
 
   async listTeams(org: string): Promise<LiveTeam[]> {

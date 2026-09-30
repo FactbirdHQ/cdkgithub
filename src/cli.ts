@@ -19,6 +19,7 @@ import {
   isDestructive,
 } from './reconcile/changes.ts';
 import { readLiveState } from './reconcile/live.ts';
+import { budgetNote, reportProgress, waitLine } from './progress.ts';
 import { unmanagedRoleAssignments } from './reconcile/plan-org-roles.ts';
 import { plan } from './reconcile/planner.ts';
 import { diffAccessByPerson } from './reconcile/access-by-person.ts';
@@ -201,9 +202,9 @@ async function importCommand(flags: Flags): Promise<number> {
     return 1;
   }
   const client = new OctokitGitHubClient(resolveToken());
-  const definition = await importOrganization(client, org, {
-    repositories: flags.repositories,
-  });
+  const definition = await readWithProgress(client, () =>
+    importOrganization(client, org, { repositories: flags.repositories }),
+  );
   if (flags.output) {
     writeFileSync(flags.output, definition);
     console.error(`Definition written to ${flags.output}`);
@@ -302,10 +303,20 @@ async function reportProvisionedGroups(
   }
 }
 
+/** Read with a progress line on stderr and a summary of what the read cost. */
+async function readWithProgress<T>(
+  client: OctokitGitHubClient,
+  read: () => Promise<T>,
+): Promise<T> {
+  return reportProgress('Reading live state', client.meter, read);
+}
+
 async function planCommand(flags: Flags): Promise<number> {
   const desired = readManifest(flags.manifest);
   const client = new OctokitGitHubClient(resolveToken());
-  const live = await readLiveState(client, desired);
+  const live = await readWithProgress(client, () =>
+    readLiveState(client, desired),
+  );
   const changes = plan(desired, live);
   printWarnings(desired);
   printProvenance(desired);
@@ -342,7 +353,9 @@ function printUnmanagedRoles(
 async function applyCommand(flags: Flags): Promise<number> {
   const desired = readManifest(flags.manifest);
   const client = new OctokitGitHubClient(resolveToken());
-  const live = await readLiveState(client, desired);
+  const live = await readWithProgress(client, () =>
+    readLiveState(client, desired),
+  );
   const changes = plan(desired, live);
 
   printWarnings(desired);
@@ -383,11 +396,15 @@ async function applyCommand(flags: Flags): Promise<number> {
     return 1;
   }
 
+  const budget = budgetNote(executable.length, client.meter.snapshot());
+  if (budget) console.log(`${budget}\n`);
+
   if (!(await approved(executable, flags.requireApproval))) return 1;
 
   const backup = writeBackup('github.out', desired, live, executable);
   console.log(`Backup written to ${backup.dir} (rollback-manifest.json reverts the team structure).\n`);
 
+  client.meter.onWait = (wait) => console.log(waitLine(wait));
   try {
     const result = await apply(client, desired.owner, changes, live, {
       allowDelete,
@@ -572,11 +589,13 @@ async function diffCommand(flags: Flags): Promise<number> {
         ]),
       ]
     : [];
-  const live = await readLiveTree(
-    client,
-    desired.owner,
-    desired.ownerType,
-    collaboratorRepositories,
+  const live = await readWithProgress(client, () =>
+    readLiveTree(
+      client,
+      desired.owner,
+      desired.ownerType,
+      collaboratorRepositories,
+    ),
   );
   const palette = choosePalette({
     flag: flags.color,
