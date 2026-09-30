@@ -917,6 +917,11 @@ function createOctokit(
  * Ask for every GET conditionally and answer a 304 from the cache. The answer
  * is the cached body with the 304's own headers, which carry the current rate
  * budget, and the cached pagination link.
+ *
+ * Bodies are copied going into the cache and coming out of it. Octokit's
+ * paginator rewrites a wrapped list such as `{ total_count, installations }`
+ * in place, and a body shared with it would be cached, and served on the next
+ * 304, without the `total_count` that marks it as a list to unwrap.
  */
 function answerFromCache(octokit: Octokit, cache: EtagCache): void {
   octokit.hook.wrap('request', async (request, options) => {
@@ -928,7 +933,11 @@ function answerFromCache(octokit: Octokit, cache: EtagCache): void {
       const response = await request(options);
       const etag = response.headers.etag;
       if (etag) {
-        cache.set(url, { etag, data: response.data, link: response.headers.link });
+        cache.set(url, {
+          etag,
+          data: structuredClone(response.data),
+          link: response.headers.link,
+        });
       }
       return response;
     } catch (error) {
@@ -937,7 +946,7 @@ function answerFromCache(octokit: Octokit, cache: EtagCache): void {
       return {
         status: 200,
         url,
-        data: cached.data,
+        data: structuredClone(cached.data),
         headers: {
           ...failed.response?.headers,
           etag: cached.etag,
