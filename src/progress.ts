@@ -4,6 +4,8 @@ import type { MeterSnapshot, RateWait, RequestMeter } from './github/meter.ts';
 export interface ProgressStream {
   write(text: string): unknown;
   readonly isTTY?: boolean;
+  /** The terminal's width, which a redrawn line must stay inside. */
+  readonly columns?: number;
 }
 
 /** How often a terminal redraws the line, and how often a log gets a new one. */
@@ -31,7 +33,10 @@ export async function reportProgress<T>(
   let announcedWait: number | undefined;
   const tick = () => {
     if (stream.isTTY) {
-      stream.write(`\r\x1b[2K${line()}`);
+      // A line wider than the terminal wraps, and returning to the start of
+      // the row then redraws below the rows it wrapped onto instead of over
+      // them. Cut to one column short of the width, so the cursor never wraps.
+      stream.write(`\r\x1b[2K${fit(line(), (stream.columns ?? 80) - 1)}`);
       return;
     }
     const waiting = meter.snapshot().waiting?.until.getTime();
@@ -60,6 +65,12 @@ export async function reportProgress<T>(
     for (const timer of timers) clearInterval(timer);
     if (stream.isTTY) stream.write('\r\x1b[2K');
   }
+}
+
+/** `text` cut to `width` characters, marking the cut with an ellipsis. */
+export function fit(text: string, width: number): string {
+  if (text.length <= width) return text;
+  return width <= 1 ? text.slice(0, Math.max(width, 0)) : `${text.slice(0, width - 1)}…`;
 }
 
 /** The status line shown while a read is under way. */
