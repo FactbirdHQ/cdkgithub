@@ -161,7 +161,7 @@ export async function readLiveState(
     settings,
     actions,
     rulesets,
-    securityConfigurations,
+    configurations,
     defaultSecurityConfigurations,
     customProperties,
     repositoryProperties,
@@ -290,11 +290,13 @@ export async function readLiveState(
     }
   }
 
-  const [teamRepositories, teamMembers, appInstallations] = await Promise.all([
-    readSlugs(accessSlugs, (slug) => client.listTeamRepositories(owner, slug)),
-    readSlugs(rosterSlugs, (slug) => client.listTeamMembers(owner, slug)),
-    readInstallationRepositories(client, installations, desired),
-  ]);
+  const [teamRepositories, teamMembers, appInstallations, securityConfigurations] =
+    await Promise.all([
+      readSlugs(accessSlugs, (slug) => client.listTeamRepositories(owner, slug)),
+      readSlugs(rosterSlugs, (slug) => client.listTeamMembers(owner, slug)),
+      readInstallationRepositories(client, installations, desired),
+      readAttachedRepositories(client, owner, configurations, desired),
+    ]);
 
   return {
     teams,
@@ -448,6 +450,46 @@ async function readInstallationRepositories(
         if (isAccessDenied(error)) return installation;
         throw error;
       }
+    }),
+  );
+}
+
+/**
+ * GitHub's attachment statuses for a repository that is on the configuration
+ * or on its way there. `detached`, `removed`, `failed` and
+ * `removed_by_enterprise` mean it is not, and another attach is due.
+ */
+const ATTACHED_STATUSES = new Set(['attached', 'attaching', 'enforced', 'updating']);
+
+/**
+ * Add the attached repositories to each live configuration the definition
+ * attaches to named repositories, so the plan attaches only the ones missing.
+ */
+async function readAttachedRepositories(
+  client: GitHubClient,
+  owner: string,
+  configurations: LiveCodeSecurityConfiguration[] | undefined,
+  desired: DesiredState,
+): Promise<LiveCodeSecurityConfiguration[] | undefined> {
+  if (!configurations) return undefined;
+  const byRepository = new Set(
+    (desired.codeSecurityConfigurations ?? [])
+      .filter((c) => c.attachRepositories?.length)
+      .map((c) => c.name),
+  );
+  return Promise.all(
+    configurations.map(async (configuration) => {
+      if (!byRepository.has(configuration.name)) return configuration;
+      const repositories = await client.listSecurityConfigurationRepositories(
+        owner,
+        configuration.id,
+      );
+      return {
+        ...configuration,
+        attachedRepositories: repositories
+          .filter((r) => ATTACHED_STATUSES.has(r.status))
+          .map((r) => r.name),
+      };
     }),
   );
 }

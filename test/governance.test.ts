@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { toCamelCaseKeys, toSnakeCaseKeys } from '../src/github/casing.ts';
 import type { LiveRuleset, LiveTeam } from '../src/github/client.ts';
 import { apply } from '../src/reconcile/applier.ts';
-import type { LiveState } from '../src/reconcile/live.ts';
+import { type LiveState, readLiveState } from '../src/reconcile/live.ts';
 import { plan } from '../src/reconcile/planner.ts';
 import { matchesSubset } from '../src/reconcile/subset.ts';
 import type { DesiredState, RulesetManifest } from '../src/synth/manifest.ts';
@@ -709,5 +709,49 @@ describe('unattributed-changes approval', () => {
         { type: 'pull_request', parameters: { require_extra_approval_for_unattributed_changes: true } },
       ]),
     ).toEqual([{ type: 'pull_request', parameters: { requireExtraApprovalForUnattributedChanges: true } }]);
+  });
+});
+
+describe('attaching a configuration to named repositories', () => {
+  const critical = {
+    name: 'critical',
+    description: 'Everything on',
+    attachRepositories: ['app', 'Api'],
+  };
+
+  async function planFor(
+    repositories: Array<{ name: string; status: string }>,
+  ) {
+    const client = new FakeClient({
+      securityConfigurations: [
+        { id: 7, name: 'critical', description: 'Everything on', targetType: 'organization' },
+      ],
+      securityConfigurationRepositories: { 7: repositories },
+    });
+    const wanted = desired({ codeSecurityConfigurations: [critical] });
+    return plan(wanted, await readLiveState(client, wanted));
+  }
+
+  test('plans nothing once every repository is attached', async () => {
+    const changes = await planFor([
+      { name: 'app', status: 'enforced' },
+      { name: 'api', status: 'attaching' },
+    ]);
+    expect(changes).toEqual([]);
+  });
+
+  test('attaches only the repositories not on the configuration', async () => {
+    const changes = await planFor([
+      { name: 'app', status: 'attached' },
+      { name: 'api', status: 'failed' },
+    ]);
+    expect(changes).toEqual([
+      {
+        kind: 'attach-security-config',
+        configName: 'critical',
+        scope: 'selected',
+        repositories: ['Api'],
+      },
+    ]);
   });
 });

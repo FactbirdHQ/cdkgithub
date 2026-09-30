@@ -420,10 +420,13 @@ export interface CodeSecurityConfigurationManifest {
   readonly defaultForNewRepos?: SecurityDefaultScope;
   /**
    * Attach the configuration to existing repositories. Applied on every run
-   * rather than diffed, because attachment lives on the repositories, not here.
+   * rather than diffed, because a scope names no repositories to compare.
    */
   readonly attach?: SecurityAttachScope;
-  /** Attach to these repositories by name. Mutually exclusive with `attach`. */
+  /**
+   * Attach to these repositories by name, diffed against the repositories
+   * already attached. Mutually exclusive with `attach`.
+   */
   readonly attachRepositories?: string[];
 }
 
