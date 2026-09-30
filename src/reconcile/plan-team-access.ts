@@ -2,16 +2,17 @@
  * Diff a team's repository grants and its roster against the live organization.
  *
  * Both surfaces are complicated by the same thing: GitHub reports inherited
- * access as though it were the team's own. A child team's repository listing
- * carries everything its ancestors can reach, and a parent team's member
- * listing carries everyone in its descendants. Neither is removable where it is
+ * access on the team that inherits it. A child team's repository listing
+ * carries everything its ancestors can reach, and a parent team's roster
+ * carries everyone in its descendants. Neither is removable where it is
  * reported, so a diff that took the listings at face value would propose
  * deleting access it cannot delete, every run, forever.
  *
- * So a live grant or member is only ever proposed for removal when the team
- * tree does not already explain it. Additions and permission changes need no
- * such care: they compare the declaration against the effective access, which
- * is what the team actually has.
+ * So a live grant is only proposed for removal when no ancestor explains it,
+ * and a member only when the roster marks the membership as the team's own.
+ * Additions and permission changes need no such care: they compare the
+ * declaration against the effective access, which is what the team actually
+ * has.
  */
 
 import type { LiveCustomRepositoryRole, LiveTeam } from '../github/client.ts';
@@ -177,27 +178,18 @@ function planRoster(
     declared.set(username, 'maintainer');
   }
 
-  const reported = new Map(
-    (live.teamMembers?.get(liveSlug) ?? []).map(
-      (m) => [m.login, m.role] as const,
-    ),
+  const roster = live.teamMembers?.get(liveSlug) ?? [];
+  const reported = new Map(roster.map((m) => [m.login, m.role] as const));
+  const direct = new Map(
+    roster.filter((m) => !m.inherited).map((m) => [m.login, m.role] as const),
   );
-  // The roster GitHub reports is this team's own plus everyone in a team below
-  // it, and the API draws no line between the two: asking for one member's
-  // membership answers the same either way. Whoever a team below explains is
-  // therefore not provably a member of this one.
-  const explainedNow = membersOfDescendants(liveSlug, live, liveBySlug);
-  // The same question asked of the rosters those teams will hold once this run
-  // has been applied. The two differ exactly for someone a child is dropping,
-  // which is the case that needs a membership written here.
+  // Whoever a team below will still hold once this run has been applied. A
+  // declared member held that way needs no membership of their own here.
   const explainedAfter = membersOfDescendants(
     liveSlug,
     live,
     liveBySlug,
     declaredByLiveSlug,
-  );
-  const direct = new Map(
-    [...reported].filter(([login]) => !explainedNow.has(login)),
   );
 
   const changes: Change[] = [];
@@ -231,18 +223,15 @@ function planRoster(
 }
 
 /**
- * Everyone who reaches `slug` by being in a team below it.
- *
- * Without `declaredByLiveSlug` the answer is about the organization as it
- * stands. With it, the answer is about the organization this run will leave
- * behind: a descendant that declares a roster is about to become that roster, so
- * it explains the people it keeps and not the ones it drops.
+ * Everyone who will reach `slug` by being in a team below it once this run
+ * has been applied. A descendant that declares a roster is about to become that
+ * roster, so it explains the people it keeps and not the ones it drops.
  */
 function membersOfDescendants(
   slug: string,
   live: LiveState,
   liveBySlug: Map<string, LiveTeam>,
-  declaredByLiveSlug?: Map<string, TeamManifest>,
+  declaredByLiveSlug: Map<string, TeamManifest>,
 ): Set<string> {
   const children = new Map<string, string[]>();
   for (const team of liveBySlug.values()) {
@@ -275,9 +264,9 @@ function membersOfDescendants(
 function rosterOf(
   liveSlug: string,
   live: LiveState,
-  declaredByLiveSlug?: Map<string, TeamManifest>,
+  declaredByLiveSlug: Map<string, TeamManifest>,
 ): string[] {
-  const declaration = declaredByLiveSlug?.get(liveSlug);
+  const declaration = declaredByLiveSlug.get(liveSlug);
   if (declaration && declaresRoster(declaration)) {
     return [...(declaration.members ?? []), ...(declaration.maintainers ?? [])];
   }

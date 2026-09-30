@@ -158,3 +158,40 @@ describe('createRuleset', () => {
     });
   });
 });
+
+describe('listTeamMembers', () => {
+  test('marks a member missing from the immediate listing as inherited', async () => {
+    const edges = {
+      ALL: [
+        { role: 'MAINTAINER', node: { login: 'lead' } },
+        { role: 'MEMBER', node: { login: 'dev' } },
+      ],
+      IMMEDIATE: [{ role: 'MAINTAINER', node: { login: 'lead' } }],
+    };
+    const client = clientWith({
+      graphql: async (_query: string, vars: { membership: 'ALL' | 'IMMEDIATE' }) => ({
+        organization: {
+          team: {
+            members: {
+              pageInfo: { hasNextPage: false, endCursor: null },
+              edges: edges[vars.membership],
+            },
+          },
+        },
+      }),
+    });
+    await expect(client.listTeamMembers('acme', 'engineering')).resolves.toEqual([
+      { login: 'lead', role: 'maintainer', inherited: false },
+      { login: 'dev', role: 'member', inherited: true },
+    ]);
+  });
+
+  test('a team GitHub does not return fails with a 404', async () => {
+    const client = clientWith({
+      graphql: async () => ({ organization: { team: null } }),
+    });
+    await expect(client.listTeamMembers('acme', 'gone')).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+});

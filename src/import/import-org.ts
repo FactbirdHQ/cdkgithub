@@ -583,30 +583,13 @@ class Emitter {
         .filter((t) => t.parentSlug === slug)
         .sort((a, b) => a.slug.localeCompare(b.slug));
 
-    // GitHub reports a descendant team's people as members of every team
-    // above it. Subtracting them leaves each roster holding only the people
-    // the team has in its own right, which is what a declarative roster means.
-    const inheritedInto = (slug: string): Set<string> => {
-      const inherited = new Set<string>();
-      const walk = (parent: string) => {
-        for (const child of childrenOf(parent)) {
-          for (const member of details.get(child.slug)?.members ?? []) {
-            inherited.add(member.login);
-          }
-          walk(child.slug);
-        }
-      };
-      walk(slug);
-      return inherited;
-    };
-
     const emitSubtree = (team: LiveTeam, scope: string) => {
       const children = childrenOf(team.slug);
       const variable = children.length > 0 ? names.for(team.slug) : undefined;
       const declaration = variable ? `const ${variable} = ` : '';
       this.chunks.push(
         `${declaration}new Team(${scope}, ${lit(team.slug)}, ${lit(
-          this.teamProps(team, details, inheritedInto(team.slug)),
+          this.teamProps(team, details),
         )});`,
         '',
       );
@@ -622,15 +605,16 @@ class Emitter {
       string,
       { repos: LiveTeamRepository[]; members: LiveTeamMember[] }
     >,
-    inherited: ReadonlySet<string>,
   ): Record<string, unknown> {
+    // A member held through a team below is declared on that team, not here.
+    const own = (details.get(team.slug)?.members ?? []).filter((m) => !m.inherited);
     const detail = details.get(team.slug);
-    const maintainers = (detail?.members ?? [])
+    const maintainers = own
       .filter((m) => m.role === 'maintainer')
       .map((m) => m.login)
       .sort();
-    const members = (detail?.members ?? [])
-      .filter((m) => m.role === 'member' && !inherited.has(m.login))
+    const members = own
+      .filter((m) => m.role === 'member')
       .map((m) => m.login)
       .sort();
     const repositories = Object.fromEntries(

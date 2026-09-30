@@ -23,9 +23,8 @@ function desired(teams: DesiredState['teams']): DesiredState {
 describe('inherited rosters', () => {
   /**
    * GitHub reports a parent's members as including everyone in the teams below
-   * it. The child here declares no roster, so only reading the child's roster
-   * anyway can tell the planner that the parent does not hold these people
-   * itself.
+   * it, marked as inherited. The child here declares no roster, and its roster
+   * is still read, because it says who the child goes on holding.
    */
   test("a non-declaring child's members are not removals on the parent", async () => {
     const client = new FakeClient({
@@ -33,10 +32,10 @@ describe('inherited rosters', () => {
       teamMembers: {
         // As GitHub reports it: the parent's listing carries the child's member.
         platform: [
-          { login: 'direct-member', role: 'member' },
-          { login: 'child-member', role: 'member' },
+          { login: 'direct-member', role: 'member', inherited: false },
+          { login: 'child-member', role: 'member', inherited: true },
         ],
-        web: [{ login: 'child-member', role: 'member' }],
+        web: [{ login: 'child-member', role: 'member', inherited: false }],
       },
     });
     const definition = desired([

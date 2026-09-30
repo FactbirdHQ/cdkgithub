@@ -105,8 +105,8 @@ describe('diffing access person by person', () => {
     const client = new FakeClient({
       teams: [liveTeam('cloud'), liveTeam('support')],
       teamMembers: {
-        cloud: [{ login: 'mover', role: 'member' }],
-        support: [{ login: 'stayer', role: 'member' }],
+        cloud: [{ login: 'mover', role: 'member', inherited: false }],
+        support: [{ login: 'stayer', role: 'member', inherited: false }],
       },
       teamRepositories: {
         cloud: [
@@ -149,7 +149,7 @@ describe('diffing access person by person', () => {
   test('a permission change is neither a gain nor a loss', async () => {
     const client = new FakeClient({
       teams: [liveTeam('cloud')],
-      teamMembers: { cloud: [{ login: 'dev', role: 'member' }] },
+      teamMembers: { cloud: [{ login: 'dev', role: 'member', inherited: false }] },
       teamRepositories: { cloud: [{ name: 'api', roleName: 'read' }] },
     });
     const live = await readLiveTree(client, 'acme');
@@ -171,7 +171,7 @@ describe('rendering the person view', () => {
   async function people() {
     const client = new FakeClient({
       teams: [liveTeam('cloud')],
-      teamMembers: { cloud: [{ login: 'dev', role: 'member' }] },
+      teamMembers: { cloud: [{ login: 'dev', role: 'member', inherited: false }] },
       teamRepositories: { cloud: [{ name: 'legacy', roleName: 'write' }] },
     });
     const live = await readLiveTree(client, 'acme');
@@ -196,7 +196,7 @@ describe('rendering the person view', () => {
   test('--full keeps the marks rather than flattening to a listing', async () => {
     const client = new FakeClient({
       teams: [liveTeam('cloud')],
-      teamMembers: { cloud: [{ login: 'dev', role: 'member' }] },
+      teamMembers: { cloud: [{ login: 'dev', role: 'member', inherited: false }] },
       teamRepositories: {
         cloud: [
           { name: 'legacy', roleName: 'write' },
@@ -237,7 +237,7 @@ describe('rendering the person view', () => {
   test('--changed-only drops the people who are unaffected', async () => {
     const client = new FakeClient({
       teams: [liveTeam('quiet')],
-      teamMembers: { quiet: [{ login: 'nobody', role: 'member' }] },
+      teamMembers: { quiet: [{ login: 'nobody', role: 'member', inherited: false }] },
     });
     const live = await readLiveTree(client, 'acme');
     const wanted = desiredTree(
@@ -340,7 +340,7 @@ describe('organization roles in the access review', () => {
   test('a role assigned to a team reaches every repository, declared or not', async () => {
     const client = new FakeClient({
       teams: [liveTeam('devops')],
-      teamMembers: { devops: [{ login: 'vil', role: 'member' }] },
+      teamMembers: { devops: [{ login: 'vil', role: 'member', inherited: false }] },
       repositories: ESTATE,
       organizationRoles: [ROLE],
       roleAssignments: HELD_BY_DEVOPS,
@@ -358,7 +358,7 @@ describe('organization roles in the access review', () => {
   test('moving a repository from a team grant to the role withdraws nothing', async () => {
     const client = new FakeClient({
       teams: [liveTeam('devops')],
-      teamMembers: { devops: [{ login: 'vil', role: 'member' }] },
+      teamMembers: { devops: [{ login: 'vil', role: 'member', inherited: false }] },
       teamRepositories: { devops: [{ name: 'yarnix', roleName: 'pull' }] },
       repositories: ESTATE,
       organizationRoles: [ROLE],
@@ -386,7 +386,7 @@ describe('organization roles in the access review', () => {
   test('a team granting more than the role keeps both the credit and the level', async () => {
     const client = new FakeClient({
       teams: [liveTeam('devops')],
-      teamMembers: { devops: [{ login: 'vil', role: 'member' }] },
+      teamMembers: { devops: [{ login: 'vil', role: 'member', inherited: false }] },
       teamRepositories: { devops: [{ name: 'netcore', roleName: 'admin' }] },
       repositories: ESTATE,
       organizationRoles: [ROLE],
@@ -401,7 +401,7 @@ describe('organization roles in the access review', () => {
   test('a role carrying no base permission reaches nothing', async () => {
     const client = new FakeClient({
       teams: [liveTeam('devops')],
-      teamMembers: { devops: [{ login: 'vil', role: 'member' }] },
+      teamMembers: { devops: [{ login: 'vil', role: 'member', inherited: false }] },
       repositories: ESTATE,
       organizationRoles: [
         { id: 2, name: 'app_manager', permissions: [], source: 'Predefined' },
@@ -441,7 +441,7 @@ describe('a blanket role in the rendered report', () => {
   async function tree() {
     const client = new FakeClient({
       teams: [liveTeam('devops')],
-      teamMembers: { devops: [{ login: 'vil', role: 'member' }] },
+      teamMembers: { devops: [{ login: 'vil', role: 'member', inherited: false }] },
       teamRepositories: { devops: [{ name: 'netcore', roleName: 'admin' }] },
       repositories: ESTATE,
       organizationRoles: ROLES,

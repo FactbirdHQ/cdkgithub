@@ -249,7 +249,7 @@ describe('team roster', () => {
     const changes = plan(
       desired([manifest('cloud')]),
       live([team('cloud')], {
-        teamMembers: members({ cloud: [{ login: 'ada', role: 'member' }] }),
+        teamMembers: members({ cloud: [{ login: 'ada', role: 'member', inherited: false }] }),
       }),
     );
     expect(changes).toEqual([]);
@@ -263,8 +263,8 @@ describe('team roster', () => {
       live([team('cloud')], {
         teamMembers: members({
           cloud: [
-            { login: 'ada', role: 'member' },
-            { login: 'alan', role: 'member' },
+            { login: 'ada', role: 'member', inherited: false },
+            { login: 'alan', role: 'member', inherited: false },
           ],
         }),
       }),
@@ -304,10 +304,10 @@ describe('team roster', () => {
       live([team('engineering'), team('cloud', 'engineering')], {
         teamMembers: members({
           engineering: [
-            { login: 'ada', role: 'member' },
-            { login: 'grace', role: 'member' },
+            { login: 'ada', role: 'member', inherited: false },
+            { login: 'grace', role: 'member', inherited: true },
           ],
-          cloud: [{ login: 'grace', role: 'member' }],
+          cloud: [{ login: 'grace', role: 'member', inherited: false }],
         }),
       }),
     );
@@ -315,9 +315,9 @@ describe('team roster', () => {
   });
 
   test('moves a member up from a child in one run without dropping them', () => {
-    // GitHub reports ada on engineering only because she is in cloud, and the
-    // API will not say which. Trusting the report would write nothing here,
-    // cloud would drop her, and she would land in neither team.
+    // GitHub reports ada on engineering only because she is in cloud. Taking
+    // the effective roster at its word would write nothing here, cloud would
+    // drop her, and she would land in neither team.
     const changes = plan(
       desired([
         manifest('engineering', { members: ['ada'] }),
@@ -325,8 +325,8 @@ describe('team roster', () => {
       ]),
       live([team('engineering'), team('cloud', 'engineering')], {
         teamMembers: members({
-          engineering: [{ login: 'ada', role: 'member' }],
-          cloud: [{ login: 'ada', role: 'member' }],
+          engineering: [{ login: 'ada', role: 'member', inherited: true }],
+          cloud: [{ login: 'ada', role: 'member', inherited: false }],
         }),
       }),
     );
@@ -354,7 +354,7 @@ describe('team roster', () => {
     // Judging it against direct membership would rewrite this every run.
     const changes = plan(
       desired([
-        manifest('engineering', { maintainers: ['ada'] }),
+        manifest('engineering', { members: ['ada'] }),
         manifest('cloud', {
           parentSlug: 'engineering',
           maintainers: ['ada'],
@@ -362,12 +362,32 @@ describe('team roster', () => {
       ]),
       live([team('engineering'), team('cloud', 'engineering')], {
         teamMembers: members({
-          engineering: [{ login: 'ada', role: 'maintainer' }],
-          cloud: [{ login: 'ada', role: 'maintainer' }],
+          engineering: [{ login: 'ada', role: 'member', inherited: true }],
+          cloud: [{ login: 'ada', role: 'maintainer', inherited: false }],
         }),
       }),
     );
     expect(changes).toEqual([]);
+  });
+
+  test('writes nothing for a direct member who is also in a team below', () => {
+    // The child drops her, which only the child's removal carries out. The
+    // parent already holds her in its own right, so it needs no write.
+    const changes = plan(
+      desired([
+        manifest('engineering', { members: ['ada'] }),
+        manifest('cloud', { parentSlug: 'engineering', members: [] }),
+      ]),
+      live([team('engineering'), team('cloud', 'engineering')], {
+        teamMembers: members({
+          engineering: [{ login: 'ada', role: 'member', inherited: false }],
+          cloud: [{ login: 'ada', role: 'member', inherited: false }],
+        }),
+      }),
+    );
+    expect(changes).toEqual([
+      { kind: 'remove-membership', slug: 'cloud', username: 'ada', from: 'member' },
+    ]);
   });
 
   test('is owned by Entra rather than the definition when the team is synced', () => {
@@ -379,7 +399,7 @@ describe('team roster', () => {
         }),
       ]),
       live([team('cloud')], {
-        teamMembers: members({ cloud: [{ login: 'alan', role: 'member' }] }),
+        teamMembers: members({ cloud: [{ login: 'alan', role: 'member', inherited: false }] }),
       }),
     );
     expect(changes).toEqual([

@@ -38,7 +38,10 @@ function toTeamManifest(
   live: LiveState,
   idpSynced: boolean,
 ): TeamManifest {
-  const roster = idpSynced ? undefined : live.teamMembers?.get(team.slug);
+  // Only the team's own members: an inherited one is restored with the team below.
+  const roster = idpSynced
+    ? undefined
+    : live.teamMembers?.get(team.slug)?.filter((m) => !m.inherited);
   const grants = live.teamRepositories?.get(team.slug);
 
   const repositories = grants

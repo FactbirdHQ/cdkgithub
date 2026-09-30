@@ -135,7 +135,7 @@ describe('backup', () => {
   const live: LiveState = {
     teams: [team({ slug: 'platform' }), team({ slug: 'web', parentSlug: 'platform' })],
     teamMembers: new Map([
-      ['platform', [{ login: 'octocat', role: 'maintainer' as const }]],
+      ['platform', [{ login: 'octocat', role: 'maintainer' as const, inherited: false }]],
     ]),
     teamRepositories: new Map([
       ['platform', [{ name: 'app', roleName: 'write' }]],

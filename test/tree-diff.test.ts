@@ -45,13 +45,13 @@ describe('reading the live tree', () => {
       teamMembers: {
         // GitHub reports the child's people as members of the parent too.
         engineering: [
-          { login: 'lead', role: 'maintainer' },
-          { login: 'dev', role: 'member' },
-          { login: 'ops', role: 'member' },
+          { login: 'lead', role: 'maintainer', inherited: false },
+          { login: 'dev', role: 'member', inherited: true },
+          { login: 'ops', role: 'member', inherited: true },
         ],
         cloud: [
-          { login: 'ops', role: 'maintainer' },
-          { login: 'dev', role: 'member' },
+          { login: 'ops', role: 'maintainer', inherited: false },
+          { login: 'dev', role: 'member', inherited: false },
         ],
       },
     });
@@ -148,7 +148,7 @@ describe('diffing the two trees', () => {
   test('previousSlug pairs a rename into one changed team', async () => {
     const client = new FakeClient({
       teams: [liveTeam('app-1')],
-      teamMembers: { 'app-1': [{ login: 'dev', role: 'member' }] },
+      teamMembers: { 'app-1': [{ login: 'dev', role: 'member', inherited: false }] },
     });
     const live = await readLiveTree(client, 'acme');
     const diff = diffTrees(
@@ -267,7 +267,7 @@ describe('diffing the two trees', () => {
   test('an IdP-synced team has its roster left to Entra', async () => {
     const client = new FakeClient({
       teams: [liveTeam('engineering')],
-      teamMembers: { engineering: [{ login: 'leaver', role: 'member' }] },
+      teamMembers: { engineering: [{ login: 'leaver', role: 'member', inherited: false }] },
     });
     const live = await readLiveTree(client, 'acme');
     const diff = diffTrees(
@@ -289,7 +289,7 @@ describe('diffing the two trees', () => {
   test('roster and grant differences are both reported', async () => {
     const client = new FakeClient({
       teams: [liveTeam('cloud')],
-      teamMembers: { cloud: [{ login: 'leaver', role: 'member' }] },
+      teamMembers: { cloud: [{ login: 'leaver', role: 'member', inherited: false }] },
       teamRepositories: { cloud: [{ name: 'api', roleName: 'read' }] },
     });
     const live = await readLiveTree(client, 'acme');

@@ -52,9 +52,9 @@ export interface LiveState {
   readonly teamRepositories?: Map<string, LiveTeamRepository[]>;
   /**
    * Rosters keyed by slug: the teams that declare one, plus their live
-   * descendants, for the mirrored reason. GitHub reports a parent's members as
-   * including everyone in the teams below it, and only the descendants'
-   * rosters say which of those members are actually someone else's.
+   * descendants. Each member says whether they are on the team only through a
+   * team below it, and the descendants' rosters say who a team below will go
+   * on holding once the run has been applied.
    */
   readonly teamMembers?: Map<string, LiveTeamMember[]>;
   /**
@@ -269,10 +269,11 @@ export async function readLiveState(
     return current ? [{ team, slug: current.slug }] : [];
   });
 
-  // A declaring team's listing alone cannot be diffed safely: GitHub reports
-  // inherited grants and inherited members as the team's own. The ancestors'
-  // grants and the descendants' rosters are what tell a team's own from what
-  // it merely sees, so they are read alongside, declared or not.
+  // A declaring team's listing alone cannot be diffed safely. GitHub reports an
+  // ancestor's grants as the team's own, and a member held through a team
+  // below stays on this team only while that team keeps them. The ancestors'
+  // grants and the descendants' rosters answer both, so they are read
+  // alongside, declared or not.
   const accessSlugs = new Set<string>();
   const rosterSlugs = new Set<string>();
   for (const { team, slug } of existing) {
@@ -290,13 +291,17 @@ export async function readLiveState(
     }
   }
 
-  const [teamRepositories, teamMembers, appInstallations, securityConfigurations] =
-    await Promise.all([
-      readSlugs(accessSlugs, (slug) => client.listTeamRepositories(owner, slug)),
-      readSlugs(rosterSlugs, (slug) => client.listTeamMembers(owner, slug)),
-      readInstallationRepositories(client, installations, desired),
-      readAttachedRepositories(client, owner, configurations, desired),
-    ]);
+  const [
+    teamRepositories,
+    teamMembers,
+    appInstallations,
+    securityConfigurations,
+  ] = await Promise.all([
+    readSlugs(accessSlugs, (slug) => client.listTeamRepositories(owner, slug)),
+    readSlugs(rosterSlugs, (slug) => client.listTeamMembers(owner, slug)),
+    readInstallationRepositories(client, installations, desired),
+    readAttachedRepositories(client, owner, configurations, desired),
+  ]);
 
   return {
     teams,
