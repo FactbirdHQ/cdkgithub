@@ -113,6 +113,27 @@ The client queues requests under GitHub's own throttling rules and waits out
 a primary or secondary rate limit, retrying a few times before giving up. A
 large organization plans slowly rather than failing halfway through an apply.
 
+GitHub meters REST requests and GraphQL queries as two budgets of 5,000 an
+hour each. The client reads what is left from the headers of every response,
+the numbers GitHub enforces, and never from `GET /rate_limit`, which can
+report a full budget while requests are being refused.
+
+`plan`, `apply`, `diff` and `import` report the live read on stderr:
+
+- **While reading.** A terminal gets one line redrawn in place with the
+  requests made so far, the time taken, and the REST budget left. A log gets
+  the same line every fifteen seconds.
+- **While waiting.** When a limit is hit, the line says which limit and the
+  local time the read resumes, and a log gets that line straight away.
+- **When done.** One summary line gives the time taken, the requests made,
+  the three routes asked for most, and the budget left with the time GitHub
+  refills it.
+
+Before `apply --yes` writes, it compares the number of changes with the REST
+requests left. Each change is at least one request, so when the changes
+outnumber them `apply` says so and names the time it will pause until.
+During the writes, each new wait prints one line with the time it ends.
+
 ## Ownership semantics
 
 A surface is unmanaged until the definition declares it, and owned from then
