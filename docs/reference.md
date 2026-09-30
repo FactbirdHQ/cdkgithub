@@ -433,6 +433,10 @@ organization. An organization entry must declare `visibility` (`all`,
 entry must not, because only its own repository reads it. Names compare
 case-insensitively, the way GitHub stores them.
 
+A name holds letters, digits and underscores, does not start with a digit,
+and does not start with `GITHUB_` in any case, which GitHub reserves.
+`synth` fails on a name that breaks any of the three.
+
 A variable with `environment` lives in that deployment environment of its
 repository and is read only by jobs that run in it. The environment has to
 exist already: cdkgithub declares variables in it and does not create it, and
