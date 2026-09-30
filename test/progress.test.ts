@@ -19,7 +19,7 @@ describe('RequestMeter', () => {
     meter.record('POST /graphql', headers(4900, 'graphql'));
 
     const snapshot = meter.snapshot();
-    expect(snapshot.requests).toEqual({ core: 3, graphql: 1 });
+    expect(snapshot.requests).toEqual({ core: 3, graphql: 1, cached: 0 });
     expect(snapshot.budgets.core).toEqual({
       remaining: 4997,
       limit: 5000,

@@ -51,6 +51,8 @@ export interface FakeClientState {
   /** Live rosters keyed by team slug. */
   teamMembers?: Record<string, LiveTeamMember[]>;
   organizationOwners?: string[];
+  /** Repositories GitHub answers as not found. */
+  missingRepositories?: string[];
   customRepositoryRoles?: LiveCustomRepositoryRole[];
   organizationRoles?: LiveOrganizationRole[];
   internalRepositoriesAllowed?: boolean;
@@ -108,6 +110,7 @@ export class FakeClient implements GitHubClient {
   teamRepositories: Record<string, LiveTeamRepository[]>;
   teamMembers: Record<string, LiveTeamMember[]>;
   organizationOwners: string[];
+  missingRepositories: Set<string>;
   customRepositoryRoles: LiveCustomRepositoryRole[];
   organizationRoles: LiveOrganizationRole[];
   internalRepositoriesAllowed: boolean;
@@ -153,6 +156,7 @@ export class FakeClient implements GitHubClient {
     this.teamRepositories = state.teamRepositories ?? {};
     this.teamMembers = state.teamMembers ?? {};
     this.organizationOwners = state.organizationOwners ?? [];
+    this.missingRepositories = new Set(state.missingRepositories ?? []);
     this.customRepositoryRoles = state.customRepositoryRoles ?? [];
     this.organizationRoles = state.organizationRoles ?? [];
     this.internalRepositoriesAllowed =
@@ -646,6 +650,19 @@ export class FakeClient implements GitHubClient {
     name: string,
   ): Promise<void> {
     this.record('deleteRepositoryVariable', { repo, name });
+  }
+
+  async listEnvironmentsOfRepositories(
+    owner: string,
+    repositories: readonly string[],
+  ): Promise<Map<string, string[]>> {
+    this.record('listEnvironmentsOfRepositories', repositories);
+    const found = new Map<string, string[]>();
+    for (const repository of repositories) {
+      if (this.missingRepositories.has(repository)) continue;
+      found.set(repository, await this.listRepositoryEnvironments(owner, repository));
+    }
+    return found;
   }
 
   async listRepositoryEnvironments(

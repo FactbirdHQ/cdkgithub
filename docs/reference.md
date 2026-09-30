@@ -33,6 +33,7 @@ ignored.
 | `--live` | diff | Print the live organization and stop. No manifest is compared. |
 | `--by-person` | diff | Pivot onto people: who can reach what, before and after. |
 | `--csv` | diff | Write `--by-person` as CSV, one row per person per repository. |
+| `--no-cache` | diff, plan, apply, import | Send every request unconditionally, ignoring the ETags kept in `github.out/cache/`. |
 | `--color` / `--no-color` | diff | Force color on or off. The default colors a terminal and leaves a pipe plain; `NO_COLOR` and `FORCE_COLOR` are honoured, and the flags beat both. |
 
 ## Delete scopes
@@ -118,6 +119,19 @@ hour each. The client reads what is left from the headers of every response,
 the numbers GitHub enforces, and never from `GET /rate_limit`, which can
 report a full budget while requests are being refused.
 
+Two things keep a read inside those budgets:
+
+- **ETag cache.** Every GET response is kept under `github.out/cache/`, one
+  file per token, and the next run asks for it with `If-None-Match`. GitHub
+  answers an unchanged resource with a `304`, which costs nothing from the
+  primary limit, and the client answers it from the cache. A plan against an
+  organization that has not changed since the last one spends almost nothing.
+  The file holds the same live data as the backups beside it. `--no-cache`
+  skips it for one run.
+- **Batched environment reads.** The deployment environments of the
+  repositories whose variables or secrets are owned are listed fifty
+  repositories to a GraphQL query, where REST takes one request each.
+
 `plan`, `apply`, `diff` and `import` report the live read on stderr:
 
 - **While reading.** A terminal gets one line redrawn in place with the
@@ -126,8 +140,8 @@ report a full budget while requests are being refused.
 - **While waiting.** When a limit is hit, the line says which limit and the
   local time the read resumes, and a log gets that line straight away.
 - **When done.** One summary line gives the time taken, the requests made,
-  the three routes asked for most, and the budget left with the time GitHub
-  refills it.
+  how many of them the cache answered for free, the three routes asked for
+  most, and the budget left with the time GitHub refills it.
 
 Before `apply --yes` writes, it compares the number of changes with the REST
 requests left. Each change is at least one request, so when the changes

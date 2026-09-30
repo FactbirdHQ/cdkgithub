@@ -126,8 +126,9 @@ export function budgetNote(
 }
 
 function requestCounts(snapshot: MeterSnapshot): string {
-  const { core, graphql } = snapshot.requests;
-  return `${core} REST request${core === 1 ? '' : 's'}, ${graphql} GraphQL quer${graphql === 1 ? 'y' : 'ies'}`;
+  const { core, graphql, cached } = snapshot.requests;
+  const counts = `${core} REST request${core === 1 ? '' : 's'}, ${graphql} GraphQL quer${graphql === 1 ? 'y' : 'ies'}`;
+  return cached > 0 ? `${counts}, ${cached} unchanged and free` : counts;
 }
 
 function duration(ms: number): string {
