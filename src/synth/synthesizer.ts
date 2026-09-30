@@ -475,9 +475,28 @@ function assertScopedVisibility(
   }
 }
 
+/**
+ * GitHub's naming rules for Actions variables and secrets, which it enforces
+ * with a 422 on write: letters, digits and underscores, no leading digit, and
+ * no `GITHUB_` prefix in any case.
+ */
+function assertActionsName(what: string, name: string): void {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    throw new Error(
+      `${what} "${name}" is not a valid name. GitHub accepts letters, digits and underscores, and no leading digit.`,
+    );
+  }
+  if (/^GITHUB_/i.test(name)) {
+    throw new Error(
+      `${what} "${name}" starts with GITHUB_, a prefix GitHub reserves for its own variables.`,
+    );
+  }
+}
+
 function toVariableManifest(
   variable: ActionsVariable,
 ): ActionsVariableManifest {
+  assertActionsName('Variable', variable.variableName);
   const { repository, environment } = scopeOf(
     variable,
     variable.props,
@@ -502,6 +521,7 @@ function toVariableManifest(
 }
 
 function toSecretManifest(secret: ActionsSecret): ActionsSecretManifest {
+  assertActionsName('Secret', secret.secretName);
   const { repository, environment } = scopeOf(
     secret,
     secret.props,

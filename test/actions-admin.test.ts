@@ -63,6 +63,31 @@ describe('synthesis', () => {
     ]);
   });
 
+  test('a name with the GITHUB_ prefix fails in any case', () => {
+    for (const name of ['GITHUB_ORG_DRIFT', 'github_token_2']) {
+      const app = new App();
+      const org = new Organization(app, 'acme', { login: 'acme' });
+      const deck = new Repository(org, 'flow-portal');
+      new ActionsVariable(deck, name, { value: 'x' });
+      expect(() => synthesize(app)).toThrow('starts with GITHUB_');
+    }
+    const app = new App();
+    const org = new Organization(app, 'acme', { login: 'acme' });
+    new ActionsSecret(new Repository(org, 'flow-portal'), 'GITHUB_PAT');
+    expect(() => synthesize(app)).toThrow('Secret "GITHUB_PAT" starts with GITHUB_');
+  });
+
+  test('a name GitHub would reject for its characters fails', () => {
+    for (const name of ['1PASSWORD', 'SLACK-WEBHOOK']) {
+      const app = new App();
+      const org = new Organization(app, 'acme', { login: 'acme' });
+      new ActionsVariable(new Repository(org, 'flow-portal'), name, {
+        value: 'x',
+      });
+      expect(() => synthesize(app)).toThrow('is not a valid name');
+    }
+  });
+
   test('an organization variable must say who reads it', () => {
     const app = new App();
     const org = new Organization(app, 'acme', { login: 'acme' });
