@@ -58,6 +58,8 @@ export interface FakeClientState {
   externalGroups?: ExternalIdpGroup[];
   repositories?: LiveRepository[];
   appInstallations?: LiveAppInstallation[];
+  /** Repositories per installation id. An id missing here answers 403, as for a non-user token. */
+  installationRepositories?: Record<number, string[]>;
   settings?: LiveOrgSettings;
   actions?: LiveActionsPolicy;
   rulesets?: LiveRuleset[];
@@ -106,6 +108,7 @@ export class FakeClient implements GitHubClient {
   externalGroups: ExternalIdpGroup[];
   repositories: LiveRepository[];
   appInstallations: LiveAppInstallation[];
+  installationRepositories: Record<number, string[]>;
   settings: LiveOrgSettings;
   actions: LiveActionsPolicy;
   rulesets: LiveRuleset[];
@@ -146,6 +149,7 @@ export class FakeClient implements GitHubClient {
     this.externalGroups = state.externalGroups ?? [];
     this.repositories = state.repositories ?? [];
     this.appInstallations = state.appInstallations ?? [];
+    this.installationRepositories = state.installationRepositories ?? {};
     this.settings = state.settings ?? {};
     this.actions = state.actions ?? {
       enabledRepositories: 'all',
@@ -382,6 +386,14 @@ export class FakeClient implements GitHubClient {
 
   async listAppInstallations(): Promise<LiveAppInstallation[]> {
     return this.appInstallations;
+  }
+
+  async listInstallationRepositories(installationId: number): Promise<string[]> {
+    const repositories = this.installationRepositories[installationId];
+    if (!repositories) {
+      throw Object.assign(new Error('Forbidden'), { status: 403 });
+    }
+    return repositories;
   }
 
   // ---- organization settings ----------------------------------------------

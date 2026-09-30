@@ -88,7 +88,7 @@ function orgClient(): FakeClient {
         sourceType: 'Enterprise',
       },
     ],
-    appInstallations: [{ appId: 99, slug: 'renovate' }],
+    appInstallations: [{ id: 1, appId: 99, slug: 'renovate', repositorySelection: 'all' }],
     securityConfigurations: [
       {
         id: 20,

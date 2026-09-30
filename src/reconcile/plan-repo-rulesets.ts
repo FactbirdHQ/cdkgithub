@@ -36,9 +36,9 @@ export function planRepositoryRulesets(
     const currentByName = new Map(current.map((r) => [r.name, r]));
 
     for (const { repository: _repository, ...manifest } of wanted) {
-      // Bypass actors resolve against the same live org as the org rulesets:
-      // teams and app installations are org-wide whatever the ruleset scope.
-      const ruleset = resolveRuleset(manifest, live);
+      // Bypass actors resolve against the same live org as the org rulesets,
+      // and an app must also be installed on this repository.
+      const ruleset = resolveRuleset(manifest, live, repository);
       const existing = currentByName.get(ruleset.name);
       if (!existing) {
         changes.push({ kind: 'create-repo-ruleset', repository, ruleset });

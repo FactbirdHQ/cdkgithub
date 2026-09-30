@@ -112,16 +112,18 @@ export async function readLiveState(
   const declaresPropertyValues = (desired.customProperties ?? []).some(
     (p) => p.values !== undefined,
   );
-  // Resolving a bypass actor by app slug is the only thing that needs the org's
-  // installations, so the call is skipped unless one is named.
-  const namesAnApp = [
-    ...(desired.rulesets ?? []),
-    ...(desired.repositoryRulesets ?? []),
-  ].some((r) =>
-    (r.bypassActors ?? []).some(
-      (a) => a.actorType === 'Integration' && typeof a.app === 'string',
-    ),
-  );
+  // The org's installations resolve an app slug to its id, and tell whether an
+  // app can see the repository a repository ruleset lives on. Nothing else
+  // needs them, so the call is skipped unless a ruleset asks either question.
+  const namesAnApp =
+    (desired.rulesets ?? []).some((r) =>
+      (r.bypassActors ?? []).some(
+        (a) => a.actorType === 'Integration' && typeof a.app === 'string',
+      ),
+    ) ||
+    (desired.repositoryRulesets ?? []).some((r) =>
+      (r.bypassActors ?? []).some((a) => a.actorType === 'Integration'),
+    );
 
   // A declaration on a repository this same run creates has nothing to read
   // yet, so a 404 on one of these is an empty surface rather than a failure.
@@ -164,7 +166,7 @@ export async function readLiveState(
     customProperties,
     repositoryProperties,
     branchProtection,
-    appInstallations,
+    installations,
     repositories,
     customRepositoryRoles,
     organizationRoles,
@@ -288,9 +290,10 @@ export async function readLiveState(
     }
   }
 
-  const [teamRepositories, teamMembers] = await Promise.all([
+  const [teamRepositories, teamMembers, appInstallations] = await Promise.all([
     readSlugs(accessSlugs, (slug) => client.listTeamRepositories(owner, slug)),
     readSlugs(rosterSlugs, (slug) => client.listTeamMembers(owner, slug)),
+    readInstallationRepositories(client, installations, desired),
   ]);
 
   return {
@@ -408,6 +411,51 @@ function namedRepositories(
       (declared ?? []).flatMap((d) => (d.repository ? [d.repository] : [])),
     ),
   ];
+}
+
+/**
+ * Add the covered repositories to each `selected` installation whose app a
+ * repository ruleset names as a bypass actor. An installation GitHub refuses
+ * to list for this token keeps no list, and planning then cannot check it.
+ */
+async function readInstallationRepositories(
+  client: GitHubClient,
+  installations: LiveAppInstallation[] | undefined,
+  desired: DesiredState,
+): Promise<LiveAppInstallation[] | undefined> {
+  if (!installations) return undefined;
+  const named = new Set<string | number>(
+    (desired.repositoryRulesets ?? []).flatMap((r) =>
+      (r.bypassActors ?? []).flatMap((a) =>
+        a.actorType === 'Integration' ? [a.app] : [],
+      ),
+    ),
+  );
+  return Promise.all(
+    installations.map(async (installation) => {
+      if (
+        installation.repositorySelection !== 'selected' ||
+        !(named.has(installation.slug) || named.has(installation.appId))
+      ) {
+        return installation;
+      }
+      try {
+        const repositories = await client.listInstallationRepositories(
+          installation.id,
+        );
+        return { ...installation, repositories };
+      } catch (error) {
+        if (isAccessDenied(error)) return installation;
+        throw error;
+      }
+    }),
+  );
+}
+
+/** A 403 or 404: the token may not read this, which is not a failure. */
+function isAccessDenied(error: unknown): boolean {
+  const status = (error as { status?: number } | null)?.status;
+  return status === 403 || status === 404;
 }
 
 function isNotFound(error: unknown): boolean {

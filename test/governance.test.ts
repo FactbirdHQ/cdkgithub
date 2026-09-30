@@ -605,7 +605,7 @@ describe('ruleset bypass actors', () => {
       ]),
       live({
         teams: [livePlatform],
-        appInstallations: [{ appId: 777, slug: 'renovate' }],
+        appInstallations: [{ id: 1, appId: 777, slug: 'renovate', repositorySelection: 'all' }],
         rulesets: [],
       }),
     );

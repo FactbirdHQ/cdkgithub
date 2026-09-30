@@ -261,9 +261,19 @@ export interface LiveDefaultSecurityConfiguration {
 
 /** A GitHub App installed on the org, as needed to resolve a bypass actor by slug. */
 export interface LiveAppInstallation {
+  /** The installation id, which names the installation in its own routes. */
+  readonly id: number;
   /** The app id, which is what a ruleset bypass actor stores. */
   readonly appId: number;
   readonly slug: string;
+  /** `all` covers every repository in the org, `selected` only those listed. */
+  readonly repositorySelection: 'all' | 'selected';
+  /**
+   * The repository names a `selected` installation covers. Read only for an
+   * app that a repository ruleset names, and absent when the token cannot list
+   * them.
+   */
+  readonly repositories?: string[];
 }
 
 /** A custom property in the org's schema, in the manifest's casing. */
@@ -479,6 +489,12 @@ export interface GitHubClient {
 
   /** Apps installed on the org, used to resolve a ruleset bypass actor by slug. */
   listAppInstallations(org: string): Promise<LiveAppInstallation[]>;
+
+  /**
+   * Names of the repositories an installation covers. GitHub serves this to
+   * user tokens only, so an installation or fine-grained token gets a 403.
+   */
+  listInstallationRepositories(installationId: number): Promise<string[]>;
 
   // Organization settings — PATCH /orgs/{org}
   getOrgSettings(org: string): Promise<LiveOrgSettings>;
@@ -1253,7 +1269,20 @@ export class OctokitGitHubClient implements GitHubClient {
       this.octokit.rest.orgs.listAppInstallations,
       { org, per_page: 100 },
     );
-    return installations.map((i) => ({ appId: i.app_id, slug: i.app_slug }));
+    return installations.map((i) => ({
+      id: i.id,
+      appId: i.app_id,
+      slug: i.app_slug,
+      repositorySelection: i.repository_selection,
+    }));
+  }
+
+  async listInstallationRepositories(installationId: number): Promise<string[]> {
+    const repositories = await this.octokit.paginate(
+      this.octokit.rest.apps.listInstallationReposForAuthenticatedUser,
+      { installation_id: installationId, per_page: 100 },
+    );
+    return repositories.map((r) => r.name);
   }
 
   // ---- Organization settings ---------------------------------------------
