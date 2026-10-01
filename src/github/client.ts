@@ -12,6 +12,10 @@ import type {
   RepositoryManifest,
   DefaultWorkflowPermissions,
   EnabledRepositories,
+  IssueFieldDataType,
+  IssueFieldManifest,
+  IssueFieldOptionColor,
+  IssueFieldOptionManifest,
   OrgConfigVisibility,
   OrgSettingsManifest,
   RepoPermission,
@@ -86,6 +90,21 @@ interface CustomRepositoryRolesResponse {
     description?: string;
     permissions?: string[];
   }>;
+}
+
+interface IssueFieldResponse {
+  id: number;
+  name: string;
+  description?: string | null;
+  data_type: IssueFieldDataType;
+  visibility?: 'organization_members_only' | 'all';
+  options?: Array<{
+    id: number;
+    name: string;
+    description?: string | null;
+    color?: IssueFieldOptionColor | null;
+    priority?: number | null;
+  }> | null;
 }
 
 /** A repository role the organization defines on top of the five built-ins. */
@@ -307,6 +326,17 @@ export interface LiveAppInstallation {
 
 /** A custom property in the org's schema, in the manifest's casing. */
 export type LiveCustomProperty = Omit<CustomPropertyManifest, 'values'>;
+
+/** One option of a live select field. Its id is what keeps it across an update. */
+export interface LiveIssueFieldOption extends IssueFieldOptionManifest {
+  readonly id: number;
+}
+
+/** An organization issue field, in the manifest's casing, options in display order. */
+export interface LiveIssueField extends Omit<IssueFieldManifest, 'options'> {
+  readonly id: number;
+  readonly options?: LiveIssueFieldOption[];
+}
 
 /**
  * A branch's live protection, flattened into the manifest's shape.
@@ -840,6 +870,17 @@ export interface GitHubClient {
     repositories: string[],
     values: Record<string, string | string[] | null>,
   ): Promise<void>;
+
+  // Issue fields — /orgs/{org}/issue-fields
+  listIssueFields(org: string): Promise<LiveIssueField[]>;
+  createIssueField(org: string, field: IssueFieldManifest): Promise<void>;
+  /** Write `field` over `live`, keeping every option whose name both share. */
+  updateIssueField(
+    org: string,
+    live: LiveIssueField,
+    field: IssueFieldManifest,
+  ): Promise<void>;
+  deleteIssueField(org: string, id: number): Promise<void>;
 
   // Legacy branch protection — /repos/{owner}/{repo}/branches/{branch}/protection
   getBranchProtection(
@@ -2801,6 +2842,74 @@ ${batch
     });
   }
 
+  // ---- Issue fields --------------------------------------------------------
+  // Not among Octokit's generated typed methods at the pinned version, so they
+  // go through the raw route with the response typed here.
+
+  async listIssueFields(org: string): Promise<LiveIssueField[]> {
+    const { data } = await this.octokit.request('GET /orgs/{org}/issue-fields', {
+      org,
+    });
+    const fields = expectArray(
+      data as IssueFieldResponse[],
+      'GET /orgs/{org}/issue-fields',
+      '(root)',
+    );
+    return fields.map((f) => ({
+      id: f.id,
+      name: f.name,
+      dataType: f.data_type,
+      description: f.description ?? null,
+      visibility: f.visibility,
+      options: f.options
+        ? [...f.options]
+            .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0))
+            .map((o) => ({
+              id: o.id,
+              name: o.name,
+              description: o.description ?? null,
+              color: o.color ?? undefined,
+            }))
+        : undefined,
+    }));
+  }
+
+  async createIssueField(
+    org: string,
+    field: IssueFieldManifest,
+  ): Promise<void> {
+    await this.octokit.request('POST /orgs/{org}/issue-fields', {
+      org,
+      name: field.name,
+      description: field.description,
+      data_type: field.dataType,
+      visibility: field.visibility,
+      options: field.options && issueFieldOptions(field.options, []),
+    });
+  }
+
+  async updateIssueField(
+    org: string,
+    live: LiveIssueField,
+    field: IssueFieldManifest,
+  ): Promise<void> {
+    await this.octokit.request('PATCH /orgs/{org}/issue-fields/{issue_field_id}', {
+      org,
+      issue_field_id: live.id,
+      name: field.name,
+      description: field.description,
+      visibility: field.visibility,
+      options: field.options && issueFieldOptions(field.options, live.options ?? []),
+    });
+  }
+
+  async deleteIssueField(org: string, id: number): Promise<void> {
+    await this.octokit.request('DELETE /orgs/{org}/issue-fields/{issue_field_id}', {
+      org,
+      issue_field_id: id,
+    });
+  }
+
   // ---- Legacy branch protection -------------------------------------------
 
   async getBranchProtection(
@@ -3014,6 +3123,26 @@ function toActors(
  * "nothing exists" and cascade into creates and deletes computed against a
  * world emptier than the real one.
  */
+/**
+ * The options body of an issue-field write. GitHub replaces the whole set, and
+ * an option sent without its id is deleted and recreated, which clears it from
+ * every issue. So each option already live under the same name carries its id.
+ * Priority is the option's 1-based position in the declared list.
+ */
+function issueFieldOptions(
+  options: IssueFieldOptionManifest[],
+  live: LiveIssueFieldOption[],
+) {
+  const idByName = new Map(live.map((o) => [o.name, o.id]));
+  return options.map((o, index) => ({
+    id: idByName.get(o.name),
+    name: o.name,
+    description: o.description,
+    color: o.color ?? 'gray',
+    priority: index + 1,
+  }));
+}
+
 function expectArray<T>(
   value: T[] | undefined,
   endpoint: string,

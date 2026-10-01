@@ -458,6 +458,49 @@ export interface CustomPropertyManifest {
 }
 
 // ---------------------------------------------------------------------------
+// Issue fields — /orgs/{org}/issue-fields
+// ---------------------------------------------------------------------------
+
+export type IssueFieldDataType =
+  | 'text'
+  | 'date'
+  | 'number'
+  | 'single_select'
+  | 'multi_select';
+
+export type IssueFieldOptionColor =
+  | 'gray'
+  | 'blue'
+  | 'green'
+  | 'yellow'
+  | 'orange'
+  | 'red'
+  | 'pink'
+  | 'purple';
+
+/** One choice of a `single_select` or `multi_select` issue field. */
+export interface IssueFieldOptionManifest {
+  readonly name: string;
+  readonly description?: string | null;
+  /** Defaults to `gray`, which GitHub requires some color for. */
+  readonly color?: IssueFieldOptionColor;
+}
+
+export interface IssueFieldManifest {
+  readonly name: string;
+  /** Fixed at creation. GitHub has no endpoint that changes it. */
+  readonly dataType: IssueFieldDataType;
+  readonly description?: string | null;
+  readonly visibility?: 'organization_members_only' | 'all';
+  /**
+   * The choices of a select field, in the order GitHub lists them. The list is
+   * the whole set. An option left out is removed, and so is its value on every
+   * issue that holds it.
+   */
+  readonly options?: IssueFieldOptionManifest[];
+}
+
+// ---------------------------------------------------------------------------
 // Organization roles — /orgs/{org}/organization-roles
 // ---------------------------------------------------------------------------
 

@@ -516,6 +516,23 @@ export async function applyGovernanceChange(
       await client.deleteCustomProperty(org, change.live.name);
       return;
 
+    case 'create-issue-field':
+      ctx.log(`Creating issue field "${change.field.name}"`);
+      await client.createIssueField(org, change.field);
+      return;
+
+    case 'update-issue-field':
+      ctx.log(
+        `Updating issue field "${change.field.name}" (${fieldNames(change.fields)})`,
+      );
+      await client.updateIssueField(org, change.live, change.field);
+      return;
+
+    case 'delete-issue-field':
+      ctx.log(`Deleting issue field "${change.live.name}"`);
+      await client.deleteIssueField(org, change.live.id);
+      return;
+
     case 'create-repository': {
       // Unset means "the most open thing that stays inside the company", which
       // is `internal` under an enterprise account and `private` otherwise.

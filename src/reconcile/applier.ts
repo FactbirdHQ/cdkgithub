@@ -407,6 +407,10 @@ export function describeChange(change: Change): string {
       return `update custom property "${change.property.name}"`;
     case 'property-values':
       return `set custom property "${change.propertyName}" values`;
+    case 'create-issue-field':
+      return `create issue field "${change.field.name}"`;
+    case 'update-issue-field':
+      return `update issue field "${change.field.name}"`;
     case 'branch-protection':
       return `protect ${change.protection.repository}#${change.protection.branch}`;
     case 'create-repository':
@@ -452,6 +456,8 @@ function describeDelete(change: Change): string {
       return `delete code security configuration "${change.live.name}"`;
     case 'delete-property':
       return `delete custom property "${change.live.name}"`;
+    case 'delete-issue-field':
+      return `delete issue field "${change.live.name}"`;
     case 'revoke-org-role':
       return `revoke org role "${change.role}" from ${change.subject} ${change.name}`;
     case 'delete-repo-role':

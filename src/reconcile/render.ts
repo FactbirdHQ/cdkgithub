@@ -282,6 +282,28 @@ export function renderPlan(changes: Change[]): string {
         );
         break;
       }
+
+      case 'create-issue-field': {
+        const f = change.field;
+        lines.push(`  + issue field "${f.name}"`);
+        lines.push(`      data_type = "${f.dataType}"`);
+        if (f.options?.length)
+          lines.push(
+            `      options   = ${JSON.stringify(f.options.map((o) => o.name))}`,
+          );
+        break;
+      }
+      case 'update-issue-field': {
+        lines.push(`  ~ issue field "${change.field.name}"`);
+        lines.push(...renderFields(change.fields));
+        break;
+      }
+      case 'delete-issue-field': {
+        lines.push(
+          `  - issue field "${change.live.name}"   (requires --allow-delete; clears it from every issue)`,
+        );
+        break;
+      }
       case 'branch-protection': {
         const b = change.protection;
         lines.push(`  ~ branch protection ${b.repository}#${b.branch}`);
@@ -383,6 +405,7 @@ const BUCKETS = {
     'create-variable',
     'create-security-config',
     'create-property',
+    'create-issue-field',
     'assign-org-role',
     'create-repo-role',
     'create-repository',
@@ -400,6 +423,7 @@ const BUCKETS = {
     'set-collaborator',
     'update-security-config',
     'update-property',
+    'update-issue-field',
     'update-repo-role',
     'org-settings',
     'actions-policy',
@@ -420,6 +444,7 @@ const BUCKETS = {
     'remove-collaborator',
     'delete-security-config',
     'delete-property',
+    'delete-issue-field',
     'remove-branch-protection',
     'revoke-org-role',
     'delete-repo-role',
