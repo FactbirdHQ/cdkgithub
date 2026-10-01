@@ -73,6 +73,17 @@ export class EtagCache {
     this.dirty = true;
   }
 
+  /**
+   * Forget every response. A write can change what any cached URL returns, and
+   * GitHub may confirm a stale ETag shortly after one, so a cached body
+   * outlives a write only at the risk of a plan built on the old state.
+   */
+  clear(): void {
+    if (this.entries.size === 0) return;
+    this.entries.clear();
+    this.dirty = true;
+  }
+
   /** Write the cache if anything changed, replacing the file in one rename. */
   save(): void {
     if (!this.path || !this.dirty) return;

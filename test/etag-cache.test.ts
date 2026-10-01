@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { Octokit } from '@octokit/rest';
 import { OctokitGitHubClient } from '../src/github/client.ts';
 import { EtagCache } from '../src/github/etag-cache.ts';
 
@@ -59,6 +60,35 @@ describe('the ETag cache', () => {
     expect(warm.map((t) => t.slug)).toEqual(['cloud', 'devops']);
     expect(conditional.slice(2)).toEqual(['"teams-1"', '"teams-2"']);
     expect(second.meter.snapshot().requests).toEqual({ core: 0, graphql: 0, cached: 2 });
+  });
+
+  test('a write empties the cache and a GraphQL query does not', async () => {
+    const conditional = serveTeams([[{ slug: 'cloud' }]]);
+    const realServe = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      if (new URL(String(input)).pathname === '/graphql') {
+        return new Response(JSON.stringify({ data: { viewer: { login: 'x' } } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json', ...rate },
+        });
+      }
+      if (init?.method === 'PATCH') return new Response(null, { status: 422, headers: rate });
+      return realServe(input, init);
+    }) as typeof fetch;
+    const cache = new EtagCache();
+    const client = new OctokitGitHubClient('token', undefined, undefined, cache);
+    await client.listTeams('acme');
+    const octokit = (client as unknown as { octokit: Octokit }).octokit;
+
+    await octokit.graphql('query { viewer { login } }');
+    expect(cache.get('https://api.github.com/orgs/acme/teams?per_page=100')).toBeDefined();
+
+    // Rejected, yet a failed write may still have landed.
+    await expect(octokit.request('PATCH /orgs/{org}', { org: 'acme' })).rejects.toThrow();
+    expect(cache.get('https://api.github.com/orgs/acme/teams?per_page=100')).toBeUndefined();
+
+    await client.listTeams('acme');
+    expect(conditional).toEqual([null, null]);
   });
 
   test('keeps nothing between runs until saved, then everything', () => {
