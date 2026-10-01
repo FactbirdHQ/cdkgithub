@@ -14,12 +14,13 @@ import type {
 } from '../synth/manifest.ts';
 import type { Change, FieldChange } from './changes.ts';
 import type { LiveState } from './live.ts';
+import { planIssueFields } from './plan-issue-fields.ts';
 import { resolveRuleset } from './resolve-actors.ts';
 import { matchesSubset } from './subset.ts';
 
 /**
  * Diff the governance surfaces: org settings, the Actions policy, rulesets, code
- * security configurations, and custom properties.
+ * security configurations, custom properties, and issue fields.
  *
  * Each surface is skipped entirely unless the definition declares it, and within
  * a surface only declared fields are compared — see {@link matchesSubset} for why
@@ -37,6 +38,7 @@ export function planGovernance(
     ...planOrgSettings(desired, live),
     ...planActionsPolicy(desired, live),
     ...planCustomProperties(desired, live),
+    ...planIssueFields(desired.issueFields, live),
     ...planSecurityConfigurations(desired, live),
     ...planRulesets(desired, live),
     ...planBranchProtection(desired, live),

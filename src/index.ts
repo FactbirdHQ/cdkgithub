@@ -53,6 +53,10 @@ export {
 } from './constructs/environment.ts';
 export type { ExternalGroupProps } from './constructs/external-group.ts';
 export {
+  IssueField,
+  type IssueFieldProps,
+} from './constructs/issue-field.ts';
+export {
   Organization,
   type OrganizationProps,
   type OrganizationSettings,
@@ -110,6 +114,10 @@ export type {
   EnvironmentManifest,
   EnvironmentReviewers,
   ExternalGroupBinding,
+  IssueFieldDataType,
+  IssueFieldManifest,
+  IssueFieldOptionColor,
+  IssueFieldOptionManifest,
   OrgConfigVisibility,
   OrganizationRoleManifest,
   OrgSettingsManifest,

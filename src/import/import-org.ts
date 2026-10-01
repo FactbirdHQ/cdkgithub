@@ -85,6 +85,7 @@ export async function importOrganization(
     securityDefaults,
     customProperties,
     repositoryProperties,
+    issueFields,
     runnerGroups,
     orgVariables,
     orgSecrets,
@@ -115,6 +116,7 @@ export async function importOrganization(
     optional('custom property values', () =>
       client.listRepositoryProperties(org),
     ),
+    optional('issue fields', () => client.listIssueFields(org)),
     optional('runner groups', () => client.listRunnerGroups(org)),
     optional('Actions variables', () => client.listOrgVariables(org)),
     optional('Actions secrets', () => client.listOrgSecrets(org)),
@@ -210,6 +212,24 @@ export async function importOrganization(
       allowedValues: property.allowedValues ?? undefined,
       valuesEditableBy: property.valuesEditableBy ?? undefined,
       values: Object.keys(values).length > 0 ? values : undefined,
+    });
+  }
+
+  for (const field of issueFields ?? []) {
+    emit.construct('IssueField', field.name, {
+      dataType: field.dataType,
+      description: field.description ?? undefined,
+      visibility: field.visibility,
+      // An option with nothing but a name and the default color reads as its name.
+      options: field.options?.map(({ id: _id, ...o }) =>
+        !o.description && (o.color ?? 'gray') === 'gray'
+          ? o.name
+          : {
+              name: o.name,
+              description: o.description ?? undefined,
+              color: o.color,
+            },
+      ),
     });
   }
 
@@ -491,6 +511,7 @@ const IMPORT_ORDER = [
   'CustomProperty',
   'CustomRepositoryRole',
   'Environment',
+  'IssueField',
   'Organization',
   'OrganizationRole',
   'Repository',

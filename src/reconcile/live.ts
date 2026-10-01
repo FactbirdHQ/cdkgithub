@@ -7,6 +7,7 @@ import type {
   LiveCodeSecurityConfiguration,
   LiveCustomProperty,
   LiveDefaultSecurityConfiguration,
+  LiveIssueField,
   LiveOrganizationRole,
   LiveOrgSecret,
   LiveOrgSettings,
@@ -99,6 +100,7 @@ export interface LiveState {
   readonly defaultSecurityConfigurations?: LiveDefaultSecurityConfiguration[];
   readonly customProperties?: LiveCustomProperty[];
   readonly repositoryProperties?: LiveRepositoryProperties[];
+  readonly issueFields?: LiveIssueField[];
   /** One entry per declared repository and branch, protected or not. */
   readonly branchProtection?: LiveBranchProtection[];
   /** Only read when a ruleset names a GitHub App as a bypass actor. */
@@ -166,6 +168,7 @@ export async function readLiveState(
     defaultSecurityConfigurations,
     customProperties,
     repositoryProperties,
+    issueFields,
     branchProtection,
     installations,
     repositories,
@@ -193,6 +196,7 @@ export async function readLiveState(
       : undefined,
     desired.customProperties ? client.listCustomProperties(owner) : undefined,
     declaresPropertyValues ? client.listRepositoryProperties(owner) : undefined,
+    desired.issueFields ? client.listIssueFields(owner) : undefined,
     readBranchProtection(client, owner, desired),
     namesAnApp ? client.listAppInstallations(owner) : undefined,
     desired.repositories ? client.listRepositories(owner) : undefined,
@@ -321,6 +325,7 @@ export async function readLiveState(
     defaultSecurityConfigurations,
     customProperties,
     repositoryProperties,
+    issueFields,
     branchProtection,
     appInstallations,
     repositoryRulesets,

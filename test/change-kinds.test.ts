@@ -263,6 +263,20 @@ const SAMPLES: Record<Change['kind'], Change> = {
     propertyName: 'tier',
     values: { app: 'tier-1' },
   },
+  'create-issue-field': {
+    kind: 'create-issue-field',
+    field: { name: 'Effort', dataType: 'number' },
+  },
+  'update-issue-field': {
+    kind: 'update-issue-field',
+    live: { id: 21, name: 'Effort', dataType: 'number' },
+    field: { name: 'Effort', dataType: 'number', description: 'Points' },
+    fields: [{ field: 'description', from: null, to: 'Points' }],
+  },
+  'delete-issue-field': {
+    kind: 'delete-issue-field',
+    live: { id: 21, name: 'Effort', dataType: 'number' },
+  },
   'branch-protection': {
     kind: 'branch-protection',
     protection: { repository: 'app', branch: 'main', requiredSignatures: true },
@@ -416,6 +430,7 @@ describe('destructive arms', () => {
     expect(client.callsTo('deleteRuleset')).toEqual([7]);
     expect(client.callsTo('deleteSecurityConfiguration')).toEqual([9]);
     expect(client.callsTo('deleteCustomProperty')).toEqual(['tier']);
+    expect(client.callsTo('deleteIssueField')).toEqual([21]);
     expect(client.callsTo('deleteBranchProtection')).toEqual([
       { repo: 'app', branch: 'main' },
     ]);
@@ -464,6 +479,13 @@ describe('non-destructive arms', () => {
     expect(client.callsTo('attachSecurityConfiguration')).toHaveLength(1);
     expect(client.callsTo('putCustomProperty')).toHaveLength(2);
     expect(client.callsTo('setRepositoryPropertyValues')).toHaveLength(1);
+    expect(client.callsTo('createIssueField')).toHaveLength(1);
+    expect(client.callsTo('updateIssueField')).toEqual([
+      {
+        id: 21,
+        field: { name: 'Effort', dataType: 'number', description: 'Points' },
+      },
+    ]);
     expect(client.callsTo('putBranchProtection')).toHaveLength(1);
     expect(client.callsTo('setSignatureProtection')).toEqual([
       { repo: 'app', branch: 'main', required: true },

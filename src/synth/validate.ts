@@ -113,6 +113,7 @@ export function validateManifest(value: unknown, path: string): DesiredState {
     'collaborators',
     'codeSecurityConfigurations',
     'customProperties',
+    'issueFields',
     'branchProtection',
   ] as const) {
     if (state[collection] !== undefined && !Array.isArray(state[collection])) {
