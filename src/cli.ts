@@ -454,6 +454,9 @@ async function applyCommand(flags: Flags): Promise<number> {
         `and ${backup.dir}/rollback-manifest.json restores the team structure.`,
     );
     return 1;
+  } finally {
+    // The writes emptied the cache, so the next plan reads at full price.
+    github.cache?.save();
   }
 }
 
