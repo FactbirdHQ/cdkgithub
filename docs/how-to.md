@@ -199,8 +199,8 @@ bun bin/cdkgithub.ts import <org> --output examples/<org>.ts
 The importer reads the whole team structure (hierarchy, per-team grants,
 direct rosters) and the organization governance: settings, the Actions
 policy, custom repository roles, organization role assignments, rulesets,
-code security configurations, custom properties with their values, runner
-groups, and Actions variables and secrets. A surface the token cannot read is
+code security configurations, custom properties with their values, issue
+fields, runner groups, and Actions variables and secrets. A surface the token cannot read is
 skipped and named in the generated header rather than failed on. Secrets come
 back as names only, so each is emitted reading its value from an environment
 variable of the same name.

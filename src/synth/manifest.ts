@@ -23,6 +23,7 @@ import type {
   CollaboratorManifest,
   CustomPropertyManifest,
   CustomRepositoryRoleManifest,
+  IssueFieldManifest,
   OrganizationRoleManifest,
   OrgSettingsManifest,
   RepositoryManifest,
@@ -238,6 +239,8 @@ export interface DesiredState {
   readonly codeSecurityConfigurations?: CodeSecurityConfigurationManifest[];
   /** Repository custom properties, keyed by name. */
   readonly customProperties?: CustomPropertyManifest[];
+  /** Organization issue fields, keyed by name. */
+  readonly issueFields?: IssueFieldManifest[];
   /**
    * Legacy per-branch protection, keyed by repository and branch. Rulesets cover
    * the same ground org-wide; this is for personal accounts and for describing

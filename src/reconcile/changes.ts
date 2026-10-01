@@ -2,6 +2,7 @@ import type {
   LiveCodeSecurityConfiguration,
   LiveCustomProperty,
   LiveCustomRepositoryRole,
+  LiveIssueField,
   LiveRunnerGroup,
   LiveRuleset,
   LiveTeam,
@@ -18,6 +19,7 @@ import type {
   CollaboratorManifest,
   CustomRepositoryRoleManifest,
   EnvironmentManifest,
+  IssueFieldManifest,
   RepositoryManifest,
   ExternalGroupBinding,
   OrgSettingsManifest,
@@ -339,6 +341,28 @@ export interface SetPropertyValues {
   readonly values: Record<string, string | string[] | null>;
 }
 
+export interface CreateIssueField {
+  readonly kind: 'create-issue-field';
+  readonly field: IssueFieldManifest;
+}
+
+/** Addressed through `live`, whose id and option ids the write carries. */
+export interface UpdateIssueField {
+  readonly kind: 'update-issue-field';
+  readonly live: LiveIssueField;
+  readonly field: IssueFieldManifest;
+  readonly fields: FieldChange[];
+}
+
+/**
+ * An issue field absent from the definition. Deleting it clears its value from
+ * every issue in the organization. Gated by --allow-delete.
+ */
+export interface DeleteIssueField {
+  readonly kind: 'delete-issue-field';
+  readonly live: LiveIssueField;
+}
+
 /** Write a branch's legacy protection. */
 export interface SetBranchProtection {
   readonly kind: 'branch-protection';
@@ -451,6 +475,9 @@ export type Change =
   | UpdateCustomProperty
   | DeleteCustomProperty
   | SetPropertyValues
+  | CreateIssueField
+  | UpdateIssueField
+  | DeleteIssueField
   | SetBranchProtection
   | RemoveBranchProtection
   | CreateRepository
@@ -505,6 +532,7 @@ export const DESTRUCTIVE_KINDS = [
   'remove-collaborator',
   'delete-security-config',
   'delete-property',
+  'delete-issue-field',
   'remove-branch-protection',
 ] as const satisfies ReadonlyArray<Change['kind']>;
 
@@ -530,6 +558,7 @@ export const DELETE_SCOPES = {
   collaborators: 'remove-collaborator',
   'security-configs': 'delete-security-config',
   properties: 'delete-property',
+  'issue-fields': 'delete-issue-field',
   'branch-protection': 'remove-branch-protection',
 } as const satisfies Record<string, DestructiveKind>;
 

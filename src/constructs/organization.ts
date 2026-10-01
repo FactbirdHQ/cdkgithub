@@ -11,6 +11,7 @@ import {
   CustomRepositoryRole,
   type CustomRepositoryRoleProps,
 } from './custom-repository-role.ts';
+import { IssueField, type IssueFieldProps } from './issue-field.ts';
 import {
   OrganizationRole,
   type OrganizationRoleProps,
@@ -76,6 +77,9 @@ export interface OrganizationProps {
     Record<string, Omit<CustomPropertyProps, 'name'>>
   >;
 
+  /** Issue fields, by name. */
+  readonly issueField?: Readonly<Record<string, Omit<IssueFieldProps, 'name'>>>;
+
   /** Code security configurations, by name. */
   readonly codeSecurityConfiguration?: Readonly<
     Record<string, Omit<CodeSecurityConfigurationProps, 'name'>>
@@ -121,6 +125,9 @@ export class Organization extends Construct {
     }
     for (const [name, options] of Object.entries(props.customProperty ?? {})) {
       this.addCustomProperty(name, options);
+    }
+    for (const [name, options] of Object.entries(props.issueField ?? {})) {
+      this.addIssueField(name, options);
     }
     for (const [name, options] of Object.entries(
       props.codeSecurityConfiguration ?? {},
@@ -176,6 +183,14 @@ export class Organization extends Construct {
     options: Omit<CustomPropertyProps, 'name'>,
   ): CustomProperty {
     return new CustomProperty(this, name, options);
+  }
+
+  /** Declare an issue field. */
+  addIssueField(
+    name: string,
+    options: Omit<IssueFieldProps, 'name'>,
+  ): IssueField {
+    return new IssueField(this, name, options);
   }
 
   /** Declare a code security configuration. */
