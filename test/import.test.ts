@@ -114,6 +114,19 @@ function orgClient(): FakeClient {
       { repository: 'flight-deck', properties: { tier: 'tier-1' } },
       { repository: 'nest', properties: { tier: null } },
     ],
+    issueFields: [
+      {
+        id: 4,
+        name: 'Priority',
+        dataType: 'single_select',
+        description: null,
+        visibility: 'organization_members_only',
+        options: [
+          { id: 40, name: 'P0', description: 'Drop everything', color: 'red' },
+          { id: 41, name: 'P1', description: null, color: 'gray' },
+        ],
+      },
+    ],
     runnerGroups: [
       {
         id: 5,
@@ -207,6 +220,17 @@ describe('importOrganization', () => {
         name: 'tier',
         values: { 'flight-deck': 'tier-1' },
       }),
+    ]);
+    expect(state.issueFields).toEqual([
+      {
+        name: 'Priority',
+        dataType: 'single_select',
+        visibility: 'organization_members_only',
+        options: [
+          { name: 'P0', description: 'Drop everything', color: 'red' },
+          { name: 'P1' },
+        ],
+      },
     ]);
     expect(state.runnerGroups).toEqual([
       expect.objectContaining({

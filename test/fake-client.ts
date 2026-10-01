@@ -9,6 +9,7 @@ import type {
   LiveCustomProperty,
   LiveCustomRepositoryRole,
   LiveDefaultSecurityConfiguration,
+  LiveIssueField,
   LiveOrgSecret,
   LiveOrgSettings,
   LiveOrgVariable,
@@ -32,6 +33,7 @@ import type {
   CodeSecurityConfigurationManifest,
   CustomPropertyManifest,
   CustomRepositoryRoleManifest,
+  IssueFieldManifest,
   RepositoryManifest,
   DefaultWorkflowPermissions,
   EnabledRepositories,
@@ -75,6 +77,7 @@ export interface FakeClientState {
   defaultSecurityConfigurations?: LiveDefaultSecurityConfiguration[];
   customProperties?: LiveCustomProperty[];
   repositoryProperties?: LiveRepositoryProperties[];
+  issueFields?: LiveIssueField[];
   branchProtection?: LiveBranchProtection[];
   /** Repository rulesets keyed by repository name. */
   repositoryRulesets?: Record<string, LiveRuleset[]>;
@@ -130,6 +133,7 @@ export class FakeClient implements GitHubClient {
   defaultSecurityConfigurations: LiveDefaultSecurityConfiguration[];
   customProperties: LiveCustomProperty[];
   repositoryProperties: LiveRepositoryProperties[];
+  issueFields: LiveIssueField[];
   branchProtection: LiveBranchProtection[];
   repositoryRulesets: Record<string, LiveRuleset[]>;
   runnerGroups: LiveRunnerGroup[];
@@ -181,6 +185,7 @@ export class FakeClient implements GitHubClient {
       state.defaultSecurityConfigurations ?? [];
     this.customProperties = state.customProperties ?? [];
     this.repositoryProperties = state.repositoryProperties ?? [];
+    this.issueFields = state.issueFields ?? [];
     this.branchProtection = state.branchProtection ?? [];
     this.repositoryRulesets = state.repositoryRulesets ?? {};
     this.runnerGroups = state.runnerGroups ?? [];
@@ -961,6 +966,31 @@ export class FakeClient implements GitHubClient {
 
   async deleteCustomProperty(_org: string, name: string): Promise<void> {
     this.record('deleteCustomProperty', name);
+  }
+
+  // ---- issue fields --------------------------------------------------------
+
+  async listIssueFields(): Promise<LiveIssueField[]> {
+    return this.issueFields;
+  }
+
+  async createIssueField(
+    _org: string,
+    field: IssueFieldManifest,
+  ): Promise<void> {
+    this.record('createIssueField', field);
+  }
+
+  async updateIssueField(
+    _org: string,
+    live: LiveIssueField,
+    field: IssueFieldManifest,
+  ): Promise<void> {
+    this.record('updateIssueField', { id: live.id, field });
+  }
+
+  async deleteIssueField(_org: string, id: number): Promise<void> {
+    this.record('deleteIssueField', id);
   }
 
   async setRepositoryPropertyValues(

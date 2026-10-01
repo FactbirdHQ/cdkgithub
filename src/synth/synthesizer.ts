@@ -7,6 +7,7 @@ import { Environment } from '../constructs/environment.ts';
 import { BranchProtection } from '../constructs/branch-protection.ts';
 import { CodeSecurityConfiguration } from '../constructs/code-security.ts';
 import { CustomProperty } from '../constructs/custom-property.ts';
+import { IssueField } from '../constructs/issue-field.ts';
 import { Organization } from '../constructs/organization.ts';
 import { CustomRepositoryRole } from '../constructs/custom-repository-role.ts';
 import { OrganizationRole } from '../constructs/organization-role.ts';
@@ -32,6 +33,7 @@ import type {
   CodeSecurityConfigurationManifest,
   CollaboratorManifest,
   CustomPropertyManifest,
+  IssueFieldManifest,
   RepositoryRulesetManifest,
   RulesetManifest,
 } from './governance.ts';
@@ -108,6 +110,7 @@ export function synthesize(root: IConstruct): DesiredState {
     CustomProperty,
     toCustomPropertyManifest,
   );
+  const issueFields = collect(root, IssueField, toIssueFieldManifest);
   const repositoryRulesets = collect(
     root,
     RepositoryRuleset,
@@ -128,6 +131,7 @@ export function synthesize(root: IConstruct): DesiredState {
   assertUniqueNames(customRepositoryRoles, 'custom repository role');
   assertUniqueNames(codeSecurityConfigurations, 'code security configuration');
   assertUniqueNames(customProperties, 'custom property');
+  assertUniqueNames(issueFields, 'issue field');
   assertUniqueNames(runnerGroups, 'runner group');
   assertUniquePerRepository(repositoryRulesets, 'repository ruleset', false);
   assertUniquePerRepository(actionsVariables, 'variable');
@@ -150,6 +154,7 @@ export function synthesize(root: IConstruct): DesiredState {
     organizationRoles,
     codeSecurityConfigurations,
     customProperties,
+    issueFields,
     branchProtection,
     repositoryRulesets,
     runnerGroups,
@@ -211,6 +216,7 @@ function assertNothingOrgWide(state: DesiredState): void {
     ['Ruleset', state.rulesets],
     ['CodeSecurityConfiguration', state.codeSecurityConfigurations],
     ['CustomProperty', state.customProperties],
+    ['IssueField', state.issueFields],
     ['RunnerGroup', state.runnerGroups],
     // The repository-scoped entries work on a personal account's repositories;
     // only the organization-scoped ones have nothing to live on.
@@ -417,6 +423,39 @@ function toCustomPropertyManifest(
     );
   }
   return { ...props, name: property.propertyName };
+}
+
+function toIssueFieldManifest(field: IssueField): IssueFieldManifest {
+  const { name: _name, options, ...props } = field.props;
+  const what = `Issue field "${field.fieldName}"`;
+  const isSelect =
+    props.dataType === 'single_select' || props.dataType === 'multi_select';
+
+  if (isSelect && !options?.length) {
+    throw new Error(`${what} is a ${props.dataType} but declares no options.`);
+  }
+  if (!isSelect && options !== undefined) {
+    throw new Error(
+      `${what} is a ${props.dataType} field, which takes no options.`,
+    );
+  }
+
+  const normalized = options?.map((o) =>
+    typeof o === 'string' ? { name: o } : o,
+  );
+  const seen = new Set<string>();
+  for (const option of normalized ?? []) {
+    if (seen.has(option.name)) {
+      throw new Error(`${what} declares the option "${option.name}" twice.`);
+    }
+    seen.add(option.name);
+  }
+
+  return {
+    ...props,
+    name: field.fieldName,
+    ...(normalized ? { options: normalized } : {}),
+  };
 }
 
 /** The repository a repository-scoped construct lives on, by nesting or by name. */

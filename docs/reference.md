@@ -54,6 +54,7 @@ Each scope names one destructive change kind for `--allow-delete=<scopes>`:
 | `secrets` | An Actions secret, from a declared scope. |
 | `security-configs` | A code security configuration. |
 | `properties` | A custom property. |
+| `issue-fields` | An issue field, and with it the field's value on every issue. |
 | `branch-protection` | A branch's legacy protection, from `enabled: false`. |
 | `collaborators` | A direct collaborator or pending invitation on a declared repository the definition does not declare. |
 | `branch-policies` | A branch or tag pattern a declared environment admits and its declaration no longer lists. |
@@ -196,6 +197,7 @@ the construct it creates.
 | `Organization` | `ruleset` | `addRuleset(name, options)` | `Ruleset` |
 | `Organization` | `runnerGroup` | `addRunnerGroup(name, options)` | `RunnerGroup` |
 | `Organization` | `customProperty` | `addCustomProperty(name, options)` | `CustomProperty` |
+| `Organization` | `issueField` | `addIssueField(name, options)` | `IssueField` |
 | `Organization` | `codeSecurityConfiguration` | `addCodeSecurityConfiguration(name, options)` | `CodeSecurityConfiguration` |
 | `Organization` | `organizationRole` | `addOrganizationRole(name, options)` | `OrganizationRole` |
 | `Organization` | `customRepositoryRole` | `addCustomRepositoryRole(name, options)` | `CustomRepositoryRole` |
@@ -411,6 +413,43 @@ A ruleset can then target the class through its `repositoryProperty`
 condition instead of a list of names, and new repositories inherit the policy
 without anyone editing the definition. `plan` lists only the repositories
 whose value differs, and `apply` writes one call per distinct value.
+
+### IssueField
+
+```ts
+new IssueField(org, "Priority", {
+  dataType: "single_select",          // text | date | number | single_select | multi_select
+  description: "How soon this needs doing",
+  visibility: "organization_members_only", // or "all"
+  options: [
+    { name: "P0", color: "red", description: "Drop everything" },
+    { name: "P1", color: "orange" },
+    "P2",                              // a name alone: no description, color gray
+  ],
+});
+```
+
+| Prop | Type | Default |
+| --- | --- | --- |
+| `name` | `string` | The construct id. |
+| `dataType` | `"text" \| "date" \| "number" \| "single_select" \| "multi_select"` | Required. |
+| `description` | `string \| null` | Left as GitHub has it. |
+| `visibility` | `"organization_members_only" \| "all"` | Left as GitHub has it; a new field is `organization_members_only`. |
+| `options` | `Array<string \| { name, description?, color? }>` | Required for the two select types, refused for the others. |
+
+An option's `color` is one of `gray`, `blue`, `green`, `yellow`, `orange`,
+`red`, `pink` and `purple`, and defaults to `gray`. Option names are unique
+within a field.
+
+`plan` matches fields by name. `options` is the whole set in display order,
+and `plan` compares it in order. An update sends each option with the id of
+the live option that has the same name. An option left out is
+deleted, along with its value on every issue. A renamed option is a new
+option. `dataType` is fixed once the field exists, and a definition that
+declares a different one fails `plan`.
+
+The endpoints need an organization owner's token, with `admin:org` on a
+classic token.
 
 ### ActionsPolicy
 

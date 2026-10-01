@@ -6,7 +6,7 @@ Apply it with a plan you have read.**
 Teams and their hierarchy, repository access, Entra ID group links, rulesets
 at both the organization and the repository level, the Actions policy, runner
 groups, Actions secrets and variables, code security configurations, custom
-properties, member privileges, and branch protection live in one definition
+properties, issue fields, member privileges, and branch protection live in one definition
 in git. cdkgithub diffs that definition against the live organization and
 applies the difference over the GitHub REST API. It is built on
 [`constructs`](https://www.npmjs.com/package/constructs), the library under
