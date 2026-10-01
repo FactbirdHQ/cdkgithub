@@ -937,6 +937,10 @@ function createOctokit(
  * is the cached body with the 304's own headers, which carry the current rate
  * budget, and the cached pagination link.
  *
+ * Any other request that can write empties the cache, whether it succeeds or
+ * fails, since a failed request may still have landed. A GraphQL query reads,
+ * so only a mutation counts as a write.
+ *
  * Bodies are copied going into the cache and coming out of it. Octokit's
  * paginator rewrites a wrapped list such as `{ total_count, installations }`
  * in place, and a body shared with it would be cached, and served on the next
@@ -944,7 +948,13 @@ function createOctokit(
  */
 function answerFromCache(octokit: Octokit, cache: EtagCache): void {
   octokit.hook.wrap('request', async (request, options) => {
-    if (options.method !== 'GET') return request(options);
+    if (options.method !== 'GET') {
+      try {
+        return await request(options);
+      } finally {
+        if (writes(options)) cache.clear();
+      }
+    }
     const { url } = octokit.request.endpoint.parse(options);
     const cached = cache.get(url);
     if (cached) options.headers['if-none-match'] = cached.etag;
@@ -975,6 +985,12 @@ function answerFromCache(octokit: Octokit, cache: EtagCache): void {
       };
     }
   });
+}
+
+/** Whether a request other than a GET can change state on GitHub. */
+function writes(options: { url: string; query?: unknown }): boolean {
+  if (options.url !== '/graphql') return true;
+  return typeof options.query === 'string' && /^\s*mutation\b/.test(options.query);
 }
 
 /** How many repositories one GraphQL query lists environments for. */
