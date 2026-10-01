@@ -167,6 +167,25 @@ interface OrganizationRolesResponse {
   }>;
 }
 
+/**
+ * An entry of `GET /orgs/{org}/organization-roles/{role_id}/teams` or `/users`.
+ * Both list every holder of the role, including those who hold it only through
+ * a team, and `assignment` says which of them hold an assignment of their own.
+ */
+interface RoleAssignee {
+  assignment?: 'direct' | 'indirect' | 'mixed';
+}
+
+/**
+ * Whether the role is assigned to this team or user itself. Only such an
+ * assignment can be revoked, so only these count as the role's assignees. An
+ * entry without `assignment` comes from a server that predates the field and
+ * lists direct assignees alone.
+ */
+function holdsRoleDirectly(entry: RoleAssignee): boolean {
+  return entry.assignment !== 'indirect';
+}
+
 /** Shape of `GET /orgs/{org}/external-groups` (not covered by Octokit's typed methods). */
 interface ExternalGroupsResponse {
   groups?: Array<{ group_id: number | string; group_name: string }>;
@@ -1289,8 +1308,14 @@ export class OctokitGitHubClient implements GitHubClient {
       ),
     ]);
     return {
-      teams: (teams as Array<{ slug: string }>).map((t) => t.slug).sort(),
-      users: (users as Array<{ login: string }>).map((u) => u.login).sort(),
+      teams: (teams as Array<RoleAssignee & { slug: string }>)
+        .filter(holdsRoleDirectly)
+        .map((t) => t.slug)
+        .sort(),
+      users: (users as Array<RoleAssignee & { login: string }>)
+        .filter(holdsRoleDirectly)
+        .map((u) => u.login)
+        .sort(),
     };
   }
 
