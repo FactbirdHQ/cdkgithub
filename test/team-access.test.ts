@@ -159,6 +159,44 @@ describe('repository access', () => {
     expect(changes).toEqual([]);
   });
 
+  test('never removes access an organization role already grants', () => {
+    // An `all_repo_*` role is reported as the team's access on repositories
+    // it reaches, and removing the team grant leaves the role's in place.
+    const role = (name: string, baseRole: string, teams: string[]) => ({
+      id: name.length,
+      name,
+      baseRole,
+      permissions: [],
+      teams,
+      users: [],
+    });
+    const changes = plan(
+      desired([
+        manifest('cloud', { repositories: {} }),
+        manifest('devops', { parentSlug: 'cloud', repositories: {} }),
+      ]),
+      live([team('cloud'), team('devops', 'cloud')], {
+        teamRepositories: repos({
+          cloud: [{ name: 'docs', roleName: 'admin' }],
+          devops: [
+            { name: 'netcore', roleName: 'maintain' },
+            { name: 'docs', roleName: 'admin' },
+          ],
+        }),
+        organizationRoles: [role('all_repo_maintain', 'maintain', ['devops'])],
+      }),
+    );
+    // devops' maintain is the role's; cloud's admin outranks it and goes.
+    expect(changes).toEqual([
+      {
+        kind: 'remove-repo-access',
+        slug: 'cloud',
+        repository: 'docs',
+        from: 'admin',
+      },
+    ]);
+  });
+
   test('still removes a child grant that outranks what the parent gives', () => {
     const changes = plan(
       desired([
