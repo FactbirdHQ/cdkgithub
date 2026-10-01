@@ -108,6 +108,7 @@ function planRepoAccess(
     ),
   );
   const inherited = inheritedAccess(liveSlug, live, liveBySlug);
+  const roleFloor = organizationRoleFloor(liveSlug, live, liveBySlug, roles);
 
   const changes: Change[] = [];
   for (const [repository, permission] of Object.entries(declared)) {
@@ -128,6 +129,14 @@ function planRepoAccess(
     // give up: removing it here would either fail or strip the ancestor's.
     const above = inherited.get(repository);
     if (above !== undefined && rankOf(above, roles) >= rankOf(from, roles)) {
+      continue;
+    }
+    // Likewise for an organization role's base role, which grants its
+    // permission on every repository and is reported on each one.
+    if (
+      roleFloor !== undefined &&
+      rankOf(roleFloor, roles) >= rankOf(from, roles)
+    ) {
       continue;
     }
     changes.push({
@@ -162,6 +171,40 @@ function inheritedAccess(
     parent = liveBySlug.get(parent)?.parentSlug ?? null;
   }
   return merged;
+}
+
+/**
+ * The strongest base role among the organization roles `slug` or an ancestor
+ * holds, as a repository permission, or `undefined` when none carries one.
+ * Only read when the definition declares organization roles.
+ */
+function organizationRoleFloor(
+  slug: string,
+  live: LiveState,
+  liveBySlug: Map<string, LiveTeam>,
+  roles: Map<string, number>,
+): string | undefined {
+  const holders = new Set<string>();
+  for (
+    let team: string | null = slug;
+    team && !holders.has(team);
+    team = liveBySlug.get(team)?.parentSlug ?? null
+  ) {
+    holders.add(team);
+  }
+
+  let floor: string | undefined;
+  for (const role of live.organizationRoles ?? []) {
+    if (!role.baseRole || !role.teams.some((t) => holders.has(t))) continue;
+    const permission = comparableRoleName(role.baseRole);
+    if (
+      floor === undefined ||
+      rankOf(permission, roles) > rankOf(floor, roles)
+    ) {
+      floor = permission;
+    }
+  }
+  return floor;
 }
 
 function planRoster(
