@@ -98,6 +98,30 @@ describe('wrapped list responses', () => {
   });
 });
 
+describe('readRoleAssignment', () => {
+  test('leaves out holders who have the role only through a team', async () => {
+    const listings: Record<string, unknown[]> = {
+      'GET /orgs/{org}/organization-roles/{role_id}/teams': [
+        { slug: 'devops', assignment: 'direct' },
+        { slug: 'platform', assignment: 'indirect' },
+      ],
+      'GET /orgs/{org}/organization-roles/{role_id}/users': [
+        { login: 'viateam', assignment: 'indirect' },
+        { login: 'both', assignment: 'mixed' },
+        { login: 'own', assignment: 'direct' },
+        { login: 'unmarked' },
+      ],
+    };
+    const client = clientWith({
+      paginate: async (route: string) => listings[route] ?? [],
+    });
+    await expect(client.readRoleAssignment('acme', 8132)).resolves.toEqual({
+      teams: ['devops'],
+      users: ['both', 'own', 'unmarked'],
+    });
+  });
+});
+
 describe('updateTeam', () => {
   test("returns the slug GitHub derived, not the caller's guess", async () => {
     const client = clientWith({
