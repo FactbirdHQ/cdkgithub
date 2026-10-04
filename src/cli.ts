@@ -20,7 +20,7 @@ import {
   isDestructive,
 } from './reconcile/changes.ts';
 import { readLiveState } from './reconcile/live.ts';
-import { budgetNote, reportProgress, waitLine } from './progress.ts';
+import { budgetNote, reportProgress, since, waitLine } from './progress.ts';
 import { interactive } from './ui/terminal.ts';
 import { EtagCache } from './github/etag-cache.ts';
 import { unmanagedRoleAssignments } from './reconcile/plan-org-roles.ts';
@@ -655,7 +655,7 @@ function printProvenance(desired: DesiredState): void {
   const commit = p.commit
     ? ` at ${p.commit.slice(0, 7)}${p.dirty ? ' (dirty working tree)' : ''}`
     : '';
-  console.log(`Manifest: ${p.source}${commit}, synthesized ${p.synthesizedAt}\n`);
+  console.log(`Manifest: ${p.source}${commit}, synthesized ${since(p.synthesizedAt)}\n`);
 }
 
 function readManifest(path: string): DesiredState {

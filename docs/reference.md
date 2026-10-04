@@ -80,7 +80,9 @@ Before its first write, `apply --yes` saves four files under
 definition file), `commit` (`git rev-parse HEAD` at synth time), `dirty`
 (whether the working tree had uncommitted changes), and `synthesizedAt`.
 `plan` and `apply` print the line, so a review can tell a freshly
-synthesized manifest from a stale one.
+synthesized manifest from a stale one. The line gives the synthesis time
+relative to now within a day, such as `synthesized 3 minutes ago`, and as a
+local date and time after that. The manifest keeps it in ISO 8601.
 
 ## Authentication
 

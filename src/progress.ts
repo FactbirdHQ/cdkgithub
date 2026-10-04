@@ -162,6 +162,23 @@ export function waitLine(wait: RateWait): string {
   return `  waiting out GitHub's ${kind} until ${clock(wait.until)}`;
 }
 
+/**
+ * When something happened, for a reader judging how fresh it is: relative
+ * within a day, a local date and time after that. A timestamp that does not
+ * parse is returned as it is.
+ */
+export function since(timestamp: string, nowMs: number = Date.now()): string {
+  const at = new Date(timestamp);
+  if (Number.isNaN(at.getTime())) return timestamp;
+  const minutes = Math.floor((nowMs - at.getTime()) / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const date = at.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  return `on ${date}, ${clock(at)}`;
+}
+
 /** A wall-clock time in the reader's own zone, to the minute. */
 export function clock(date: Date): string {
   return date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
