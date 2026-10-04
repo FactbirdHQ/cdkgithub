@@ -1,6 +1,7 @@
 import { Octokit, type RestEndpointMethodTypes } from '@octokit/rest';
 import { retry } from '@octokit/plugin-retry';
 import { throttling } from '@octokit/plugin-throttling';
+import Bottleneck from 'bottleneck';
 import type {
   ActorRestriction,
   AllowedActions,
@@ -931,11 +932,16 @@ const RATE_LIMIT_RETRIES = 3;
  */
 export const GITHUB_API_VERSION = '2026-03-10';
 
+/**
+ * `writeQueue` replaces the throttling plugin's queue for writes and GraphQL,
+ * which admits one request a second.
+ */
 function createOctokit(
   token: string,
   meter: RequestMeter,
   baseUrl?: string,
   cache?: EtagCache,
+  writeQueue?: Bottleneck.Group,
 ): Octokit {
   const octokit = new ThrottledOctokit({
     auth: token,
@@ -953,6 +959,7 @@ function createOctokit(
         meter.wait(retryAfter, true);
         return retryCount < RATE_LIMIT_RETRIES;
       },
+      ...(writeQueue ? { write: writeQueue } : {}),
     },
   });
   octokit.hook.before('request', (options) => {
@@ -1076,6 +1083,13 @@ interface CollaboratorsData {
 /** Default {@link GitHubClient} backed by Octokit against api.github.com. */
 export class OctokitGitHubClient implements GitHubClient {
   private readonly octokit: Octokit;
+  /**
+   * Runs GraphQL queries. The throttling plugin paces every GraphQL request as
+   * a write, one a second, though a query writes nothing. This instance's write
+   * queue is unbounded, so a query waits only in the plugin's global queue,
+   * which every instance in the process shares with REST reads.
+   */
+  private readonly reader: Octokit;
 
   /** What this client has asked GitHub for, and the budget left. */
   readonly meter = new RequestMeter();
@@ -1091,6 +1105,15 @@ export class OctokitGitHubClient implements GitHubClient {
     cache?: EtagCache,
   ) {
     this.octokit = octokit ?? createOctokit(token, this.meter, baseUrl, cache);
+    this.reader =
+      octokit ??
+      createOctokit(token, this.meter, baseUrl, cache, new Bottleneck.Group());
+  }
+
+  /** A mutation goes through the paced write queue, a query does not. */
+  private graphql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+    const octokit = writes({ url: '/graphql', query }) ? this.octokit : this.reader;
+    return octokit.graphql<T>(query, variables);
   }
 
   async listTeams(org: string): Promise<LiveTeam[]> {
@@ -1273,7 +1296,7 @@ export class OctokitGitHubClient implements GitHubClient {
     const edges: Edge[] = [];
     let after: string | null = null;
     do {
-      const data: unknown = await this.octokit.graphql(query, { ...variables, after });
+      const data: unknown = await this.graphql(query, { ...variables, after });
       const connection = connectionOf(data);
       if (!connection) {
         throw Object.assign(new Error(`GitHub has no ${what}, or the token cannot see it.`), {
@@ -2183,7 +2206,7 @@ ${batch
     variables: Record<string, unknown>,
   ): Promise<T> {
     try {
-      return await this.octokit.graphql<T>(query, variables);
+      return await this.graphql<T>(query, variables);
     } catch (error) {
       const failed = error as { name?: string; data?: T; errors?: Array<{ type?: string }> };
       if (
