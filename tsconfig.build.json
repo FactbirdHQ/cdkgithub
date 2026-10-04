@@ -4,10 +4,10 @@
     "noEmit": false,
     "rewriteRelativeImportExtensions": true,
     "declaration": true,
-    "rootDir": ".",
+    "rootDir": "src",
     "outDir": "dist",
     "types": ["node"]
   },
-  "include": ["src", "bin"],
+  "include": ["src"],
   "exclude": []
 }

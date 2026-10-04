@@ -822,14 +822,14 @@ src/
                 plan-org-roles.ts diffs who holds each organization role,
                 plan-repo-rulesets.ts + plan-actions-admin.ts diff the
                 repository rulesets, runner groups, secrets, and variables
+  bin/          the `cdkgithub` executable
   cli.ts        synth | diff | plan | apply | import | scim
-bin/cdkgithub.ts
 docs/                  how-to guides, this reference, and the design notes
 examples/factbird.ts   example org definition
 examples/personal.ts   example personal-account definition
 cicd/main.ts           CI and release workflows, defined with @factbird/cdkactions
 cicd/dist-manifest.ts  points package.json at dist/ before the release job publishes
-tsconfig.build.json    compiles src/ and bin/ to dist/ for the npm package
+tsconfig.build.json    compiles src/ to dist/ for the npm package
 .github/workflows/     generated, do not edit by hand
 test/                  bun tests against an in-memory GitHub fake
 ```
@@ -848,7 +848,9 @@ published. It typechecks and tests, fails unless the release tag is
 the `package.json` exports and `bin` at it, then runs `npm publish`.
 The committed `package.json` points at the TypeScript sources, so a
 dependency on the git repository installs them untranspiled, while the npm
-package holds JavaScript only.
+package holds JavaScript only. Either package exports every module as
+`cdkgithub/<path>.js`, which is `src/<path>.ts` from git and the compiled
+`dist/<path>.js` from npm.
 It authenticates to npm with the job's OIDC token, in the `npm` environment,
 so no npm token is stored.
 

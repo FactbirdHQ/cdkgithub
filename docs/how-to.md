@@ -113,8 +113,8 @@ export the token, and run the setup:
 
 ```bash
 export GITHUB_SCIM_TOKEN=...   # classic token with admin:org
-bun bin/cdkgithub.ts scim        # read-only plan
-bun bin/cdkgithub.ts scim --yes  # configure Entra
+bun src/bin/cdkgithub.ts scim        # read-only plan
+bun src/bin/cdkgithub.ts scim --yes  # configure Entra
 ```
 
 The command is ensure-only and idempotent: it creates the enterprise
@@ -149,7 +149,7 @@ new Team(org, "security", {
 Then apply with the SCIM gate open:
 
 ```bash
-bun bin/cdkgithub.ts apply --yes --enable-scim
+bun src/bin/cdkgithub.ts apply --yes --enable-scim
 ```
 
 Without `--enable-scim`, the link is planned, skipped, and reported, so the
@@ -174,7 +174,7 @@ Export the values before applying:
 
 ```bash
 export NPM_TOKEN=... DECK_SENTRY_DSN=...
-bun bin/cdkgithub.ts apply --yes
+bun src/bin/cdkgithub.ts apply --yes
 ```
 
 `apply` checks every needed export before writing anything and refuses with
@@ -193,7 +193,7 @@ Bootstrap a definition from the live organization instead of writing it from
 scratch:
 
 ```bash
-bun bin/cdkgithub.ts import <org> --output examples/<org>.ts
+bun src/bin/cdkgithub.ts import <org> --output examples/<org>.ts
 ```
 
 The importer reads the whole team structure (hierarchy, per-team grants,
@@ -209,8 +209,8 @@ The repository-scoped surfaces have no organization-wide listing, so reading
 them means one round of requests per repository, and the walk is opt-in:
 
 ```bash
-bun bin/cdkgithub.ts import <org> --repositories --output examples/<org>.ts
-bun bin/cdkgithub.ts import <org> --repositories=netcore,flow-portal
+bun src/bin/cdkgithub.ts import <org> --repositories --output examples/<org>.ts
+bun src/bin/cdkgithub.ts import <org> --repositories=netcore,flow-portal
 ```
 
 Bare, the flag walks every repository; with names, only those. Each
@@ -230,7 +230,7 @@ definition that knows its names can close them:
 export const USERS = ['ana', 'bo'] as const;
 export const REPOSITORIES = ['netcore', 'fctl'] as const;
 
-declare module 'cdkgithub/src/index.ts' {
+declare module 'cdkgithub' {
   interface Vocabulary {
     member: (typeof USERS)[number];
     repository: (typeof REPOSITORIES)[number];
@@ -250,9 +250,9 @@ parameter type.
 Pivot the diff onto people rather than teams:
 
 ```bash
-bun bin/cdkgithub.ts diff --by-person                 # who reaches what, before and after
-bun bin/cdkgithub.ts diff --by-person --changed-only  # only people something happens to
-bun bin/cdkgithub.ts diff --csv > access.csv          # one row per person per repository
+bun src/bin/cdkgithub.ts diff --by-person                 # who reaches what, before and after
+bun src/bin/cdkgithub.ts diff --by-person --changed-only  # only people something happens to
+bun src/bin/cdkgithub.ts diff --csv > access.csv          # one row per person per repository
 ```
 
 One access path sits outside the team structure and needs checking by hand:
@@ -284,7 +284,7 @@ one a repository with no maintainer written down anywhere.
 5. Apply with the gate open for exactly this kind of removal:
 
    ```bash
-   bun bin/cdkgithub.ts apply --yes --allow-delete=branch-protection
+   bun src/bin/cdkgithub.ts apply --yes --allow-delete=branch-protection
    ```
 
 ## Revert an apply
@@ -293,7 +293,7 @@ Every apply that writes first saves `github.out/backups/<timestamp>/`. To put
 the team structure back the way that run found it:
 
 ```bash
-bun bin/cdkgithub.ts apply \
+bun src/bin/cdkgithub.ts apply \
   --manifest github.out/backups/<timestamp>/rollback-manifest.json --yes
 ```
 
@@ -309,7 +309,7 @@ The interactive prompt refuses when there is no terminal to ask on, so
 automation states its approval up front:
 
 ```bash
-bun bin/cdkgithub.ts apply --yes --require-approval never
+bun src/bin/cdkgithub.ts apply --yes --require-approval never
 ```
 
 Have the pipeline run `plan` on the pull request and gate the apply on that

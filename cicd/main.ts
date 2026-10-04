@@ -66,7 +66,7 @@ new Job(ci, 'verify', {
     // Synthesize the desired-state manifest from the org definition.
     {
       name: 'Synth manifest',
-      run: 'bun bin/cdkgithub.ts synth examples/factbird.ts',
+      run: 'bun src/bin/cdkgithub.ts synth examples/factbird.ts',
     },
     { name: 'Compile', run: 'bun run compile' },
     {

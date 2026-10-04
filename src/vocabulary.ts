@@ -13,7 +13,7 @@
  * export const USERS = ['ana', 'bo'] as const;
  * export const REPOSITORIES = ['netcore', 'fctl'] as const;
  *
- * declare module 'cdkgithub/src/index.ts' {
+ * declare module 'cdkgithub' {
  *   interface Vocabulary {
  *     member: (typeof USERS)[number];
  *     repository: (typeof REPOSITORIES)[number];
