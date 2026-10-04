@@ -6,6 +6,13 @@
  * reported in the headers of every response. Those headers are what GitHub
  * enforces, and the meter reads nothing else: `GET /rate_limit` has been seen
  * reporting a full budget while requests were being refused for an empty one.
+ *
+ * One token can hold more than one budget under the same resource name.
+ * GitHub answers some routes from a budget that refills at one time and the
+ * rest from another that refills at another, each with its own count, and
+ * responses arrive out of order. So the meter keeps the lowest count seen
+ * for each refill time and reports the budget with the least left, the one
+ * that runs out first.
  * A reader of the meter can show progress, say when a limit is being waited
  * out, and judge whether a set of writes fits in what remains.
  */
@@ -42,7 +49,11 @@ export class RequestMeter {
     graphql: 0,
     cached: 0,
   };
-  private readonly budgets: Partial<Record<RateResource, RateBudget>> = {};
+  /** Each budget by the time it refills, in epoch seconds. */
+  private readonly budgets: Record<RateResource, Map<number, RateBudget>> = {
+    core: new Map(),
+    graphql: new Map(),
+  };
   private readonly routes = new Map<string, number>();
   private waiting?: RateWait;
   /**
@@ -69,16 +80,31 @@ export class RequestMeter {
     const limit = Number(headers?.['x-ratelimit-limit']);
     const reset = Number(headers?.['x-ratelimit-reset']);
     if (Number.isFinite(remaining) && Number.isFinite(reset)) {
-      this.setBudget(resource, {
-        remaining,
-        limit: Number.isFinite(limit) ? limit : remaining,
-        resetsAt: new Date(reset * 1000),
-      });
+      const seen = this.budgets[resource].get(reset);
+      if (!seen || remaining < seen.remaining) {
+        this.budgets[resource].set(reset, {
+          remaining,
+          limit: Number.isFinite(limit) ? limit : remaining,
+          resetsAt: new Date(reset * 1000),
+        });
+      }
     }
   }
 
-  private setBudget(resource: RateResource, budget: RateBudget): void {
-    this.budgets[resource] = budget;
+  /**
+   * The budget with the least left among those not yet refilled, or the one
+   * that refills last when every budget has.
+   */
+  private budget(resource: RateResource, nowMs: number): RateBudget | undefined {
+    const budgets = [...this.budgets[resource].values()];
+    const pending = budgets.filter((b) => b.resetsAt.getTime() > nowMs);
+    if (pending.length > 0) {
+      return pending.reduce((a, b) => (b.remaining < a.remaining ? b : a));
+    }
+    return budgets.reduce<RateBudget | undefined>(
+      (a, b) => (!a || b.resetsAt > a.resetsAt ? b : a),
+      undefined,
+    );
   }
 
   /** Note that a request is sitting out a rate limit for `seconds`. */
@@ -93,10 +119,15 @@ export class RequestMeter {
     }
   }
 
-  snapshot(): MeterSnapshot {
+  snapshot(nowMs = Date.now()): MeterSnapshot {
+    const budgets: Partial<Record<RateResource, RateBudget>> = {};
+    for (const resource of ['core', 'graphql'] as const) {
+      const budget = this.budget(resource, nowMs);
+      if (budget) budgets[resource] = budget;
+    }
     return {
       requests: { ...this.requests },
-      budgets: { ...this.budgets },
+      budgets,
       ...(this.waiting ? { waiting: this.waiting } : {}),
     };
   }
