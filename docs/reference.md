@@ -137,12 +137,12 @@ Two things keep a read inside those budgets:
 `plan`, `apply`, `diff` and `import` report the live read on stderr:
 
 - **While reading.** A terminal gets a live view: a spinner, the requests
-  made so far, the time taken, and the REST budget left as a bar. A log gets
+  made so far, the time taken, and the API budget left as a bar. A log gets
   one line with the same figures every fifteen seconds. Output counts as a
   log when it is not a terminal, when `CI` is set, or when `TERM` is `dumb`.
 - **While waiting.** When a limit is hit, the line says which limit and the
   local time the read resumes, and a log gets that line straight away.
-- **When done.** One summary line gives the time taken and the REST budget
+- **When done.** One summary line gives the time taken and the API budget
   left. With `--verbose` it also gives the requests made, how many of them
   the cache answered for free, the three routes asked for most, and the time
   GitHub refills the budget.

@@ -86,11 +86,11 @@ describe('progress lines', () => {
     const meter = new RequestMeter();
     meter.record('GET /orgs/{org}/teams', headers(4188));
     expect(progressLine('Reading', meter.snapshot(), 2_000, 0)).toBe(
-      'Reading: 1 REST request, 0 GraphQL queries, 2s · 4,188 REST requests left',
+      'Reading: 1 REST request, 0 GraphQL queries, 2s · 4,188 API requests left',
     );
     meter.record('GET /orgs/{org}/teams', headers(0));
     expect(progressLine('Reading', meter.snapshot(), 2_000, 0)).toMatch(
-      /· REST budget spent until \d\d:\d\d$/,
+      /· API budget spent until \d\d:\d\d$/,
     );
   });
 
@@ -107,7 +107,7 @@ describe('progress lines', () => {
       { write: (text: string) => written.push(text), isTTY: false },
     );
     expect(result).toBe(42);
-    expect(written.at(-1)).toBe('Reading live state took 0s. REST budget: 10 of 5,000 left.\n');
+    expect(written.at(-1)).toBe('Reading live state took 0s. API budget: 10 of 5,000 left.\n');
   });
 
   test('a verbose summary adds the requests and the busiest routes', async () => {
@@ -124,7 +124,7 @@ describe('progress lines', () => {
       true,
     );
     expect(written.at(-1)).toMatch(
-      /^Reading live state took 0s and 1 REST request, 0 GraphQL queries\. Most requested: GET \/repos\/\{owner\}\/\{repo\}\/environments \(1\)\. REST budget: 10 of 5,000 left, refilled at \d\d:\d\d\.\n$/,
+      /^Reading live state took 0s and 1 REST request, 0 GraphQL queries\. Most requested: GET \/repos\/\{owner\}\/\{repo\}\/environments \(1\)\. API budget: 10 of 5,000 left, refilled at \d\d:\d\d\.\n$/,
     );
   });
 
@@ -150,7 +150,7 @@ describe('budgetNote', () => {
     meter.record('GET /orgs/{org}/teams', headers(12));
     expect(budgetNote(12, meter.snapshot())).toBeUndefined();
     expect(budgetNote(40, meter.snapshot())).toMatch(
-      /^GitHub's REST budget has 12 requests left until \d\d:\d\d, and these 40 changes need at least 40\./,
+      /^GitHub's API budget has 12 requests left until \d\d:\d\d, and these 40 changes need at least 40\./,
     );
   });
 });

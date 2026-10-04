@@ -91,9 +91,9 @@ export function progressLine(
       `waiting out GitHub's ${kind} until ${clock(snapshot.waiting.until)}`,
     );
   } else if (core && core.remaining === 0 && core.resetsAt.getTime() > nowMs) {
-    parts.push(`REST budget spent until ${clock(core.resetsAt)}`);
+    parts.push(`API budget spent until ${clock(core.resetsAt)}`);
   } else if (core) {
-    parts.push(`${core.remaining.toLocaleString('en-US')} REST requests left`);
+    parts.push(`${core.remaining.toLocaleString('en-US')} API requests left`);
   }
   return parts.join(' · ');
 }
@@ -111,7 +111,7 @@ export function summaryLine(
   const snapshot = meter.snapshot();
   const core = snapshot.budgets.core;
   const budget = core
-    ? ` REST budget: ${core.remaining.toLocaleString('en-US')} of ${core.limit.toLocaleString('en-US')} left`
+    ? ` API budget: ${core.remaining.toLocaleString('en-US')} of ${core.limit.toLocaleString('en-US')} left`
     : '';
   if (!verbose) {
     return `${label} took ${duration(elapsedMs)}.${budget && `${budget}.`}`;
@@ -128,7 +128,7 @@ export function summaryLine(
 }
 
 /**
- * A note for an apply whose writes may not fit in the REST budget left, or
+ * A note for an apply whose writes may not fit in the API budget left, or
  * undefined when they do. Each change is at least one request, so the count
  * is a floor.
  */
@@ -139,7 +139,7 @@ export function budgetNote(
   const core = snapshot.budgets.core;
   if (!core || core.remaining >= changes) return undefined;
   return (
-    `GitHub's REST budget has ${core.remaining.toLocaleString('en-US')} requests left until ` +
+    `GitHub's API budget has ${core.remaining.toLocaleString('en-US')} requests left until ` +
     `${clock(core.resetsAt)}, and these ${changes} changes need at least ${changes}. ` +
     `apply pauses when the budget runs out and carries on at ${clock(core.resetsAt)}.`
   );

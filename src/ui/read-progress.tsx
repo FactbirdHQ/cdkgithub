@@ -37,7 +37,7 @@ export function ReadProgressView({
       </Text>
       {core && (
         <Text>
-          {'  REST budget '}
+          {'  API budget '}
           {spent
             ? palette.removed(`spent until ${clock(core.resetsAt)}`)
             : `${budgetBar(core)} ${core.remaining.toLocaleString('en-US')} of ${core.limit.toLocaleString('en-US')} left`}
@@ -95,15 +95,19 @@ export async function readWithScreen<T>(
     <ReadProgress label={label} meter={meter} started={started} palette={palette} />,
     { stdout: stream, patchConsole: false, exitOnCtrlC: false },
   );
+  // Ink draws the last frame once more when it unmounts and leaves it on the
+  // screen, so the view is emptied first and the frame it leaves is blank.
+  const close = () => {
+    screen.rerender(<></>);
+    screen.unmount();
+  };
   try {
     const result = await work();
-    screen.clear();
-    screen.unmount();
+    close();
     stream.write(`${summaryLine(label, meter, Date.now() - started, verbose)}\n`);
     return result;
   } catch (error) {
-    screen.clear();
-    screen.unmount();
+    close();
     throw error;
   }
 }
