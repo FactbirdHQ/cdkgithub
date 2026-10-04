@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: latest
       - name: Install
@@ -27,5 +27,7 @@ jobs:
         run: bun test
       - name: Synth manifest
         run: bun bin/cdkgithub.ts synth examples/factbird.ts
+      - name: Compile
+        run: bun run compile
       - name: Workflows in sync
         run: bun run synth:workflows && git diff --exit-code .github/workflows

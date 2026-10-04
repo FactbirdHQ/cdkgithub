@@ -827,7 +827,8 @@ bin/cdkgithub.ts
 docs/                  how-to guides, this reference, and the design notes
 examples/factbird.ts   example org definition
 examples/personal.ts   example personal-account definition
-cicd/main.ts           CI workflow, defined with @factbird/cdkactions
+cicd/main.ts           CI and release workflows, defined with @factbird/cdkactions
+tsconfig.build.json    compiles src/ and bin/ to dist/ for the npm package
 .github/workflows/     generated, do not edit by hand
 test/                  bun tests against an in-memory GitHub fake
 ```
@@ -836,13 +837,21 @@ test/                  bun tests against an in-memory GitHub fake
 
 CI (`cdkactions_ci.yaml`, generated from `cicd/main.ts`) runs on pull
 requests to `main` and pushes to `main`: typecheck, unit tests, a synth of
-the example definition, and a check that the workflow YAML matches
-`cicd/main.ts`. It needs no secrets and never touches the live organization.
+the example definition, a compile of the npm package, and a check that the
+workflow YAML matches `cicd/main.ts`. It needs no secrets and never touches
+the live organization.
+
+Release (`cdkactions_release.yaml`) runs when a GitHub release is
+published. It typechecks and tests, fails unless the release tag is
+`v` followed by the `version` in `package.json`, then runs `npm publish`.
+It authenticates to npm with the job's OIDC token, in the `npm` environment,
+so no npm token is stored.
 
 ```bash
 bun run synth:workflows   # regenerate .github/workflows/*.yaml
 bun test                  # unit tests, no network, in-memory GitHub fake
 bun run build             # tsc --noEmit typecheck
+bun run compile           # emit the npm package to dist/
 devenv shell              # pinned toolchain (Bun + gh); bun install on entry
 devenv test               # typecheck + unit tests, the same gate as CI
 ```

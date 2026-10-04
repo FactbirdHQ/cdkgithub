@@ -2,10 +2,26 @@
   "name": "cdkgithub",
   "version": "0.1.0",
   "description": "Define GitHub organization structure (teams, hierarchy, Entra ID/SCIM links) as Infrastructure-as-Code, built on the constructs programming model (inspired by AWS CDK).",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FactbirdHQ/cdkgithub.git"
+  },
   "type": "module",
-  "module": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
   "bin": {
-    "cdkgithub": "bin/cdkgithub.ts"
+    "cdkgithub": "dist/bin/cdkgithub.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.18"
   },
   "scripts": {
     "build": "tsc --noEmit && tsc --noEmit -p test/vocabulary/tsconfig.json",
@@ -14,10 +30,11 @@
     "diff": "bun bin/cdkgithub.ts diff",
     "plan": "bun bin/cdkgithub.ts plan",
     "apply": "bun bin/cdkgithub.ts apply",
-    "synth:workflows": "bun cicd/main.ts"
+    "synth:workflows": "bun cicd/main.ts",
+    "compile": "rm -rf dist && tsc -p tsconfig.build.json",
+    "prepack": "npm run compile"
   },
   "dependencies": {
-    "@factbird/cdkactions": "^2.1.2",
     "@octokit/plugin-retry": "^8.1.1",
     "@octokit/plugin-throttling": "^11.0.5",
     "@octokit/rest": "^21.1.1",
@@ -26,8 +43,10 @@
     "libsodium-wrappers": "^0.8.4"
   },
   "devDependencies": {
+    "@factbird/cdkactions": "^2.1.2",
     "@types/bun": "^1.2.0",
     "@types/libsodium-wrappers": "^0.8.2",
+    "@types/node": "^24",
     "typescript": "^5.7.0"
   }
 }
