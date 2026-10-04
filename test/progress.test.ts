@@ -3,15 +3,15 @@ import { RequestMeter } from '../src/github/meter.ts';
 import { budgetNote, fit, progressLine, reportProgress } from '../src/progress.ts';
 
 const resetAt = 1_900_000_000;
-const headers = (remaining: number, resource = 'core') => ({
+const headers = (remaining: number, resource = 'core', reset = resetAt) => ({
   'x-ratelimit-remaining': String(remaining),
   'x-ratelimit-limit': '5000',
-  'x-ratelimit-reset': String(resetAt),
+  'x-ratelimit-reset': String(reset),
   'x-ratelimit-resource': resource,
 });
 
 describe('RequestMeter', () => {
-  test('counts REST and GraphQL apart and keeps the latest budget', () => {
+  test('counts REST and GraphQL apart and keeps the budget left', () => {
     const meter = new RequestMeter();
     meter.record('GET /orgs/{org}/teams', headers(4999));
     meter.record('GET /repos/{owner}/{repo}/environments', headers(4998));
@@ -28,6 +28,30 @@ describe('RequestMeter', () => {
     expect(meter.busiest(1)).toEqual([
       { route: 'GET /repos/{owner}/{repo}/environments', requests: 2 },
     ]);
+  });
+
+  test('keeps the lowest count when responses arrive out of order', () => {
+    const meter = new RequestMeter();
+    meter.record('GET /orgs/{org}/teams', headers(4356));
+    meter.record('GET /orgs/{org}/teams', headers(4400));
+    expect(meter.snapshot().budgets.core?.remaining).toBe(4356);
+  });
+
+  test('reports the budget that runs out first when routes draw on two', () => {
+    const meter = new RequestMeter();
+    const later = resetAt + 2231;
+    meter.record('GET /orgs/{org}/rulesets', headers(1751));
+    meter.record('GET /orgs/{org}/teams', headers(3024, 'core', later));
+    meter.record('GET /orgs/{org}/rulesets', headers(1750));
+    meter.record('GET /orgs/{org}/teams', headers(3023, 'core', later));
+    const nowMs = (resetAt - 60) * 1000;
+    expect(meter.snapshot(nowMs).budgets.core).toEqual({
+      remaining: 1750,
+      limit: 5000,
+      resetsAt: new Date(resetAt * 1000),
+    });
+    // Once the first has refilled, the other is the one left to report.
+    expect(meter.snapshot((resetAt + 1) * 1000).budgets.core?.remaining).toBe(3023);
   });
 
   test('reports requests waiting out one limit together as one wait', () => {
