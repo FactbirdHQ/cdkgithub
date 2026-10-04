@@ -37,13 +37,17 @@
     "@octokit/rest": "^22.0.1",
     "bottleneck": "^2.19.5",
     "constructs": "^10.4.2",
-    "libsodium-wrappers": "^0.8.4"
+    "ink": "^8.0.0",
+    "libsodium-wrappers": "^0.8.4",
+    "react": "^19.3.0"
   },
   "devDependencies": {
     "@factbird/cdkactions": "^2.1.2",
     "@types/bun": "^1.2.0",
     "@types/libsodium-wrappers": "^0.8.2",
     "@types/node": "^24",
+    "@types/react": "^19.3.0",
+    "ink-testing-library": "^4.0.0",
     "typescript": "^5.7.0"
   }
 }

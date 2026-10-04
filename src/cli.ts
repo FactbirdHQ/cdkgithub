@@ -7,9 +7,10 @@ import { MsGraphEntraClient } from './entra/graph.ts';
 import { setUpScimProvisioning } from './entra/scim-setup.ts';
 import { resolveGraphToken } from './entra/token.ts';
 import { OctokitGitHubClient } from './github/client.ts';
+import type { RateWait } from './github/meter.ts';
 import { resolveToken } from './github/token.ts';
 import { importOrganization } from './import/import-org.ts';
-import { apply, deleteAllowed } from './reconcile/applier.ts';
+import { apply, deleteAllowed, type ApplyRecord } from './reconcile/applier.ts';
 import { writeBackup } from './reconcile/backup.ts';
 import {
   type Change,
@@ -20,11 +21,12 @@ import {
 } from './reconcile/changes.ts';
 import { readLiveState } from './reconcile/live.ts';
 import { budgetNote, reportProgress, waitLine } from './progress.ts';
+import { interactive } from './ui/terminal.ts';
 import { EtagCache } from './github/etag-cache.ts';
 import { unmanagedRoleAssignments } from './reconcile/plan-org-roles.ts';
 import { plan } from './reconcile/planner.ts';
 import { diffAccessByPerson } from './reconcile/access-by-person.ts';
-import { choosePalette } from './reconcile/color.ts';
+import { choosePalette, type Palette } from './reconcile/color.ts';
 import {
   orphanRepositories,
   renderOrphans,
@@ -206,7 +208,7 @@ async function importCommand(flags: Flags): Promise<number> {
   }
   const github = githubClient(flags);
   const { client } = github;
-  const definition = await readWithProgress(github, () =>
+  const definition = await readWithProgress(github, flags, () =>
     importOrganization(client, org, { repositories: flags.repositories }),
   );
   if (flags.output) {
@@ -321,23 +323,41 @@ function githubClient(flags: Flags): {
 }
 
 /**
- * Read with a progress line on stderr and a summary of what the read cost,
+ * Read with a progress view on stderr and a summary of what the read cost,
  * then keep the ETags the read collected for the next run.
  */
 async function readWithProgress<T>(
   { client, cache }: { client: OctokitGitHubClient; cache?: EtagCache },
+  flags: Flags,
   read: () => Promise<T>,
 ): Promise<T> {
-  const result = await reportProgress('Reading live state', client.meter, read);
+  const label = 'Reading live state';
+  const result = interactive(process.stderr)
+    ? await (await import('./ui/read-progress.tsx')).readWithScreen(
+        label,
+        client.meter,
+        read,
+        paletteFor(process.stderr, flags),
+      )
+    : await reportProgress(label, client.meter, read);
   cache?.save();
   return result;
+}
+
+/** The palette for what goes to `stream`, honouring --color and NO_COLOR. */
+function paletteFor(stream: { readonly isTTY?: boolean }, flags: Flags): Palette {
+  return choosePalette({
+    flag: flags.color,
+    isTTY: stream.isTTY === true,
+    env: process.env,
+  });
 }
 
 async function planCommand(flags: Flags): Promise<number> {
   const desired = readManifest(flags.manifest);
   const github = githubClient(flags);
   const { client } = github;
-  const live = await readWithProgress(github, () =>
+  const live = await readWithProgress(github, flags, () =>
     readLiveState(client, desired),
   );
   const changes = plan(desired, live);
@@ -377,7 +397,7 @@ async function applyCommand(flags: Flags): Promise<number> {
   const desired = readManifest(flags.manifest);
   const github = githubClient(flags);
   const { client } = github;
-  const live = await readWithProgress(github, () =>
+  const live = await readWithProgress(github, flags, () =>
     readLiveState(client, desired),
   );
   const changes = plan(desired, live);
@@ -423,19 +443,25 @@ async function applyCommand(flags: Flags): Promise<number> {
   const budget = budgetNote(executable.length, client.meter.snapshot());
   if (budget) console.log(`${budget}\n`);
 
-  if (!(await approved(executable, flags.requireApproval))) return 1;
+  const palette = paletteFor(process.stdout, flags);
+  if (!(await approved(executable, flags.requireApproval, palette))) return 1;
 
   const backup = writeBackup('github.out', desired, live, executable);
   console.log(`Backup written to ${backup.dir} (rollback-manifest.json reverts the team structure).\n`);
 
-  client.meter.onWait = (wait) => console.log(waitLine(wait));
+  const report = await applyReport(palette);
+  client.meter.onWait = report.wait;
   try {
     const result = await apply(client, desired.owner, changes, live, {
       allowDelete,
       enableScim: flags.enableScim,
-      onProgress: (m) => console.log(`  ${m}`),
-      onRecord: backup.journal,
+      onProgress: report.progress,
+      onRecord: (record) => {
+        backup.journal(record);
+        report.record(record);
+      },
     });
+    report.stop();
 
     console.log(
       `\nApplied: ${result.created} created, ${result.updated} updated, ` +
@@ -445,6 +471,7 @@ async function applyCommand(flags: Flags): Promise<number> {
     for (const s of result.skipped) console.log(`  skipped: ${s}`);
     return 0;
   } catch (error) {
+    report.stop();
     console.error(
       `\napply stopped: ${error instanceof Error ? error.message : String(error)}`,
     );
@@ -458,6 +485,32 @@ async function applyCommand(flags: Flags): Promise<number> {
     // The writes emptied the cache, so the next plan reads at full price.
     github.cache?.save();
   }
+}
+
+/** Where apply reports each change: a task list on a terminal, a line each otherwise. */
+async function applyReport(palette: Palette): Promise<{
+  progress(message: string): void;
+  record(record: ApplyRecord): void;
+  wait(wait: RateWait): void;
+  stop(): void;
+}> {
+  if (!interactive(process.stdout)) {
+    return {
+      progress: (message) => console.log(`  ${message}`),
+      record: () => {},
+      wait: (wait) => console.log(waitLine(wait)),
+      stop: () => {},
+    };
+  }
+  const { ApplyTasks, showApplyTasks } = await import('./ui/apply-tasks.tsx');
+  const tasks = new ApplyTasks();
+  const screen = showApplyTasks(tasks, palette);
+  return {
+    progress: (message) => tasks.progress(message),
+    record: (record) => tasks.record(record),
+    wait: (wait) => tasks.wait(wait),
+    stop: () => screen.stop(),
+  };
 }
 
 /** Turn the flag value into what {@link apply} takes. */
@@ -517,6 +570,7 @@ export function massDeleteGuard(
 async function approved(
   executable: Change[],
   level: RequireApproval,
+  palette: Palette,
 ): Promise<boolean> {
   if (level === 'never') return true;
   const needing =
@@ -524,6 +578,13 @@ async function approved(
   if (needing.length === 0) return true;
 
   const destructive = executable.filter(isDestructive).length;
+  if (process.stdin.isTTY && interactive(process.stdout)) {
+    const { confirmApply } = await import('./ui/confirm.tsx');
+    if (await confirmApply(executable.length, destructive, palette)) return true;
+    console.log('Aborted. Nothing was changed.');
+    return false;
+  }
+
   console.log(
     `${executable.length} change${executable.length === 1 ? '' : 's'} to apply, ` +
       `${destructive} destructive.`,
@@ -617,7 +678,7 @@ async function diffCommand(flags: Flags): Promise<number> {
         ]),
       ]
     : [];
-  const live = await readWithProgress(github, () =>
+  const live = await readWithProgress(github, flags, () =>
     readLiveTree(
       client,
       desired.owner,
@@ -625,11 +686,7 @@ async function diffCommand(flags: Flags): Promise<number> {
       collaboratorRepositories,
     ),
   );
-  const palette = choosePalette({
-    flag: flags.color,
-    isTTY: process.stdout.isTTY === true,
-    env: process.env,
-  });
+  const palette = paletteFor(process.stdout, flags);
 
   if (flags.live) {
     console.log(renderTree(live, { palette }));
