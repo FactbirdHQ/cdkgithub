@@ -127,3 +127,32 @@ describe('the access review', () => {
     expect(people.has('casey')).toBe(false);
   });
 });
+
+describe('reading them back', () => {
+  test('lists every repository in one call', async () => {
+    const state = desired({
+      repositories: [{ name: 'atat' }],
+      collaborators: [{ repository: 'rustot', login: 'dbrgn', permission: 'triage' }],
+    });
+    const client = new FakeClient({});
+    await readLiveState(client, state);
+    expect(client.callsTo('listCollaboratorsOfRepositories')).toEqual([['atat', 'rustot']]);
+  });
+
+  test('a missing repository is empty when the run creates it, and a failure otherwise', async () => {
+    const client = new FakeClient({ missingRepositories: ['atat', 'typo'] });
+    const creating = desired({
+      repositories: [{ name: 'atat' }],
+      collaborators: [{ repository: 'atat', login: 'dbrgn', permission: 'triage' }],
+    });
+    expect((await readLiveState(client, creating)).repositoryCollaborators).toEqual([]);
+
+    const typo = desired({
+      collaborators: [{ repository: 'typo', login: 'dbrgn', permission: 'triage' }],
+    });
+    await expect(readLiveState(client, typo)).rejects.toThrow('Repository "typo" was not found');
+    await expect(readLiveTree(client, 'acme', 'organization', ['typo'])).rejects.toThrow(
+      'Repository "typo" was not found',
+    );
+  });
+});

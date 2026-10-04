@@ -785,6 +785,14 @@ export interface GitHubClient {
     owner: string,
     repo: string,
   ): Promise<Array<Omit<LiveCollaborator, 'repository'>>>;
+  /**
+   * Collaborators for many repositories at once. A repository that does not
+   * exist, or that the token cannot see, is absent from the result.
+   */
+  listCollaboratorsOfRepositories(
+    owner: string,
+    repositories: readonly string[],
+  ): Promise<Map<string, Array<Omit<LiveCollaborator, 'repository'>>>>;
   /** Grant access directly; a person outside the organization is invited. */
   putRepositoryCollaborator(
     owner: string,
@@ -1078,6 +1086,48 @@ interface CollaboratorEdge {
 
 interface CollaboratorsData {
   repository?: { collaborators?: GraphqlConnection<CollaboratorEdge> } | null;
+}
+
+/**
+ * How many repositories one GraphQL query lists collaborators for. Each brings
+ * up to 100 edges with their permission sources, a heavier page than an
+ * environment list, so the batch is smaller than {@link ENVIRONMENT_BATCH}.
+ */
+const COLLABORATOR_BATCH = 25;
+
+type CollaboratorBatchData = Record<
+  string,
+  {
+    collaborators?: {
+      pageInfo: { hasNextPage: boolean };
+      edges: CollaboratorEdge[];
+    } | null;
+  } | null
+>;
+
+/** The collaborators among `edges` granted a role on `owner/repo` itself. */
+function directGrants(
+  owner: string,
+  repo: string,
+  edges: readonly CollaboratorEdge[],
+): Array<{ login: string; permission: string }> {
+  const self = `${owner}/${repo}`.toLowerCase();
+  return edges.flatMap((edge) => {
+    const grant = edge.permissionSources.find(
+      (s) =>
+        s.source.__typename === 'Repository' &&
+        s.source.nameWithOwner?.toLowerCase() === self,
+    );
+    if (!grant) return [];
+    return [
+      {
+        login: edge.node.login,
+        permission: comparableRoleName(
+          grant.roleName ?? grant.permission.toLowerCase(),
+        ),
+      },
+    ];
+  });
 }
 
 /** Default {@link GitHubClient} backed by Octokit against api.github.com. */
@@ -2531,28 +2581,72 @@ ${batch
     owner: string,
     repo: string,
   ): Promise<Array<Omit<LiveCollaborator, 'repository'>>> {
-    const [direct, invitations] = await Promise.all([
+    const [direct, invited] = await Promise.all([
       this.directCollaborators(owner, repo),
-      this.octokit.paginate(this.octokit.rest.repos.listInvitations, {
-        owner,
-        repo,
-        per_page: 100,
-      }),
+      this.invitedCollaborators(owner, repo),
     ]);
-    return [
-      ...direct,
-      ...invitations.flatMap((i) =>
-        i.invitee
-          ? [
-              {
-                login: i.invitee.login,
-                permission: comparableRoleName(i.permissions),
-                invitationId: i.id,
-              },
-            ]
-          : [],
-      ),
-    ];
+    return [...direct, ...invited];
+  }
+
+  async listCollaboratorsOfRepositories(
+    owner: string,
+    repositories: readonly string[],
+  ): Promise<Map<string, Array<Omit<LiveCollaborator, 'repository'>>>> {
+    const batches: string[][] = [];
+    for (let i = 0; i < repositories.length; i += COLLABORATOR_BATCH) {
+      batches.push(repositories.slice(i, i + COLLABORATOR_BATCH));
+    }
+    return new Map(
+      (
+        await Promise.all(batches.map((batch) => this.collaboratorBatch(owner, batch)))
+      ).flat(),
+    );
+  }
+
+  /**
+   * One GraphQL query for the direct collaborators of up to
+   * {@link COLLABORATOR_BATCH} repositories, each aliased by position, then
+   * each found repository's invitations over REST. A repository with more
+   * collaborators than one page holds is read on its own instead.
+   */
+  private async collaboratorBatch(
+    owner: string,
+    batch: readonly string[],
+  ): Promise<Array<[string, Array<Omit<LiveCollaborator, 'repository'>>]>> {
+    const variables = Object.fromEntries(batch.map((name, i) => [`r${i}`, name]));
+    const query = `query ($owner: String!, ${batch.map((_, i) => `$r${i}: String!`).join(', ')}) {
+${batch
+  .map(
+    (_, i) =>
+      `  r${i}: repository(owner: $owner, name: $r${i}) { collaborators(affiliation: DIRECT, first: 100) { pageInfo { hasNextPage } edges { ...grant } } }`,
+  )
+  .join('\n')}
+}
+fragment grant on RepositoryCollaboratorEdge {
+  node { login }
+  permissionSources { permission roleName source { __typename ... on Repository { nameWithOwner } } }
+}`;
+    const data = await this.graphqlAllowingNotFound<CollaboratorBatchData>(query, {
+      owner,
+      ...variables,
+    });
+    return Promise.all(
+      batch.flatMap((repository, i) => {
+        const collaborators = data[`r${i}`]?.collaborators;
+        if (!collaborators) return [];
+        return [
+          (async (): Promise<[string, Array<Omit<LiveCollaborator, 'repository'>>]> => [
+            repository,
+            collaborators.pageInfo.hasNextPage
+              ? await this.listRepositoryCollaborators(owner, repository)
+              : [
+                  ...directGrants(owner, repository, collaborators.edges),
+                  ...(await this.invitedCollaborators(owner, repository)),
+                ],
+          ])(),
+        ];
+      }),
+    );
   }
 
   /**
@@ -2585,23 +2679,29 @@ ${batch
       (data) => (data as CollaboratorsData).repository?.collaborators,
       `repository "${owner}/${repo}"`,
     );
-    const self = `${owner}/${repo}`.toLowerCase();
-    return edges.flatMap((edge) => {
-      const grant = edge.permissionSources.find(
-        (s) =>
-          s.source.__typename === 'Repository' &&
-          s.source.nameWithOwner?.toLowerCase() === self,
-      );
-      if (!grant) return [];
-      return [
-        {
-          login: edge.node.login,
-          permission: comparableRoleName(
-            grant.roleName ?? grant.permission.toLowerCase(),
-          ),
-        },
-      ];
-    });
+    return directGrants(owner, repo, edges);
+  }
+
+  /** People invited to the repository who have not yet accepted. */
+  private async invitedCollaborators(
+    owner: string,
+    repo: string,
+  ): Promise<Array<Omit<LiveCollaborator, 'repository'>>> {
+    const invitations = await this.octokit.paginate(
+      this.octokit.rest.repos.listInvitations,
+      { owner, repo, per_page: 100 },
+    );
+    return invitations.flatMap((i) =>
+      i.invitee
+        ? [
+            {
+              login: i.invitee.login,
+              permission: comparableRoleName(i.permissions),
+              invitationId: i.id,
+            },
+          ]
+        : [],
+    );
   }
 
   async putRepositoryCollaborator(
