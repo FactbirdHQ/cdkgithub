@@ -2,6 +2,7 @@
   "name": "cdkgithub",
   "version": "0.1.0",
   "description": "Define GitHub organization structure (teams, hierarchy, Entra ID/SCIM links) as Infrastructure-as-Code, built on the constructs programming model (inspired by AWS CDK).",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/FactbirdHQ/cdkgithub.git"

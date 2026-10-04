@@ -135,3 +135,7 @@ From here, the [how-to guides](docs/how-to.md) cover the next tasks, from
 owning rosters to importing an existing organization, the
 [reference](docs/reference.md) documents every command, flag, and construct,
 and the [design notes](docs/design.md) say why the tool behaves as it does.
+
+## License
+
+[Apache License 2.0](LICENSE).
