@@ -2898,7 +2898,7 @@ fragment grant on RepositoryCollaboratorEdge {
   // ---- Custom properties ---------------------------------------------------
 
   async listCustomProperties(org: string): Promise<LiveCustomProperty[]> {
-    const { data } = await this.octokit.rest.orgs.getAllCustomProperties({
+    const { data } = await this.octokit.rest.orgs.customPropertiesForReposGetOrganizationDefinitions({
       org,
     });
     return data.map((p) => ({
@@ -2916,7 +2916,7 @@ fragment grant on RepositoryCollaboratorEdge {
     org: string,
   ): Promise<LiveRepositoryProperties[]> {
     const repos = await this.octokit.paginate(
-      this.octokit.rest.orgs.listCustomPropertiesValuesForRepos,
+      this.octokit.rest.orgs.customPropertiesForReposGetOrganizationValues,
       { org, per_page: 100 },
     );
     return repos.map((r) => ({
@@ -2931,7 +2931,7 @@ fragment grant on RepositoryCollaboratorEdge {
     org: string,
     property: CustomPropertyManifest,
   ): Promise<void> {
-    await this.octokit.rest.orgs.createOrUpdateCustomProperty({
+    await this.octokit.rest.orgs.customPropertiesForReposCreateOrUpdateOrganizationDefinition({
       org,
       custom_property_name: property.name,
       value_type: property.valueType,
@@ -2944,7 +2944,7 @@ fragment grant on RepositoryCollaboratorEdge {
   }
 
   async deleteCustomProperty(org: string, name: string): Promise<void> {
-    await this.octokit.rest.orgs.removeCustomProperty({
+    await this.octokit.rest.orgs.customPropertiesForReposDeleteOrganizationDefinition({
       org,
       custom_property_name: name,
     });
@@ -2955,7 +2955,7 @@ fragment grant on RepositoryCollaboratorEdge {
     repositories: string[],
     values: Record<string, string | string[] | null>,
   ): Promise<void> {
-    await this.octokit.rest.orgs.createOrUpdateCustomPropertiesValuesForRepos({
+    await this.octokit.rest.orgs.customPropertiesForReposCreateOrUpdateOrganizationValues({
       org,
       repository_names: repositories,
       properties: Object.entries(values).map(([property_name, value]) => ({
