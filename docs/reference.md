@@ -828,6 +828,7 @@ docs/                  how-to guides, this reference, and the design notes
 examples/factbird.ts   example org definition
 examples/personal.ts   example personal-account definition
 cicd/main.ts           CI and release workflows, defined with @factbird/cdkactions
+cicd/dist-manifest.ts  points package.json at dist/ before the release job publishes
 tsconfig.build.json    compiles src/ and bin/ to dist/ for the npm package
 .github/workflows/     generated, do not edit by hand
 test/                  bun tests against an in-memory GitHub fake
@@ -843,7 +844,11 @@ the live organization.
 
 Release (`cdkactions_release.yaml`) runs when a GitHub release is
 published. It typechecks and tests, fails unless the release tag is
-`v` followed by the `version` in `package.json`, then runs `npm publish`.
+`v` followed by the `version` in `package.json`, compiles `dist/`, points
+the `package.json` exports and `bin` at it, then runs `npm publish`.
+The committed `package.json` points at the TypeScript sources, so a
+dependency on the git repository installs them untranspiled, while the npm
+package holds JavaScript only.
 It authenticates to npm with the job's OIDC token, in the `npm` environment,
 so no npm token is stored.
 

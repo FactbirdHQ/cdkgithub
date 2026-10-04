@@ -45,5 +45,9 @@ jobs:
             echo "::error::Release tag $TAG does not match package.json version $VERSION"
             exit 1
           fi
+      - name: Compile
+        run: bun run compile
+      - name: Point package.json at dist
+        run: bun cicd/dist-manifest.ts
       - name: Publish
         run: npm publish

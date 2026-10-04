@@ -118,7 +118,9 @@ new Job(release, 'publish', {
         'fi',
       ].join('\n'),
     },
-    // prepack compiles dist/, and npm attaches provenance on its own.
+    { name: 'Compile', run: 'bun run compile' },
+    { name: 'Point package.json at dist', run: 'bun cicd/dist-manifest.ts' },
+    // npm attaches provenance on its own.
     { name: 'Publish', run: 'npm publish' },
   ],
 });
