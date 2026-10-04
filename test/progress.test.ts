@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { RequestMeter } from '../src/github/meter.ts';
-import { budgetNote, fit, progressLine, reportProgress } from '../src/progress.ts';
+import { budgetNote, clock, fit, progressLine, reportProgress, since } from '../src/progress.ts';
 
 const resetAt = 1_900_000_000;
 const headers = (remaining: number, resource = 'core', reset = resetAt) => ({
@@ -179,5 +179,30 @@ describe('the redrawn line on a terminal', () => {
   test('fit leaves a short line alone and marks a cut one', () => {
     expect(fit('short', 10)).toBe('short');
     expect(fit('a longer line', 8)).toBe('a longe…');
+  });
+});
+
+describe('since', () => {
+  const now = Date.UTC(2026, 9, 4, 14, 0);
+  const before = (ms: number) => new Date(now - ms).toISOString();
+
+  test('is relative within a day', () => {
+    expect(since(before(20_000), now)).toBe('just now');
+    expect(since(before(60_000), now)).toBe('1 minute ago');
+    expect(since(before(42 * 60_000), now)).toBe('42 minutes ago');
+    expect(since(before(60 * 60_000), now)).toBe('1 hour ago');
+    expect(since(before(23 * 60 * 60_000), now)).toBe('23 hours ago');
+  });
+
+  test('is a local date and time after a day', () => {
+    const at = new Date(now - 3 * 24 * 60 * 60_000);
+    expect(since(at.toISOString(), now)).toBe(
+      `on ${at.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}, ${clock(at)}`,
+    );
+  });
+
+  test('treats a time ahead of the clock as just now, and passes an unparsable one through', () => {
+    expect(since(before(-5 * 60_000), now)).toBe('just now');
+    expect(since('yesterday-ish', now)).toBe('yesterday-ish');
   });
 });
