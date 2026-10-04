@@ -931,6 +931,14 @@ type CreateSecurityConfigParams =
  */
 const ThrottledOctokit = Octokit.plugin(retry, throttling);
 
+/**
+ * How many reads run at once. GitHub refuses more than 100 concurrent
+ * requests as a secondary rate limit, and a read waits on GitHub, not on
+ * this process, so the cap is what sets how long a read of the live state
+ * takes.
+ */
+const READ_CONCURRENCY = 50;
+
 /** How many times a rate-limited request is retried before giving up. */
 const RATE_LIMIT_RETRIES = 3;
 
@@ -941,14 +949,16 @@ const RATE_LIMIT_RETRIES = 3;
 export const GITHUB_API_VERSION = '2026-03-10';
 
 /**
- * `writeQueue` replaces the throttling plugin's queue for writes and GraphQL,
+ * `readQueue` replaces the throttling plugin's global queue, which admits ten
+ * requests at once. `writeQueue` replaces its queue for writes and GraphQL,
  * which admits one request a second.
  */
 function createOctokit(
   token: string,
   meter: RequestMeter,
-  baseUrl?: string,
-  cache?: EtagCache,
+  baseUrl: string | undefined,
+  cache: EtagCache | undefined,
+  readQueue: Bottleneck.Group,
   writeQueue?: Bottleneck.Group,
 ): Octokit {
   const octokit = new ThrottledOctokit({
@@ -967,6 +977,9 @@ function createOctokit(
         meter.wait(retryAfter, true);
         return retryCount < RATE_LIMIT_RETRIES;
       },
+      // The plugin takes a `global` queue the way it takes `write`, though its
+      // option types leave it out.
+      ...({ global: readQueue } as object),
       ...(writeQueue ? { write: writeQueue } : {}),
     },
   });
@@ -1136,8 +1149,8 @@ export class OctokitGitHubClient implements GitHubClient {
   /**
    * Runs GraphQL queries. The throttling plugin paces every GraphQL request as
    * a write, one a second, though a query writes nothing. This instance's write
-   * queue is unbounded, so a query waits only in the plugin's global queue,
-   * which every instance in the process shares with REST reads.
+   * queue is unbounded, so a query waits only in the read queue it shares
+   * with REST reads.
    */
   private readonly reader: Octokit;
 
@@ -1154,10 +1167,12 @@ export class OctokitGitHubClient implements GitHubClient {
     octokit?: Octokit,
     cache?: EtagCache,
   ) {
-    this.octokit = octokit ?? createOctokit(token, this.meter, baseUrl, cache);
+    const readQueue = new Bottleneck.Group({ maxConcurrent: READ_CONCURRENCY });
+    this.octokit =
+      octokit ?? createOctokit(token, this.meter, baseUrl, cache, readQueue);
     this.reader =
       octokit ??
-      createOctokit(token, this.meter, baseUrl, cache, new Bottleneck.Group());
+      createOctokit(token, this.meter, baseUrl, cache, readQueue, new Bottleneck.Group());
   }
 
   /** A mutation goes through the paced write queue, a query does not. */
