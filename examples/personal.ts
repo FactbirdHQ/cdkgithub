@@ -8,7 +8,7 @@
  * legacy API is the right tool rather than a leftover, and where cdkgithub does
  * not warn about using it.
  *
- *   bun bin/cdkgithub.ts synth examples/personal.ts
+ *   bun src/bin/cdkgithub.ts synth examples/personal.ts
  */
 import {
   App,

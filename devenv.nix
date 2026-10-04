@@ -48,7 +48,7 @@ in {
   };
 
   # Shorthands mirroring the package.json scripts.
-  scripts.synth.exec = "bun bin/cdkgithub.ts synth examples/factbird.ts";
+  scripts.synth.exec = "bun src/bin/cdkgithub.ts synth examples/factbird.ts";
   scripts.synth-workflows.exec = "bun run synth:workflows";
   # Format via treefmt (Biome under the hood). `fmt` rewrites in place; `lint`
   # is check-only and fails on any diff (what CI/`devenv test` runs).

@@ -14,9 +14,10 @@ const manifest = JSON.parse(readFileSync(path, 'utf8'));
 
 manifest.exports = {
   '.': {
-    types: './dist/src/index.d.ts',
-    default: './dist/src/index.js',
+    types: './dist/index.d.ts',
+    default: './dist/index.js',
   },
+  './*.js': './dist/*.js',
 };
 manifest.bin = { cdkgithub: 'dist/bin/cdkgithub.js' };
 manifest.files = ['dist'];

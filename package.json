@@ -9,14 +9,14 @@
   },
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./*.js": "./src/*.ts"
   },
   "bin": {
-    "cdkgithub": "bin/cdkgithub.ts"
+    "cdkgithub": "src/bin/cdkgithub.ts"
   },
   "files": [
-    "src",
-    "bin"
+    "src"
   ],
   "engines": {
     "node": ">=22.18"
@@ -24,10 +24,10 @@
   "scripts": {
     "build": "tsc --noEmit && tsc --noEmit -p test/vocabulary/tsconfig.json",
     "test": "bun test",
-    "synth": "bun bin/cdkgithub.ts synth examples/factbird.ts",
-    "diff": "bun bin/cdkgithub.ts diff",
-    "plan": "bun bin/cdkgithub.ts plan",
-    "apply": "bun bin/cdkgithub.ts apply",
+    "synth": "bun src/bin/cdkgithub.ts synth examples/factbird.ts",
+    "diff": "bun src/bin/cdkgithub.ts diff",
+    "plan": "bun src/bin/cdkgithub.ts plan",
+    "apply": "bun src/bin/cdkgithub.ts apply",
     "synth:workflows": "bun cicd/main.ts",
     "compile": "rm -rf dist && tsc -p tsconfig.build.json"
   },

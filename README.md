@@ -92,7 +92,7 @@ first. With [devenv](https://devenv.sh), `devenv shell` provides both.
 3. Synthesize the desired-state manifest:
 
    ```bash
-   bun bin/cdkgithub.ts synth examples/my-org.ts
+   bun src/bin/cdkgithub.ts synth examples/my-org.ts
    ```
 
    This writes `github.out/manifest.json` and prints nothing when the
@@ -101,7 +101,7 @@ first. With [devenv](https://devenv.sh), `devenv shell` provides both.
 4. Compare the definition against the live organization, read-only:
 
    ```bash
-   bun bin/cdkgithub.ts diff
+   bun src/bin/cdkgithub.ts diff
    ```
 
    The output is your organization as a tree. The two new teams appear with a
@@ -111,7 +111,7 @@ first. With [devenv](https://devenv.sh), `devenv shell` provides both.
 5. Preview the exact changes an apply would make, still read-only:
 
    ```bash
-   bun bin/cdkgithub.ts plan
+   bun src/bin/cdkgithub.ts plan
    ```
 
    Expect two lines, `+ team engineering` and
@@ -120,12 +120,12 @@ first. With [devenv](https://devenv.sh), `devenv shell` provides both.
 6. Apply:
 
    ```bash
-   bun bin/cdkgithub.ts apply --yes
+   bun src/bin/cdkgithub.ts apply --yes
    ```
 
    The plan prints again, a backup directory is announced, and the two teams
    are created. Creating is not destructive, so there is no prompt. Run
-   `bun bin/cdkgithub.ts plan` once more and it reports that the organization
+   `bun src/bin/cdkgithub.ts plan` once more and it reports that the organization
    matches the desired state.
 
 7. Commit `examples/my-org.ts`. The definition is now the reviewable record
