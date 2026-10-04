@@ -27,6 +27,16 @@ import {
   Workflow,
 } from '@factbird/cdkactions';
 
+/**
+ * A third-party action runs by commit, not by tag: whoever controls the tag
+ * can move it, and the release job holds a token that publishes to npm.
+ */
+const setupBun = {
+  name: 'Setup Bun',
+  uses: 'oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6', // v2.2.0
+  with: { 'bun-version': 'latest' },
+};
+
 const app = new App({
   outdir: '.github/workflows',
   // The built-in validate workflow assumes a `.github/cdk` + yarn layout; our
@@ -48,11 +58,7 @@ new Job(ci, 'verify', {
   runsOn: RunnerLabel.UBUNTU_LATEST,
   steps: [
     checkoutV4(),
-    {
-      name: 'Setup Bun',
-      uses: 'oven-sh/setup-bun@v2',
-      with: { 'bun-version': 'latest' },
-    },
+    setupBun,
     { name: 'Install', run: 'bun install --frozen-lockfile' },
     { name: 'Typecheck', run: 'bun run build' },
     // Unit tests cover the plan/apply surface with an in-memory GitHub fake.
@@ -91,11 +97,7 @@ new Job(release, 'publish', {
   permissions: { contents: 'read', idToken: 'write' },
   steps: [
     checkoutV4(),
-    {
-      name: 'Setup Bun',
-      uses: 'oven-sh/setup-bun@v2',
-      with: { 'bun-version': 'latest' },
-    },
+    setupBun,
     { name: 'Install', run: 'bun install --frozen-lockfile' },
     { name: 'Typecheck', run: 'bun run build' },
     { name: 'Test', run: 'bun test' },
