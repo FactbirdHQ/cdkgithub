@@ -9,16 +9,14 @@
   },
   "type": "module",
   "exports": {
-    ".": {
-      "types": "./dist/src/index.d.ts",
-      "default": "./dist/src/index.js"
-    }
+    ".": "./src/index.ts"
   },
   "bin": {
-    "cdkgithub": "dist/bin/cdkgithub.js"
+    "cdkgithub": "bin/cdkgithub.ts"
   },
   "files": [
-    "dist"
+    "src",
+    "bin"
   ],
   "engines": {
     "node": ">=22.18"
@@ -31,13 +29,12 @@
     "plan": "bun bin/cdkgithub.ts plan",
     "apply": "bun bin/cdkgithub.ts apply",
     "synth:workflows": "bun cicd/main.ts",
-    "compile": "rm -rf dist && tsc -p tsconfig.build.json",
-    "prepack": "npm run compile"
+    "compile": "rm -rf dist && tsc -p tsconfig.build.json"
   },
   "dependencies": {
     "@octokit/plugin-retry": "^8.1.1",
     "@octokit/plugin-throttling": "^11.0.5",
-    "@octokit/rest": "^21.1.1",
+    "@octokit/rest": "^22.0.1",
     "bottleneck": "^2.19.5",
     "constructs": "^10.4.2",
     "libsodium-wrappers": "^0.8.4"

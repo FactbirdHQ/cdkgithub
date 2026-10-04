@@ -129,11 +129,11 @@ describe('the ETag cache', () => {
 describe('a wrapped list answered from the cache', () => {
   test('unwraps the same on a 304 as on the first read', async () => {
     const etag = '"installations"';
-    globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
       if (new Headers(init?.headers).get('if-none-match') === etag) {
         return new Response(null, { status: 304, headers: { etag, ...rate } });
       }
-      return new Response(
+      const response = new Response(
         JSON.stringify({
           total_count: 1,
           installations: [
@@ -142,6 +142,10 @@ describe('a wrapped list answered from the cache', () => {
         }),
         { status: 200, headers: { 'content-type': 'application/json', etag, ...rate } },
       );
+      // The paginate plugin parses `url` on a wrapped list, and a constructed
+      // Response has an empty one where fetch sets the request URL.
+      Object.defineProperty(response, 'url', { value: String(input) });
+      return response;
     }) as typeof fetch;
 
     const cache = new EtagCache();
