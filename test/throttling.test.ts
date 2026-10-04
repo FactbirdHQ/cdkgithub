@@ -27,8 +27,8 @@ function serveSlowly(delayMs: number, body: unknown) {
 }
 
 describe('request pacing', () => {
-  test('GraphQL queries run ten at a time, not one a second', async () => {
-    const seen = serveSlowly(30, {
+  test('GraphQL queries run fifty at a time, not one a second', async () => {
+    const seen = serveSlowly(500, {
       data: {
         organization: {
           team: { members: { pageInfo: { hasNextPage: false, endCursor: null }, edges: [] } },
@@ -38,10 +38,10 @@ describe('request pacing', () => {
     const client = new OctokitGitHubClient('token');
     const started = performance.now();
     await Promise.all(
-      Array.from({ length: 6 }, (_, i) => client.listTeamMembers('acme', `team-${i}`)),
+      Array.from({ length: 30 }, (_, i) => client.listTeamMembers('acme', `team-${i}`)),
     );
-    expect(seen.requests).toBe(12);
-    expect(seen.most).toBe(10);
+    expect(seen.requests).toBe(60);
+    expect(seen.most).toBe(50);
     expect(performance.now() - started).toBeLessThan(5_000);
   }, 20_000);
 
