@@ -248,7 +248,9 @@ export async function readLiveState(
         ).then((found) => found.filter((e) => e !== undefined))
       : undefined,
     desired.collaborators
-      ? readPerRepository(
+      ? readCollaborators(
+          client,
+          owner,
           [
             ...new Set([
               ...(desired.repositories ?? []).map((r) => r.name),
@@ -256,10 +258,6 @@ export async function readLiveState(
             ]),
           ],
           beingCreated,
-          async (repository) =>
-            (await client.listRepositoryCollaborators(owner, repository)).map(
-              (c) => ({ ...c, repository }),
-            ),
         )
       : undefined,
   ]);
@@ -363,14 +361,43 @@ async function readEnvironments(
 ): Promise<Array<{ repository: string; name: string }> | undefined> {
   if (repositories.length === 0) return undefined;
   const found = await client.listEnvironmentsOfRepositories(owner, repositories);
-  return repositories.flatMap((repository) => {
-    const names = found.get(repository);
-    if (names) return names.map((name) => ({ repository, name }));
-    if (beingCreated.has(repository)) return [];
-    throw new Error(
-      `Repository "${repository}" was not found: it does not exist, or the token cannot see it.`,
-    );
-  });
+  return repositories.flatMap((repository) =>
+    foundOrCreated(found, repository, beingCreated).map((name) => ({ repository, name })),
+  );
+}
+
+/**
+ * The direct collaborators and invitations of each repository, missing ones
+ * treated the way {@link readPerRepository} treats them.
+ */
+async function readCollaborators(
+  client: GitHubClient,
+  owner: string,
+  repositories: readonly string[],
+  beingCreated: ReadonlySet<string>,
+): Promise<LiveCollaborator[] | undefined> {
+  if (repositories.length === 0) return undefined;
+  const found = await client.listCollaboratorsOfRepositories(owner, repositories);
+  return repositories.flatMap((repository) =>
+    foundOrCreated(found, repository, beingCreated).map((c) => ({ ...c, repository })),
+  );
+}
+
+/**
+ * What a batched read found for `repository`. A repository the batch did not
+ * find is empty when this run creates it, and a failure otherwise.
+ */
+function foundOrCreated<T>(
+  found: ReadonlyMap<string, T[]>,
+  repository: string,
+  beingCreated: ReadonlySet<string>,
+): T[] {
+  const entries = found.get(repository);
+  if (entries) return entries;
+  if (beingCreated.has(repository)) return [];
+  throw new Error(
+    `Repository "${repository}" was not found: it does not exist, or the token cannot see it.`,
+  );
 }
 
 async function readPerRepository<T>(

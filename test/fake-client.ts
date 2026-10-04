@@ -690,6 +690,19 @@ export class FakeClient implements GitHubClient {
     return this.collaborators[repo] ?? [];
   }
 
+  async listCollaboratorsOfRepositories(
+    owner: string,
+    repositories: readonly string[],
+  ): Promise<Map<string, Array<Omit<LiveCollaborator, 'repository'>>>> {
+    this.record('listCollaboratorsOfRepositories', repositories);
+    const found = new Map<string, Array<Omit<LiveCollaborator, 'repository'>>>();
+    for (const repository of repositories) {
+      if (this.missingRepositories.has(repository)) continue;
+      found.set(repository, await this.listRepositoryCollaborators(owner, repository));
+    }
+    return found;
+  }
+
   async putRepositoryCollaborator(
     _owner: string,
     repo: string,

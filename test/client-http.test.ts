@@ -326,3 +326,106 @@ describe('listEnvironmentsOfRepositories', () => {
     ).rejects.toThrow('partial');
   });
 });
+
+describe('listCollaboratorsOfRepositories', () => {
+  const graphqlError = (data: unknown, errors: Array<{ type: string }>) =>
+    Object.assign(new Error('partial'), { name: 'GraphqlResponseError', data, errors });
+  const direct = (repository: string, login: string) => ({
+    node: { login },
+    permissionSources: [
+      { permission: 'WRITE', roleName: 'write', source: { __typename: 'Team' } },
+      {
+        permission: 'READ',
+        roleName: null,
+        source: { __typename: 'Repository', nameWithOwner: `acme/${repository}` },
+      },
+    ],
+  });
+
+  test('asks for twenty-five repositories a query and leaves out the missing ones', async () => {
+    const repositories = Array.from({ length: 26 }, (_, i) => `repo-${i}`);
+    const batches: string[][] = [];
+    const invited: string[] = [];
+    const client = clientWith({
+      graphql: async (_query: string, vars: Record<string, string>) => {
+        const names = Object.entries(vars)
+          .filter(([key]) => key !== 'owner')
+          .map(([, name]) => name);
+        batches.push(names);
+        const data = Object.fromEntries(
+          names.map((name, i) => [
+            `r${i}`,
+            name === 'repo-3'
+              ? null
+              : {
+                  collaborators: {
+                    pageInfo: { hasNextPage: false },
+                    edges: [direct(name, `${name}-dev`)],
+                  },
+                },
+          ]),
+        );
+        if (names.includes('repo-3')) throw graphqlError(data, [{ type: 'NOT_FOUND' }]);
+        return data;
+      },
+      paginate: async (_method: unknown, params: { repo: string }) => {
+        invited.push(params.repo);
+        return params.repo === 'repo-25'
+          ? [{ id: 7, invitee: { login: 'guest' }, permissions: 'triage' }]
+          : [];
+      },
+      rest: { repos: { listInvitations: () => undefined } },
+    });
+
+    const found = await client.listCollaboratorsOfRepositories('acme', repositories);
+    expect(batches.map((b) => b.length)).toEqual([25, 1]);
+    expect(found.size).toBe(25);
+    expect(found.has('repo-3')).toBe(false);
+    expect(invited).not.toContain('repo-3');
+    expect(found.get('repo-0')).toEqual([{ login: 'repo-0-dev', permission: 'pull' }]);
+    expect(found.get('repo-25')).toEqual([
+      { login: 'repo-25-dev', permission: 'pull' },
+      { login: 'guest', permission: 'triage', invitationId: 7 },
+    ]);
+  });
+
+  test('a repository with a second page of collaborators is read on its own', async () => {
+    const queries: Array<Record<string, unknown>> = [];
+    const client = clientWith({
+      graphql: async (_query: string, vars: Record<string, unknown>) => {
+        queries.push(vars);
+        if ('r0' in vars) {
+          return {
+            r0: {
+              collaborators: { pageInfo: { hasNextPage: true }, edges: [direct('big', 'first')] },
+            },
+          };
+        }
+        const page = vars.after === null
+          ? { pageInfo: { hasNextPage: true, endCursor: 'c1' }, edges: [direct('big', 'first')] }
+          : { pageInfo: { hasNextPage: false, endCursor: null }, edges: [direct('big', 'last')] };
+        return { repository: { collaborators: page } };
+      },
+      paginate: async () => [],
+      rest: { repos: { listInvitations: () => undefined } },
+    });
+
+    const found = await client.listCollaboratorsOfRepositories('acme', ['big']);
+    expect(found.get('big')).toEqual([
+      { login: 'first', permission: 'pull' },
+      { login: 'last', permission: 'pull' },
+    ]);
+    expect(queries.map((v) => ('r0' in v ? 'batch' : v.after))).toEqual(['batch', null, 'c1']);
+  });
+
+  test('an error other than NOT_FOUND still fails the read', async () => {
+    const client = clientWith({
+      graphql: async () => {
+        throw graphqlError({ r0: null }, [{ type: 'FORBIDDEN' }]);
+      },
+    });
+    await expect(
+      client.listCollaboratorsOfRepositories('acme', ['deck']),
+    ).rejects.toThrow('partial');
+  });
+});

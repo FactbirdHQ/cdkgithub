@@ -123,15 +123,21 @@ export async function readLiveTree(
   ownerType: DesiredState['ownerType'] = 'organization',
   collaboratorRepositories: readonly string[] = [],
 ): Promise<OrgTree> {
-  const collaborators = (
-    await Promise.all(
-      collaboratorRepositories.map(async (repository) =>
-        (await client.listRepositoryCollaborators(owner, repository))
-          .filter((c) => c.invitationId === undefined)
-          .map((c) => ({ repository, login: c.login, permission: c.permission })),
-      ),
-    )
-  ).flat();
+  const found = await client.listCollaboratorsOfRepositories(
+    owner,
+    collaboratorRepositories,
+  );
+  const collaborators = collaboratorRepositories.flatMap((repository) => {
+    const entries = found.get(repository);
+    if (!entries) {
+      throw new Error(
+        `Repository "${repository}" was not found: it does not exist, or the token cannot see it.`,
+      );
+    }
+    return entries
+      .filter((c) => c.invitationId === undefined)
+      .map((c) => ({ repository, login: c.login, permission: c.permission }));
+  });
 
   // A personal account has no teams, and asking for them 404s.
   if (ownerType === 'user') return { ...buildTree(owner, [], []), collaborators };
