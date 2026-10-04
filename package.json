@@ -21,6 +21,7 @@
     "@octokit/plugin-retry": "^8.1.1",
     "@octokit/plugin-throttling": "^11.0.5",
     "@octokit/rest": "^21.1.1",
+    "bottleneck": "^2.19.5",
     "constructs": "^10.4.2",
     "libsodium-wrappers": "^0.8.4"
   },
