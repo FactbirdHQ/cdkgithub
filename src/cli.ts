@@ -6,8 +6,8 @@ import { pathToFileURL } from 'node:url';
 import { MsGraphEntraClient } from './entra/graph.ts';
 import { setUpScimProvisioning } from './entra/scim-setup.ts';
 import { resolveGraphToken } from './entra/token.ts';
-import { OctokitGitHubClient } from './github/client.ts';
-import type { RateWait } from './github/meter.ts';
+import { type GitHubClient, OctokitGitHubClient } from './github/client.ts';
+import type { RateWait, RequestMeter } from './github/meter.ts';
 import { resolveToken } from './github/token.ts';
 import { importOrganization } from './import/import-org.ts';
 import { apply, deleteAllowed, type ApplyRecord } from './reconcile/applier.ts';
@@ -103,7 +103,10 @@ and code security configurations need the org to have those features available.
 falls back to \`az account get-access-token\`, and reads the GitHub token Entra
 will provision with from the environment variable the definition names.`;
 
-export async function main(argv: string[]): Promise<number> {
+export async function main(
+  argv: string[],
+  connect: Connect = githubClient,
+): Promise<number> {
   const [command, ...rest] = argv;
 
   let flags: Flags;
@@ -120,13 +123,13 @@ export async function main(argv: string[]): Promise<number> {
     case 'synth':
       return synthCommand(rest[0]);
     case 'diff':
-      return diffCommand(flags);
+      return diffCommand(flags, connect);
     case 'plan':
-      return planCommand(flags);
+      return planCommand(flags, connect);
     case 'apply':
-      return applyCommand(flags);
+      return applyCommand(flags, connect);
     case 'import':
-      return importCommand(flags);
+      return importCommand(flags, connect);
     case 'scim':
       return scimCommand(flags);
     case '-h':
@@ -198,7 +201,7 @@ function gitState(): { commit?: string; dirty?: boolean } {
  * Read a live organization and emit a definition file: the inverse of `synth`,
  * for adopting an organization built by hand. Read-only, like `plan`.
  */
-async function importCommand(flags: Flags): Promise<number> {
+async function importCommand(flags: Flags, connect: Connect): Promise<number> {
   const org = flags.positional;
   if (!org) {
     console.error(
@@ -206,7 +209,7 @@ async function importCommand(flags: Flags): Promise<number> {
     );
     return 1;
   }
-  const github = githubClient(flags);
+  const github = connect(flags);
   const { client } = github;
   const definition = await readWithProgress(github, flags, () =>
     importOrganization(client, org, { repositories: flags.repositories }),
@@ -309,14 +312,20 @@ async function reportProvisionedGroups(
   }
 }
 
+/** A client for one command, with the meter that counts what it asks GitHub for. */
+export interface Connection {
+  readonly client: GitHubClient & { readonly meter: RequestMeter };
+  readonly cache?: EtagCache;
+}
+
+/** Makes the {@link Connection} a command reads and writes through. */
+export type Connect = (flags: Flags) => Connection;
+
 /**
  * A client for the command, answering unchanged GET requests from the ETag
  * cache under github.out unless `--no-cache` was passed.
  */
-function githubClient(flags: Flags): {
-  client: OctokitGitHubClient;
-  cache?: EtagCache;
-} {
+function githubClient(flags: Flags): Connection {
   const token = resolveToken();
   const cache = flags.cache ? EtagCache.open('github.out', token) : undefined;
   return { client: new OctokitGitHubClient(token, undefined, undefined, cache), cache };
@@ -327,7 +336,7 @@ function githubClient(flags: Flags): {
  * then keep the ETags the read collected for the next run.
  */
 async function readWithProgress<T>(
-  { client, cache }: { client: OctokitGitHubClient; cache?: EtagCache },
+  { client, cache }: Connection,
   flags: Flags,
   read: () => Promise<T>,
 ): Promise<T> {
@@ -353,9 +362,9 @@ function paletteFor(stream: { readonly isTTY?: boolean }, flags: Flags): Palette
   });
 }
 
-async function planCommand(flags: Flags): Promise<number> {
+async function planCommand(flags: Flags, connect: Connect): Promise<number> {
   const desired = readManifest(flags.manifest);
-  const github = githubClient(flags);
+  const github = connect(flags);
   const { client } = github;
   const live = await readWithProgress(github, flags, () =>
     readLiveState(client, desired),
@@ -393,9 +402,9 @@ function printUnmanagedRoles(
   }
 }
 
-async function applyCommand(flags: Flags): Promise<number> {
+async function applyCommand(flags: Flags, connect: Connect): Promise<number> {
   const desired = readManifest(flags.manifest);
-  const github = githubClient(flags);
+  const github = connect(flags);
   const { client } = github;
   const live = await readWithProgress(github, flags, () =>
     readLiveState(client, desired),
@@ -664,9 +673,9 @@ function readManifest(path: string): DesiredState {
  * declares. Nothing here is applied, so a team the definition leaves alone still
  * appears in the tree next to the ones it owns.
  */
-async function diffCommand(flags: Flags): Promise<number> {
+async function diffCommand(flags: Flags, connect: Connect): Promise<number> {
   const desired = readManifest(flags.manifest);
-  const github = githubClient(flags);
+  const github = connect(flags);
   const { client } = github;
   // Direct collaborators are read only for a definition that manages them,
   // and only on the repositories it declares, the same scope `plan` reads.
@@ -757,7 +766,7 @@ async function diffCommand(flags: Flags): Promise<number> {
 
 type RequireApproval = 'never' | 'destructive' | 'any-change';
 
-interface Flags {
+export interface Flags {
   manifest: string;
   yes: boolean;
   /** `true` = every destructive kind; a list = only those scopes. */
