@@ -20,7 +20,7 @@ import {
   isDestructive,
 } from './reconcile/changes.ts';
 import { readLiveState } from './reconcile/live.ts';
-import { budgetNote, reportProgress, since, waitLine } from './progress.ts';
+import { budgetNote, reportProgress, waitLine } from './progress.ts';
 import { interactive } from './ui/terminal.ts';
 import { EtagCache } from './github/etag-cache.ts';
 import { unmanagedRoleAssignments } from './reconcile/plan-org-roles.ts';
@@ -650,12 +650,15 @@ function printWarnings(desired: DesiredState): void {
 
 /** Which definition and commit this manifest speaks for, when synth stamped it. */
 function printProvenance(desired: DesiredState): void {
-  const p = desired.provenance;
-  if (!p) return;
+  if (desired.provenance) console.log(`${provenanceLine(desired.provenance)}\n`);
+}
+
+/** The definition and commit a manifest came from. */
+export function provenanceLine(p: ManifestProvenance): string {
   const commit = p.commit
     ? ` at ${p.commit.slice(0, 7)}${p.dirty ? ' (dirty working tree)' : ''}`
     : '';
-  console.log(`Manifest: ${p.source}${commit}, synthesized ${since(p.synthesizedAt)}\n`);
+  return `Manifest: ${p.source}${commit}`;
 }
 
 function readManifest(path: string): DesiredState {

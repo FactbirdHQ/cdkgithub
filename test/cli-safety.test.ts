@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { appliedLine, massDeleteGuard, parseFlags } from '../src/cli.ts';
+import { appliedLine, massDeleteGuard, parseFlags, provenanceLine } from '../src/cli.ts';
 import type { Change } from '../src/reconcile/changes.ts';
 import { validateManifest } from '../src/synth/validate.ts';
 
@@ -202,5 +202,23 @@ describe('--verbose', () => {
     expect(parseFlags([], 'plan').verbose).toBe(false);
     expect(parseFlags(['--verbose'], 'plan').verbose).toBe(true);
     expect(parseFlags(['-v'], 'plan').verbose).toBe(true);
+  });
+});
+
+describe('the Manifest line', () => {
+  const provenance = {
+    source: 'factbirdhq.ts',
+    commit: '7aa23ef0123456789',
+    synthesizedAt: '2026-10-04T07:18:51.866Z',
+  };
+
+  test('names the definition and commit, not when it was synthesized', () => {
+    expect(provenanceLine(provenance)).toBe('Manifest: factbirdhq.ts at 7aa23ef');
+  });
+
+  test('flags a dirty working tree', () => {
+    expect(provenanceLine({ ...provenance, dirty: true })).toBe(
+      'Manifest: factbirdhq.ts at 7aa23ef (dirty working tree)',
+    );
   });
 });
