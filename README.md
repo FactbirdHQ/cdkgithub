@@ -3,6 +3,8 @@
 **Declare your GitHub organization in TypeScript. Review it in a pull request.
 Apply it with a plan you have read.**
 
+![cdkgithub synthesizing a definition, reading the organization, printing the plan, asking before a destructive change, and applying each change](docs/demo/cdkgithub.gif)
+
 Teams and their hierarchy, repository access, Entra ID group links, rulesets
 at both the organization and the repository level, the Actions policy, runner
 groups, Actions secrets and variables, code security configurations, custom
