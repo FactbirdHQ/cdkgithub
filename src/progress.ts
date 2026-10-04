@@ -26,6 +26,7 @@ export async function reportProgress<T>(
   work: () => Promise<T>,
   stream: ProgressStream = process.stderr,
   now: () => number = Date.now,
+  verbose = false,
 ): Promise<T> {
   const started = now();
   const line = () => progressLine(label, meter.snapshot(), now() - started, now());
@@ -54,7 +55,7 @@ export async function reportProgress<T>(
   try {
     const result = await work();
     finish();
-    stream.write(`${summaryLine(label, meter, now() - started)}\n`);
+    stream.write(`${summaryLine(label, meter, now() - started, verbose)}\n`);
     return result;
   } catch (error) {
     finish();
@@ -97,24 +98,32 @@ export function progressLine(
   return parts.join(' · ');
 }
 
-/** The line a finished read leaves behind: its cost, where it went, what is left. */
+/**
+ * The line a finished read leaves behind: how long it took and the budget
+ * left. `verbose` adds what it asked GitHub for and the routes it asked most.
+ */
 export function summaryLine(
   label: string,
   meter: RequestMeter,
   elapsedMs: number,
+  verbose = false,
 ): string {
   const snapshot = meter.snapshot();
+  const core = snapshot.budgets.core;
+  const budget = core
+    ? ` REST budget: ${core.remaining.toLocaleString('en-US')} of ${core.limit.toLocaleString('en-US')} left`
+    : '';
+  if (!verbose) {
+    return `${label} took ${duration(elapsedMs)}.${budget && `${budget}.`}`;
+  }
   const busiest = meter
     .busiest(3)
     .map((r) => `${r.route} (${r.requests})`)
     .join(', ');
-  const core = snapshot.budgets.core;
   return [
     `${label} took ${duration(elapsedMs)} and ${requestCounts(snapshot)}.`,
     busiest ? ` Most requested: ${busiest}.` : '',
-    core
-      ? ` REST budget: ${core.remaining.toLocaleString('en-US')} of ${core.limit.toLocaleString('en-US')} left, refilled at ${clock(core.resetsAt)}.`
-      : '',
+    core ? `${budget}, refilled at ${clock(core.resetsAt)}.` : '',
   ].join('');
 }
 

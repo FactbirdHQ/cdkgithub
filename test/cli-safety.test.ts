@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { massDeleteGuard, parseFlags } from '../src/cli.ts';
+import { appliedLine, massDeleteGuard, parseFlags } from '../src/cli.ts';
 import type { Change } from '../src/reconcile/changes.ts';
 import { validateManifest } from '../src/synth/validate.ts';
 
@@ -176,5 +176,31 @@ describe('manifest validation', () => {
     expect(() =>
       validateManifest({ ...good, rulesets: {} }, 'm.json'),
     ).toThrow('"rulesets" must be an array');
+  });
+});
+
+describe('the line an apply ends on', () => {
+  const none = { created: 0, updated: 0, linked: 0, deleted: 0, governance: 0, skipped: [] };
+
+  test('names only the kinds of change it made', () => {
+    expect(appliedLine({ ...none, created: 1, updated: 1, deleted: 1 })).toBe(
+      'Applied: 1 created, 1 updated, 1 deleted.',
+    );
+    expect(appliedLine({ ...none, governance: 1 })).toBe('Applied: 1 governance change.');
+    expect(appliedLine({ ...none, governance: 2 })).toBe('Applied: 2 governance changes.');
+  });
+
+  test('says so when everything was skipped', () => {
+    expect(appliedLine({ ...none, skipped: ['delete team old (use --allow-delete)'] })).toBe(
+      'Applied nothing.',
+    );
+  });
+});
+
+describe('--verbose', () => {
+  test('is off unless asked for, and -v asks for it', () => {
+    expect(parseFlags([], 'plan').verbose).toBe(false);
+    expect(parseFlags(['--verbose'], 'plan').verbose).toBe(true);
+    expect(parseFlags(['-v'], 'plan').verbose).toBe(true);
   });
 });

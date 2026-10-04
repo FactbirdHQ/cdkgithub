@@ -514,3 +514,15 @@ describe('non-destructive arms', () => {
     ]);
   });
 });
+
+describe('the plan summary', () => {
+  const last = (changes: typeof ALL_CHANGES) => renderPlan(changes).split('\n').at(-1);
+
+  test('counts links only when the plan has one', () => {
+    const linking = new Set<string>(['link-group', 'attach-security-config']);
+    const links = ALL_CHANGES.filter((c) => linking.has(c.kind));
+    const others = ALL_CHANGES.filter((c) => !linking.has(c.kind));
+    expect(last(others)).not.toContain('to link');
+    expect(last(links)).toBe(`Plan: 0 to create, 0 to update, ${links.length} to link, 0 to delete.`);
+  });
+});

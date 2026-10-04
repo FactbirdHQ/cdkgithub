@@ -87,6 +87,7 @@ export async function readWithScreen<T>(
   meter: RequestMeter,
   work: () => Promise<T>,
   palette: Palette,
+  verbose = false,
   stream: NodeJS.WriteStream = process.stderr,
 ): Promise<T> {
   const started = Date.now();
@@ -98,7 +99,7 @@ export async function readWithScreen<T>(
     const result = await work();
     screen.clear();
     screen.unmount();
-    stream.write(`${summaryLine(label, meter, Date.now() - started)}\n`);
+    stream.write(`${summaryLine(label, meter, Date.now() - started, verbose)}\n`);
     return result;
   } catch (error) {
     screen.clear();

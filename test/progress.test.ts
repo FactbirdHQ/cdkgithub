@@ -94,7 +94,7 @@ describe('progress lines', () => {
     );
   });
 
-  test('a log gets the summary, with the busiest routes', async () => {
+  test('a log gets the summary: the time taken and the budget left', async () => {
     const meter = new RequestMeter();
     const written: string[] = [];
     const result = await reportProgress(
@@ -107,6 +107,22 @@ describe('progress lines', () => {
       { write: (text: string) => written.push(text), isTTY: false },
     );
     expect(result).toBe(42);
+    expect(written.at(-1)).toBe('Reading live state took 0s. REST budget: 10 of 5,000 left.\n');
+  });
+
+  test('a verbose summary adds the requests and the busiest routes', async () => {
+    const meter = new RequestMeter();
+    const written: string[] = [];
+    await reportProgress(
+      'Reading live state',
+      meter,
+      async () => {
+        meter.record('GET /repos/{owner}/{repo}/environments', headers(10));
+      },
+      { write: (text: string) => written.push(text), isTTY: false },
+      Date.now,
+      true,
+    );
     expect(written.at(-1)).toMatch(
       /^Reading live state took 0s and 1 REST request, 0 GraphQL queries\. Most requested: GET \/repos\/\{owner\}\/\{repo\}\/environments \(1\)\. REST budget: 10 of 5,000 left, refilled at \d\d:\d\d\.\n$/,
     );

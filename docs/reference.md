@@ -34,6 +34,7 @@ ignored.
 | `--by-person` | diff | Pivot onto people: who can reach what, before and after. |
 | `--csv` | diff | Write `--by-person` as CSV, one row per person per repository. |
 | `--no-cache` | diff, plan, apply, import | Send every request unconditionally, ignoring the ETags kept in `github.out/cache/`. |
+| `-v`, `--verbose` | diff, plan, apply, import | Add to the read's summary the requests it made, how many the cache answered, the three routes it asked for most, and the time GitHub refills the budget. |
 | `--color` / `--no-color` | diff | Force color on or off. The default colors a terminal and leaves a pipe plain; `NO_COLOR` and `FORCE_COLOR` are honoured, and the flags beat both. |
 
 ## Delete scopes
@@ -141,9 +142,10 @@ Two things keep a read inside those budgets:
   log when it is not a terminal, when `CI` is set, or when `TERM` is `dumb`.
 - **While waiting.** When a limit is hit, the line says which limit and the
   local time the read resumes, and a log gets that line straight away.
-- **When done.** One summary line gives the time taken, the requests made,
-  how many of them the cache answered for free, the three routes asked for
-  most, and the budget left with the time GitHub refills it.
+- **When done.** One summary line gives the time taken and the REST budget
+  left. With `--verbose` it also gives the requests made, how many of them
+  the cache answered for free, the three routes asked for most, and the time
+  GitHub refills the budget.
 
 Before `apply --yes` writes, it compares the number of changes with the REST
 requests left. Each change is at least one request, so when the changes
