@@ -374,9 +374,12 @@ export function renderPlan(changes: Change[]): string {
 
   const counts = summarize(changes);
   lines.push('');
+  // Only an Entra group link or a security configuration attachment links,
+  // so most plans would only ever print a zero for it.
+  const link = counts.link > 0 ? `${counts.link} to link, ` : '';
   lines.push(
     `Plan: ${counts.create} to create, ${counts.update} to update, ` +
-      `${counts.link} to link, ${counts.delete} to delete.`,
+      `${link}${counts.delete} to delete.`,
   );
   return lines.join('\n');
 }

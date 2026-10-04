@@ -26,6 +26,7 @@ export async function reportProgress<T>(
   work: () => Promise<T>,
   stream: ProgressStream = process.stderr,
   now: () => number = Date.now,
+  verbose = false,
 ): Promise<T> {
   const started = now();
   const line = () => progressLine(label, meter.snapshot(), now() - started, now());
@@ -54,7 +55,7 @@ export async function reportProgress<T>(
   try {
     const result = await work();
     finish();
-    stream.write(`${summaryLine(label, meter, now() - started)}\n`);
+    stream.write(`${summaryLine(label, meter, now() - started, verbose)}\n`);
     return result;
   } catch (error) {
     finish();
@@ -90,36 +91,44 @@ export function progressLine(
       `waiting out GitHub's ${kind} until ${clock(snapshot.waiting.until)}`,
     );
   } else if (core && core.remaining === 0 && core.resetsAt.getTime() > nowMs) {
-    parts.push(`REST budget spent until ${clock(core.resetsAt)}`);
+    parts.push(`API budget spent until ${clock(core.resetsAt)}`);
   } else if (core) {
-    parts.push(`${core.remaining.toLocaleString('en-US')} REST requests left`);
+    parts.push(`${core.remaining.toLocaleString('en-US')} API requests left`);
   }
   return parts.join(' · ');
 }
 
-/** The line a finished read leaves behind: its cost, where it went, what is left. */
+/**
+ * The line a finished read leaves behind: how long it took and the budget
+ * left. `verbose` adds what it asked GitHub for and the routes it asked most.
+ */
 export function summaryLine(
   label: string,
   meter: RequestMeter,
   elapsedMs: number,
+  verbose = false,
 ): string {
   const snapshot = meter.snapshot();
+  const core = snapshot.budgets.core;
+  const budget = core
+    ? ` API budget: ${core.remaining.toLocaleString('en-US')} of ${core.limit.toLocaleString('en-US')} left`
+    : '';
+  if (!verbose) {
+    return `${label} took ${duration(elapsedMs)}.${budget && `${budget}.`}`;
+  }
   const busiest = meter
     .busiest(3)
     .map((r) => `${r.route} (${r.requests})`)
     .join(', ');
-  const core = snapshot.budgets.core;
   return [
     `${label} took ${duration(elapsedMs)} and ${requestCounts(snapshot)}.`,
     busiest ? ` Most requested: ${busiest}.` : '',
-    core
-      ? ` REST budget: ${core.remaining.toLocaleString('en-US')} of ${core.limit.toLocaleString('en-US')} left, refilled at ${clock(core.resetsAt)}.`
-      : '',
+    core ? `${budget}, refilled at ${clock(core.resetsAt)}.` : '',
   ].join('');
 }
 
 /**
- * A note for an apply whose writes may not fit in the REST budget left, or
+ * A note for an apply whose writes may not fit in the API budget left, or
  * undefined when they do. Each change is at least one request, so the count
  * is a floor.
  */
@@ -130,7 +139,7 @@ export function budgetNote(
   const core = snapshot.budgets.core;
   if (!core || core.remaining >= changes) return undefined;
   return (
-    `GitHub's REST budget has ${core.remaining.toLocaleString('en-US')} requests left until ` +
+    `GitHub's API budget has ${core.remaining.toLocaleString('en-US')} requests left until ` +
     `${clock(core.resetsAt)}, and these ${changes} changes need at least ${changes}. ` +
     `apply pauses when the budget runs out and carries on at ${clock(core.resetsAt)}.`
   );
@@ -151,6 +160,23 @@ export function duration(ms: number): string {
 export function waitLine(wait: RateWait): string {
   const kind = wait.secondary ? 'secondary rate limit' : 'rate limit';
   return `  waiting out GitHub's ${kind} until ${clock(wait.until)}`;
+}
+
+/**
+ * When something happened, for a reader judging how fresh it is: relative
+ * within a day, a local date and time after that. A timestamp that does not
+ * parse is returned as it is.
+ */
+export function since(timestamp: string, nowMs: number = Date.now()): string {
+  const at = new Date(timestamp);
+  if (Number.isNaN(at.getTime())) return timestamp;
+  const minutes = Math.floor((nowMs - at.getTime()) / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const date = at.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  return `on ${date}, ${clock(at)}`;
 }
 
 /** A wall-clock time in the reader's own zone, to the minute. */

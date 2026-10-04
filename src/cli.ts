@@ -10,7 +10,7 @@ import { type GitHubClient, OctokitGitHubClient } from './github/client.ts';
 import type { RateWait, RequestMeter } from './github/meter.ts';
 import { resolveToken } from './github/token.ts';
 import { importOrganization } from './import/import-org.ts';
-import { apply, deleteAllowed, type ApplyRecord } from './reconcile/applier.ts';
+import { apply, deleteAllowed, type ApplyRecord, type ApplyResult } from './reconcile/applier.ts';
 import { writeBackup } from './reconcile/backup.ts';
 import {
   type Change,
@@ -20,7 +20,7 @@ import {
   isDestructive,
 } from './reconcile/changes.ts';
 import { readLiveState } from './reconcile/live.ts';
-import { budgetNote, reportProgress, waitLine } from './progress.ts';
+import { budgetNote, reportProgress, since, waitLine } from './progress.ts';
 import { interactive } from './ui/terminal.ts';
 import { EtagCache } from './github/etag-cache.ts';
 import { unmanagedRoleAssignments } from './reconcile/plan-org-roles.ts';
@@ -91,6 +91,8 @@ Options:
                       leaves a pipe or a file plain; NO_COLOR is honoured.
   --no-cache          Send every request unconditionally, ignoring the ETags
                       kept in github.out/cache/.
+  -v, --verbose       Add the requests a read made, and the routes it asked for
+                      most, to its summary.
 
 Every apply that writes first saves a backup under github.out/backups/<time>/:
 the live state it read, a rollback manifest that restores the team structure
@@ -347,8 +349,9 @@ async function readWithProgress<T>(
         client.meter,
         read,
         paletteFor(process.stderr, flags),
+        flags.verbose,
       )
-    : await reportProgress(label, client.meter, read);
+    : await reportProgress(label, client.meter, read, process.stderr, Date.now, flags.verbose);
   cache?.save();
   return result;
 }
@@ -472,11 +475,7 @@ async function applyCommand(flags: Flags, connect: Connect): Promise<number> {
     });
     report.stop();
 
-    console.log(
-      `\nApplied: ${result.created} created, ${result.updated} updated, ` +
-        `${result.linked} linked, ${result.deleted} deleted, ` +
-        `${result.governance} governance change${result.governance === 1 ? '' : 's'}.`,
-    );
+    console.log(`${report.gap}${appliedLine(result)}`);
     for (const s of result.skipped) console.log(`  skipped: ${s}`);
     return 0;
   } catch (error) {
@@ -496,12 +495,27 @@ async function applyCommand(flags: Flags, connect: Connect): Promise<number> {
   }
 }
 
+/** What an apply did, naming only the kinds of change it made. */
+export function appliedLine(result: ApplyResult): string {
+  const parts = [
+    [result.created, 'created'],
+    [result.updated, 'updated'],
+    [result.linked, 'linked'],
+    [result.deleted, 'deleted'],
+    [result.governance, `governance change${result.governance === 1 ? '' : 's'}`],
+  ] as const;
+  const made = parts.filter(([count]) => count > 0).map(([count, what]) => `${count} ${what}`);
+  return made.length > 0 ? `Applied: ${made.join(', ')}.` : 'Applied nothing.';
+}
+
 /** Where apply reports each change: a task list on a terminal, a line each otherwise. */
 async function applyReport(palette: Palette): Promise<{
   progress(message: string): void;
   record(record: ApplyRecord): void;
   wait(wait: RateWait): void;
   stop(): void;
+  /** What goes between the last change and the summary. */
+  readonly gap: string;
 }> {
   if (!interactive(process.stdout)) {
     return {
@@ -509,6 +523,7 @@ async function applyReport(palette: Palette): Promise<{
       record: () => {},
       wait: (wait) => console.log(waitLine(wait)),
       stop: () => {},
+      gap: '\n',
     };
   }
   const { ApplyTasks, showApplyTasks } = await import('./ui/apply-tasks.tsx');
@@ -519,6 +534,8 @@ async function applyReport(palette: Palette): Promise<{
     record: (record) => tasks.record(record),
     wait: (wait) => tasks.wait(wait),
     stop: () => screen.stop(),
+    // The task list leaves a blank line where its live area was.
+    gap: '',
   };
 }
 
@@ -638,7 +655,7 @@ function printProvenance(desired: DesiredState): void {
   const commit = p.commit
     ? ` at ${p.commit.slice(0, 7)}${p.dirty ? ' (dirty working tree)' : ''}`
     : '';
-  console.log(`Manifest: ${p.source}${commit}, synthesized ${p.synthesizedAt}\n`);
+  console.log(`Manifest: ${p.source}${commit}, synthesized ${since(p.synthesizedAt)}\n`);
 }
 
 function readManifest(path: string): DesiredState {
@@ -788,6 +805,8 @@ export interface Flags {
   positional?: string;
   /** Answer unchanged GET requests from github.out/cache. Off with `--no-cache`. */
   cache: boolean;
+  /** Add what the read asked GitHub for to its summary. */
+  verbose: boolean;
 }
 
 export function parseFlags(args: string[], command?: string): Flags {
@@ -805,6 +824,7 @@ export function parseFlags(args: string[], command?: string): Flags {
     csv: false,
     repositories: false,
     cache: true,
+    verbose: false,
   };
   // `synth` takes a config path and `import` an org login; the rest take none.
   const positionalsAllowed = command === 'synth' || command === 'import' ? 1 : 0;
@@ -824,6 +844,10 @@ export function parseFlags(args: string[], command?: string): Flags {
       }
       case '--yes':
         flags.yes = true;
+        break;
+      case '-v':
+      case '--verbose':
+        flags.verbose = true;
         break;
       case '--allow-delete':
         flags.allowDelete = true;
