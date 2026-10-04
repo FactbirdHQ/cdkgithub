@@ -136,13 +136,13 @@ export function budgetNote(
   );
 }
 
-function requestCounts(snapshot: MeterSnapshot): string {
+export function requestCounts(snapshot: MeterSnapshot): string {
   const { core, graphql, cached } = snapshot.requests;
   const counts = `${core} REST request${core === 1 ? '' : 's'}, ${graphql} GraphQL quer${graphql === 1 ? 'y' : 'ies'}`;
   return cached > 0 ? `${counts}, ${cached} unchanged and free` : counts;
 }
 
-function duration(ms: number): string {
+export function duration(ms: number): string {
   const seconds = Math.round(ms / 1000);
   return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m${String(seconds % 60).padStart(2, '0')}s`;
 }

@@ -135,9 +135,10 @@ Two things keep a read inside those budgets:
 
 `plan`, `apply`, `diff` and `import` report the live read on stderr:
 
-- **While reading.** A terminal gets one line redrawn in place with the
-  requests made so far, the time taken, and the REST budget left. A log gets
-  the same line every fifteen seconds.
+- **While reading.** A terminal gets a live view: a spinner, the requests
+  made so far, the time taken, and the REST budget left as a bar. A log gets
+  one line with the same figures every fifteen seconds. Output counts as a
+  log when it is not a terminal, when `CI` is set, or when `TERM` is `dumb`.
 - **While waiting.** When a limit is hit, the line says which limit and the
   local time the read resumes, and a log gets that line straight away.
 - **When done.** One summary line gives the time taken, the requests made,
@@ -147,7 +148,15 @@ Two things keep a read inside those budgets:
 Before `apply --yes` writes, it compares the number of changes with the REST
 requests left. Each change is at least one request, so when the changes
 outnumber them `apply` says so and names the time it will pause until.
-During the writes, each new wait prints one line with the time it ends.
+During the writes, a terminal lists each change as it runs: a spinner while
+it is under way, then ✔ or ✖, with the error under a failed change and any
+note GitHub prompted, such as a slug it derived differently. A rate limit
+being waited out shows below the running change with the time it ends. A log
+gets one line per change and one per new wait.
+
+On a terminal the approval prompt shows the number of changes and how many
+are destructive, and takes `y` to apply. `n`, Enter, Escape and Ctrl+C each
+decline.
 
 ## Ownership semantics
 
