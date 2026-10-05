@@ -13,3 +13,5 @@ examples/factbirdhq.ts
 .direnv/
 .devenv.flake.nix
 devenv.local.nix
+# Written by devenv's git-hooks integration, a link into the Nix store.
+.pre-commit-config.yaml
