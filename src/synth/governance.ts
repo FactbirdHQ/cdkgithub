@@ -97,12 +97,7 @@ export type RulesetEnforcement = 'disabled' | 'active' | 'evaluate';
 /** `always`, or `pull_request` to bypass only through a pull request. */
 export type BypassMode = 'always' | 'pull_request';
 
-export type BypassActorType =
-  | 'Integration'
-  | 'OrganizationAdmin'
-  | 'RepositoryRole'
-  | 'Team'
-  | 'DeployKey';
+export type BypassActorType = 'Integration' | 'OrganizationAdmin' | 'RepositoryRole' | 'Team' | 'DeployKey';
 
 interface BypassCommon {
   readonly bypassMode?: BypassMode;
@@ -227,12 +222,7 @@ export interface CodeScanningTool {
   /** Severity at which an ordinary alert blocks the update. */
   readonly alertsThreshold: 'none' | 'errors' | 'errors_and_warnings' | 'all';
   /** Severity at which a security alert blocks the update. */
-  readonly securityAlertsThreshold:
-    | 'none'
-    | 'critical'
-    | 'high_or_higher'
-    | 'medium_or_higher'
-    | 'all';
+  readonly securityAlertsThreshold: 'none' | 'critical' | 'high_or_higher' | 'medium_or_higher' | 'all';
 }
 
 /** A reusable workflow that must run, pinned to a ref or sha. */
@@ -370,8 +360,7 @@ export type RepositoryRulesetTarget = Exclude<RulesetTarget, 'repository'>;
  * repository-targeting conditions: the ruleset already lives on its repository,
  * so only `refName` selects anything.
  */
-export interface RepositoryRulesetManifest
-  extends Omit<RulesetManifest, 'target' | 'conditions'> {
+export interface RepositoryRulesetManifest extends Omit<RulesetManifest, 'target' | 'conditions'> {
   /** The repository the ruleset lives on. */
   readonly repository: string;
   readonly target: RepositoryRulesetTarget;
@@ -386,11 +375,7 @@ export interface RepositoryRulesetManifest
 export type SecurityFeature = 'enabled' | 'disabled' | 'not_set';
 
 /** Which repositories a configuration is attached to when it is applied. */
-export type SecurityAttachScope =
-  | 'all'
-  | 'all_without_configurations'
-  | 'public'
-  | 'private_or_internal';
+export type SecurityAttachScope = 'all' | 'all_without_configurations' | 'public' | 'private_or_internal';
 
 /** Which new repositories inherit a configuration automatically. */
 export type SecurityDefaultScope = 'all' | 'public' | 'private_and_internal';
@@ -399,11 +384,7 @@ export interface CodeSecurityConfigurationManifest {
   /** Unique within the org; this is the configuration's identity for diffing. */
   readonly name: string;
   readonly description: string;
-  readonly advancedSecurity?:
-    | 'enabled'
-    | 'disabled'
-    | 'code_security'
-    | 'secret_protection';
+  readonly advancedSecurity?: 'enabled' | 'disabled' | 'code_security' | 'secret_protection';
   readonly dependencyGraph?: SecurityFeature;
   readonly dependencyGraphAutosubmitAction?: SecurityFeature;
   readonly dependabotAlerts?: SecurityFeature;
@@ -434,11 +415,7 @@ export interface CodeSecurityConfigurationManifest {
 // Custom properties — /orgs/{org}/properties/schema and /properties/values
 // ---------------------------------------------------------------------------
 
-export type CustomPropertyValueType =
-  | 'string'
-  | 'single_select'
-  | 'multi_select'
-  | 'true_false';
+export type CustomPropertyValueType = 'string' | 'single_select' | 'multi_select' | 'true_false';
 
 export interface CustomPropertyManifest {
   readonly name: string;
@@ -461,22 +438,9 @@ export interface CustomPropertyManifest {
 // Issue fields — /orgs/{org}/issue-fields
 // ---------------------------------------------------------------------------
 
-export type IssueFieldDataType =
-  | 'text'
-  | 'date'
-  | 'number'
-  | 'single_select'
-  | 'multi_select';
+export type IssueFieldDataType = 'text' | 'date' | 'number' | 'single_select' | 'multi_select';
 
-export type IssueFieldOptionColor =
-  | 'gray'
-  | 'blue'
-  | 'green'
-  | 'yellow'
-  | 'orange'
-  | 'red'
-  | 'pink'
-  | 'purple';
+export type IssueFieldOptionColor = 'gray' | 'blue' | 'green' | 'yellow' | 'orange' | 'red' | 'pink' | 'purple';
 
 /** One choice of a `single_select` or `multi_select` issue field. */
 export interface IssueFieldOptionManifest {

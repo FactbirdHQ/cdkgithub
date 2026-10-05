@@ -1,4 +1,5 @@
 import { Construct } from 'constructs';
+
 import type { RepoPermission } from '../synth/manifest.ts';
 
 export interface CollaboratorProps {

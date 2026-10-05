@@ -1,14 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  App,
-  admin,
-  maintain,
-  Organization,
-  push,
-  role,
-  Team,
-  triage,
-} from '../src/index.ts';
+
+import { App, admin, maintain, Organization, push, role, Team, triage } from '../src/index.ts';
 import { synthesize } from '../src/synth/synthesizer.ts';
 
 function org() {
@@ -44,9 +36,7 @@ describe('repository maintainership', () => {
     new Team(root, 'cloud', { repositories: [maintain('netcore')] });
     new Team(root, 'product', { repositories: [maintain('netcore')] });
 
-    expect(() => synthesize(root.node.root)).toThrow(
-      /"netcore" is owned by both "cloud" \("maintain"\) and "product"/,
-    );
+    expect(() => synthesize(root.node.root)).toThrow(/"netcore" is owned by both "cloud" \("maintain"\) and "product"/);
   });
 
   test('the conflict is reported even across the tree', () => {
@@ -68,11 +58,9 @@ describe('repository maintainership', () => {
     expect(state.teams.find((t) => t.slug === 'cloud')?.repositories).toEqual({
       netcore: 'maintain',
     });
-    expect(state.teams.find((t) => t.slug === 'support')?.repositories).toEqual(
-      {
-        netcore: 'triage',
-      },
-    );
+    expect(state.teams.find((t) => t.slug === 'support')?.repositories).toEqual({
+      netcore: 'triage',
+    });
   });
 
   test('declaring neither leaves the surface unmanaged', () => {
@@ -110,9 +98,7 @@ describe('grants written one repository at a time', () => {
     new Team(root, 'cloud', {
       repositories: [push('netcore'), triage('fctl'), maintain('netcore')],
     });
-    expect(() => synthesize(root.node.root)).toThrow(
-      /grants "netcore" twice, as "push" and "maintain"/,
-    );
+    expect(() => synthesize(root.node.root)).toThrow(/grants "netcore" twice, as "push" and "maintain"/);
   });
 
   test('maintaining and granting the same repository is still a duplicate', () => {
@@ -121,9 +107,7 @@ describe('grants written one repository at a time', () => {
     new Team(root, 'cloud', {
       repositories: [maintain('netcore'), push('netcore')],
     });
-    expect(() => synthesize(root.node.root)).toThrow(
-      /grants "netcore" twice, as "maintain" and "push"/,
-    );
+    expect(() => synthesize(root.node.root)).toThrow(/grants "netcore" twice, as "maintain" and "push"/);
   });
 });
 
@@ -163,9 +147,7 @@ describe('granting a category', () => {
       repositories: [triage(...SYSTEM_II), push('netcore')],
     });
 
-    expect(() => synthesize(root.node.root)).toThrow(
-      /grants "netcore" twice, as "triage" and "push"/,
-    );
+    expect(() => synthesize(root.node.root)).toThrow(/grants "netcore" twice, as "triage" and "push"/);
   });
 });
 
@@ -179,9 +161,7 @@ describe('admin claims a repository too', () => {
     });
     new Team(root, 'hardware', { repositories: [admin('factory-firmware')] });
 
-    expect(() => synthesize(root.node.root)).toThrow(
-      /"factory-firmware" is owned by both/,
-    );
+    expect(() => synthesize(root.node.root)).toThrow(/"factory-firmware" is owned by both/);
   });
 
   test('two admins conflict', () => {
@@ -197,9 +177,7 @@ describe('admin claims a repository too', () => {
     new Team(root, 'cloud', { repositories: [admin('netcore')] });
     new Team(root, 'product', { repositories: [maintain('netcore')] });
 
-    expect(() => synthesize(root.node.root)).toThrow(
-      /"cloud" \("admin"\) and "product" \("maintain"\)/,
-    );
+    expect(() => synthesize(root.node.root)).toThrow(/"cloud" \("admin"\) and "product" \("maintain"\)/);
   });
 
   test('admin alongside a lesser permission is fine', () => {

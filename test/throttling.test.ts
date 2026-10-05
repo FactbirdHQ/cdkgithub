@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+
 import { OctokitGitHubClient } from '../src/github/client.ts';
 
 const realFetch = globalThis.fetch;
@@ -37,9 +38,7 @@ describe('request pacing', () => {
     });
     const client = new OctokitGitHubClient('token');
     const started = performance.now();
-    await Promise.all(
-      Array.from({ length: 30 }, (_, i) => client.listTeamMembers('acme', `team-${i}`)),
-    );
+    await Promise.all(Array.from({ length: 30 }, (_, i) => client.listTeamMembers('acme', `team-${i}`)));
     expect(seen.requests).toBe(60);
     expect(seen.most).toBe(50);
     expect(performance.now() - started).toBeLessThan(5_000);
@@ -49,9 +48,7 @@ describe('request pacing', () => {
     const seen = serveSlowly(10, {});
     const client = new OctokitGitHubClient('token');
     const started = performance.now();
-    await Promise.all(
-      ['A', 'B', 'C'].map((name) => client.deleteOrgSecret('acme', name)),
-    );
+    await Promise.all(['A', 'B', 'C'].map((name) => client.deleteOrgSecret('acme', name)));
     expect(seen.most).toBe(1);
     expect(performance.now() - started).toBeGreaterThanOrEqual(1_900);
   });

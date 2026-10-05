@@ -1,45 +1,45 @@
 import type {
   CreateTeamParams,
+  EnvironmentSettings,
   ExternalIdpGroup,
   GitHubClient,
   LiveActionsPolicy,
   LiveAppInstallation,
   LiveBranchProtection,
   LiveCodeSecurityConfiguration,
+  LiveCollaborator,
   LiveCustomProperty,
   LiveCustomRepositoryRole,
   LiveDefaultSecurityConfiguration,
+  LiveEnvironment,
   LiveIssueField,
+  LiveOrganizationRole,
   LiveOrgSecret,
   LiveOrgSettings,
   LiveOrgVariable,
   LiveRepository,
   LiveRepositoryProperties,
-  LiveRunnerGroup,
   LiveRuleset,
-  LiveOrganizationRole,
+  LiveRunnerGroup,
   LiveTeam,
   LiveTeamMember,
   LiveTeamRepository,
   UpdateTeamParams,
-  EnvironmentSettings,
-  LiveCollaborator,
-  LiveEnvironment,
 } from '../src/github/client.ts';
 import type {
   AllowedActions,
-  BranchProtectionManifest,
   AllowedActionsConfig,
+  BranchProtectionManifest,
   CodeSecurityConfigurationManifest,
   CustomPropertyManifest,
   CustomRepositoryRoleManifest,
-  IssueFieldManifest,
-  RepositoryManifest,
   DefaultWorkflowPermissions,
   EnabledRepositories,
+  IssueFieldManifest,
   OrgConfigVisibility,
   OrgSettingsManifest,
   RepoPermission,
+  RepositoryManifest,
   ResolvedRuleset,
   RunnerGroupManifest,
   SecurityAttachScope,
@@ -70,10 +70,7 @@ export interface FakeClientState {
   rulesets?: LiveRuleset[];
   securityConfigurations?: LiveCodeSecurityConfiguration[];
   /** Repositories and attachment status per configuration id. */
-  securityConfigurationRepositories?: Record<
-    number,
-    Array<{ name: string; status: string }>
-  >;
+  securityConfigurationRepositories?: Record<number, Array<{ name: string; status: string }>>;
   defaultSecurityConfigurations?: LiveDefaultSecurityConfiguration[];
   customProperties?: LiveCustomProperty[];
   repositoryProperties?: LiveRepositoryProperties[];
@@ -93,10 +90,7 @@ export interface FakeClientState {
   /** Environment secret names keyed by repository, then environment name. */
   environmentSecrets?: Record<string, Record<string, Array<{ name: string }>>>;
   /** Environment variables keyed by repository, then environment name. */
-  environmentVariables?: Record<
-    string,
-    Record<string, Array<{ name: string; value: string }>>
-  >;
+  environmentVariables?: Record<string, Record<string, Array<{ name: string; value: string }>>>;
   /** Repository secret names keyed by repository name. */
   repositorySecrets?: Record<string, Array<{ name: string }>>;
 }
@@ -126,10 +120,7 @@ export class FakeClient implements GitHubClient {
   actions: LiveActionsPolicy;
   rulesets: LiveRuleset[];
   securityConfigurations: LiveCodeSecurityConfiguration[];
-  securityConfigurationRepositories: Record<
-    number,
-    Array<{ name: string; status: string }>
-  >;
+  securityConfigurationRepositories: Record<number, Array<{ name: string; status: string }>>;
   defaultSecurityConfigurations: LiveDefaultSecurityConfiguration[];
   customProperties: LiveCustomProperty[];
   repositoryProperties: LiveRepositoryProperties[];
@@ -140,10 +131,7 @@ export class FakeClient implements GitHubClient {
   orgVariables: LiveOrgVariable[];
   orgSecrets: LiveOrgSecret[];
   repositoryVariables: Record<string, Array<{ name: string; value: string }>>;
-  environmentVariables: Record<
-    string,
-    Record<string, Array<{ name: string; value: string }>>
-  >;
+  environmentVariables: Record<string, Record<string, Array<{ name: string; value: string }>>>;
   environments: Record<string, Record<string, LiveEnvironment>>;
   collaborators: Record<string, Array<Omit<LiveCollaborator, 'repository'>>>;
   environmentSecrets: Record<string, Record<string, Array<{ name: string }>>>;
@@ -163,8 +151,7 @@ export class FakeClient implements GitHubClient {
     this.missingRepositories = new Set(state.missingRepositories ?? []);
     this.customRepositoryRoles = state.customRepositoryRoles ?? [];
     this.organizationRoles = state.organizationRoles ?? [];
-    this.internalRepositoriesAllowed =
-      state.internalRepositoriesAllowed ?? false;
+    this.internalRepositoriesAllowed = state.internalRepositoriesAllowed ?? false;
     this.roleAssignments = state.roleAssignments ?? {};
     this.externalGroups = state.externalGroups ?? [];
     this.repositories = state.repositories ?? [];
@@ -179,10 +166,8 @@ export class FakeClient implements GitHubClient {
     };
     this.rulesets = state.rulesets ?? [];
     this.securityConfigurations = state.securityConfigurations ?? [];
-    this.securityConfigurationRepositories =
-      state.securityConfigurationRepositories ?? {};
-    this.defaultSecurityConfigurations =
-      state.defaultSecurityConfigurations ?? [];
+    this.securityConfigurationRepositories = state.securityConfigurationRepositories ?? {};
+    this.defaultSecurityConfigurations = state.defaultSecurityConfigurations ?? [];
     this.customProperties = state.customProperties ?? [];
     this.repositoryProperties = state.repositoryProperties ?? [];
     this.issueFields = state.issueFields ?? [];
@@ -214,42 +199,23 @@ export class FakeClient implements GitHubClient {
     return this.organizationRoles;
   }
 
-  async readRoleAssignment(
-    _org: string,
-    roleId: number,
-  ): Promise<{ teams: string[]; users: string[] }> {
+  async readRoleAssignment(_org: string, roleId: number): Promise<{ teams: string[]; users: string[] }> {
     return this.roleAssignments[roleId] ?? { teams: [], users: [] };
   }
 
-  async assignRoleToTeam(
-    _org: string,
-    roleId: number,
-    team: string,
-  ): Promise<void> {
+  async assignRoleToTeam(_org: string, roleId: number, team: string): Promise<void> {
     this.record('assignRoleToTeam', { roleId, team });
   }
 
-  async removeRoleFromTeam(
-    _org: string,
-    roleId: number,
-    team: string,
-  ): Promise<void> {
+  async removeRoleFromTeam(_org: string, roleId: number, team: string): Promise<void> {
     this.record('removeRoleFromTeam', { roleId, team });
   }
 
-  async assignRoleToUser(
-    _org: string,
-    roleId: number,
-    username: string,
-  ): Promise<void> {
+  async assignRoleToUser(_org: string, roleId: number, username: string): Promise<void> {
     this.record('assignRoleToUser', { roleId, username });
   }
 
-  async removeRoleFromUser(
-    _org: string,
-    roleId: number,
-    username: string,
-  ): Promise<void> {
+  async removeRoleFromUser(_org: string, roleId: number, username: string): Promise<void> {
     this.record('removeRoleFromUser', { roleId, username });
   }
 
@@ -260,8 +226,7 @@ export class FakeClient implements GitHubClient {
   }
 
   async createTeam(_org: string, params: CreateTeamParams): Promise<LiveTeam> {
-    const parentSlug =
-      this.teams.find((t) => t.id === params.parentTeamId)?.slug ?? null;
+    const parentSlug = this.teams.find((t) => t.id === params.parentTeamId)?.slug ?? null;
     const created: LiveTeam = {
       id: this.nextId++,
       slug: params.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
@@ -275,11 +240,7 @@ export class FakeClient implements GitHubClient {
     return created;
   }
 
-  async updateTeam(
-    _org: string,
-    slug: string,
-    params: UpdateTeamParams,
-  ): Promise<LiveTeam> {
+  async updateTeam(_org: string, slug: string, params: UpdateTeamParams): Promise<LiveTeam> {
     this.record('updateTeam', { slug, params });
     const current = this.teams.find((t) => t.slug === slug);
     const name = params.name ?? current?.name ?? slug;
@@ -291,8 +252,7 @@ export class FakeClient implements GitHubClient {
       name,
       description: params.description ?? current?.description ?? null,
       privacy: params.privacy ?? current?.privacy ?? 'closed',
-      parentSlug:
-        this.teams.find((t) => t.id === params.parentTeamId)?.slug ?? null,
+      parentSlug: this.teams.find((t) => t.id === params.parentTeamId)?.slug ?? null,
     };
     if (current) {
       this.teams = this.teams.map((t) => (t.slug === slug ? updated : t));
@@ -304,37 +264,19 @@ export class FakeClient implements GitHubClient {
     this.teams = this.teams.filter((t) => t.slug !== slug);
   }
 
-  async setMembership(
-    _org: string,
-    slug: string,
-    username: string,
-    role: 'member' | 'maintainer',
-  ): Promise<void> {
+  async setMembership(_org: string, slug: string, username: string, role: 'member' | 'maintainer'): Promise<void> {
     this.memberships.push({ slug, username, role });
   }
 
-  async removeMembership(
-    _org: string,
-    slug: string,
-    username: string,
-  ): Promise<void> {
+  async removeMembership(_org: string, slug: string, username: string): Promise<void> {
     this.record('removeMembership', { slug, username });
   }
 
-  async setRepoPermission(
-    _org: string,
-    slug: string,
-    repo: string,
-    permission: RepoPermission,
-  ): Promise<void> {
+  async setRepoPermission(_org: string, slug: string, repo: string, permission: RepoPermission): Promise<void> {
     this.record('setRepoPermission', { slug, repo, permission });
   }
 
-  async removeRepoPermission(
-    _org: string,
-    slug: string,
-    repo: string,
-  ): Promise<void> {
+  async removeRepoPermission(_org: string, slug: string, repo: string): Promise<void> {
     this.record('removeRepoPermission', { slug, repo });
   }
 
@@ -346,10 +288,7 @@ export class FakeClient implements GitHubClient {
     return this.organizationOwners;
   }
 
-  async listTeamRepositories(
-    _org: string,
-    slug: string,
-  ): Promise<LiveTeamRepository[]> {
+  async listTeamRepositories(_org: string, slug: string): Promise<LiveTeamRepository[]> {
     return this.teamRepositories[slug] ?? [];
   }
 
@@ -357,25 +296,15 @@ export class FakeClient implements GitHubClient {
     return this.customRepositoryRoles;
   }
 
-  async createCustomRepositoryRole(
-    _org: string,
-    role: CustomRepositoryRoleManifest,
-  ): Promise<void> {
+  async createCustomRepositoryRole(_org: string, role: CustomRepositoryRoleManifest): Promise<void> {
     this.record('createCustomRepositoryRole', role);
   }
 
-  async updateCustomRepositoryRole(
-    _org: string,
-    roleId: number,
-    role: CustomRepositoryRoleManifest,
-  ): Promise<void> {
+  async updateCustomRepositoryRole(_org: string, roleId: number, role: CustomRepositoryRoleManifest): Promise<void> {
     this.record('updateCustomRepositoryRole', { roleId, role });
   }
 
-  async deleteCustomRepositoryRole(
-    _org: string,
-    roleId: number,
-  ): Promise<void> {
+  async deleteCustomRepositoryRole(_org: string, roleId: number): Promise<void> {
     this.record('deleteCustomRepositoryRole', { roleId });
   }
 
@@ -383,10 +312,7 @@ export class FakeClient implements GitHubClient {
     return this.internalRepositoriesAllowed;
   }
 
-  async createRepository(
-    _org: string,
-    repository: RepositoryManifest,
-  ): Promise<LiveRepository> {
+  async createRepository(_org: string, repository: RepositoryManifest): Promise<LiveRepository> {
     this.record('createRepository', repository);
     const created = { id: this.nextId++, name: repository.name };
     this.repositories.push(created);
@@ -397,11 +323,7 @@ export class FakeClient implements GitHubClient {
     return this.externalGroups;
   }
 
-  async linkExternalGroup(
-    _org: string,
-    slug: string,
-    groupId: number,
-  ): Promise<void> {
+  async linkExternalGroup(_org: string, slug: string, groupId: number): Promise<void> {
     this.links.push({ slug, groupId });
   }
 
@@ -429,10 +351,7 @@ export class FakeClient implements GitHubClient {
     return this.settings;
   }
 
-  async updateOrgSettings(
-    _org: string,
-    settings: OrgSettingsManifest,
-  ): Promise<void> {
+  async updateOrgSettings(_org: string, settings: OrgSettingsManifest): Promise<void> {
     this.record('updateOrgSettings', settings);
     this.settings = { ...this.settings, ...settings };
   }
@@ -453,17 +372,11 @@ export class FakeClient implements GitHubClient {
     this.record('setActionsPermissions', params);
   }
 
-  async setActionsSelectedRepositories(
-    _org: string,
-    repositoryIds: number[],
-  ): Promise<void> {
+  async setActionsSelectedRepositories(_org: string, repositoryIds: number[]): Promise<void> {
     this.record('setActionsSelectedRepositories', repositoryIds);
   }
 
-  async setAllowedActions(
-    _org: string,
-    config: AllowedActionsConfig,
-  ): Promise<void> {
+  async setAllowedActions(_org: string, config: AllowedActionsConfig): Promise<void> {
     this.record('setAllowedActions', config);
   }
 
@@ -483,10 +396,7 @@ export class FakeClient implements GitHubClient {
     return this.rulesets;
   }
 
-  async findRulesetIdByName(
-    _org: string,
-    name: string,
-  ): Promise<number | undefined> {
+  async findRulesetIdByName(_org: string, name: string): Promise<number | undefined> {
     return this.rulesets.find((r) => r.name === name)?.id;
   }
 
@@ -494,11 +404,7 @@ export class FakeClient implements GitHubClient {
     this.record('createRuleset', ruleset);
   }
 
-  async updateRuleset(
-    _org: string,
-    id: number,
-    ruleset: ResolvedRuleset,
-  ): Promise<void> {
+  async updateRuleset(_org: string, id: number, ruleset: ResolvedRuleset): Promise<void> {
     this.record('updateRuleset', { id, ruleset });
   }
 
@@ -509,44 +415,23 @@ export class FakeClient implements GitHubClient {
 
   // ---- repository rulesets -------------------------------------------------
 
-  async listRepositoryRulesets(
-    _owner: string,
-    repo: string,
-  ): Promise<LiveRuleset[]> {
+  async listRepositoryRulesets(_owner: string, repo: string): Promise<LiveRuleset[]> {
     return this.repositoryRulesets[repo] ?? [];
   }
 
-  async findRepositoryRulesetIdByName(
-    _owner: string,
-    repo: string,
-    name: string,
-  ): Promise<number | undefined> {
-    return (this.repositoryRulesets[repo] ?? []).find((r) => r.name === name)
-      ?.id;
+  async findRepositoryRulesetIdByName(_owner: string, repo: string, name: string): Promise<number | undefined> {
+    return (this.repositoryRulesets[repo] ?? []).find((r) => r.name === name)?.id;
   }
 
-  async createRepositoryRuleset(
-    _owner: string,
-    repo: string,
-    ruleset: ResolvedRuleset,
-  ): Promise<void> {
+  async createRepositoryRuleset(_owner: string, repo: string, ruleset: ResolvedRuleset): Promise<void> {
     this.record('createRepositoryRuleset', { repo, ruleset });
   }
 
-  async updateRepositoryRuleset(
-    _owner: string,
-    repo: string,
-    id: number,
-    ruleset: ResolvedRuleset,
-  ): Promise<void> {
+  async updateRepositoryRuleset(_owner: string, repo: string, id: number, ruleset: ResolvedRuleset): Promise<void> {
     this.record('updateRepositoryRuleset', { repo, id, ruleset });
   }
 
-  async deleteRepositoryRuleset(
-    _owner: string,
-    repo: string,
-    id: number,
-  ): Promise<void> {
+  async deleteRepositoryRuleset(_owner: string, repo: string, id: number): Promise<void> {
     this.record('deleteRepositoryRuleset', { repo, id });
   }
 
@@ -556,27 +441,15 @@ export class FakeClient implements GitHubClient {
     return this.runnerGroups;
   }
 
-  async createRunnerGroup(
-    _org: string,
-    group: RunnerGroupManifest,
-    selectedRepositoryIds?: number[],
-  ): Promise<void> {
+  async createRunnerGroup(_org: string, group: RunnerGroupManifest, selectedRepositoryIds?: number[]): Promise<void> {
     this.record('createRunnerGroup', { group, selectedRepositoryIds });
   }
 
-  async updateRunnerGroup(
-    _org: string,
-    id: number,
-    group: RunnerGroupManifest,
-  ): Promise<void> {
+  async updateRunnerGroup(_org: string, id: number, group: RunnerGroupManifest): Promise<void> {
     this.record('updateRunnerGroup', { id, group });
   }
 
-  async setRunnerGroupRepositories(
-    _org: string,
-    id: number,
-    repositoryIds: number[],
-  ): Promise<void> {
+  async setRunnerGroupRepositories(_org: string, id: number, repositoryIds: number[]): Promise<void> {
     this.record('setRunnerGroupRepositories', { id, repositoryIds });
   }
 
@@ -624,56 +497,35 @@ export class FakeClient implements GitHubClient {
     this.record('deleteOrgVariable', name);
   }
 
-  async listRepositoryVariables(
-    _owner: string,
-    repo: string,
-  ): Promise<Array<{ name: string; value: string }>> {
+  async listRepositoryVariables(_owner: string, repo: string): Promise<Array<{ name: string; value: string }>> {
     return this.repositoryVariables[repo] ?? [];
   }
 
-  async createRepositoryVariable(
-    _owner: string,
-    repo: string,
-    name: string,
-    value: string,
-  ): Promise<void> {
+  async createRepositoryVariable(_owner: string, repo: string, name: string, value: string): Promise<void> {
     this.record('createRepositoryVariable', { repo, name, value });
   }
 
-  async updateRepositoryVariable(
-    _owner: string,
-    repo: string,
-    name: string,
-    value: string,
-  ): Promise<void> {
+  async updateRepositoryVariable(_owner: string, repo: string, name: string, value: string): Promise<void> {
     this.record('updateRepositoryVariable', { repo, name, value });
   }
 
-  async deleteRepositoryVariable(
-    _owner: string,
-    repo: string,
-    name: string,
-  ): Promise<void> {
+  async deleteRepositoryVariable(_owner: string, repo: string, name: string): Promise<void> {
     this.record('deleteRepositoryVariable', { repo, name });
   }
 
-  async listEnvironmentsOfRepositories(
-    owner: string,
-    repositories: readonly string[],
-  ): Promise<Map<string, string[]>> {
+  async listEnvironmentsOfRepositories(owner: string, repositories: readonly string[]): Promise<Map<string, string[]>> {
     this.record('listEnvironmentsOfRepositories', repositories);
     const found = new Map<string, string[]>();
     for (const repository of repositories) {
-      if (this.missingRepositories.has(repository)) continue;
+      if (this.missingRepositories.has(repository)) {
+        continue;
+      }
       found.set(repository, await this.listRepositoryEnvironments(owner, repository));
     }
     return found;
   }
 
-  async listRepositoryEnvironments(
-    _owner: string,
-    repo: string,
-  ): Promise<string[]> {
+  async listRepositoryEnvironments(_owner: string, repo: string): Promise<string[]> {
     return [
       ...new Set([
         ...Object.keys(this.environments[repo] ?? {}),
@@ -697,18 +549,15 @@ export class FakeClient implements GitHubClient {
     this.record('listCollaboratorsOfRepositories', repositories);
     const found = new Map<string, Array<Omit<LiveCollaborator, 'repository'>>>();
     for (const repository of repositories) {
-      if (this.missingRepositories.has(repository)) continue;
+      if (this.missingRepositories.has(repository)) {
+        continue;
+      }
       found.set(repository, await this.listRepositoryCollaborators(owner, repository));
     }
     return found;
   }
 
-  async putRepositoryCollaborator(
-    _owner: string,
-    repo: string,
-    login: string,
-    permission: string,
-  ): Promise<void> {
+  async putRepositoryCollaborator(_owner: string, repo: string, login: string, permission: string): Promise<void> {
     this.record('putRepositoryCollaborator', { repo, login, permission });
   }
 
@@ -721,36 +570,19 @@ export class FakeClient implements GitHubClient {
     this.record('updateRepositoryInvitation', { repo, invitationId, permission });
   }
 
-  async deleteRepositoryCollaborator(
-    _owner: string,
-    repo: string,
-    login: string,
-  ): Promise<void> {
+  async deleteRepositoryCollaborator(_owner: string, repo: string, login: string): Promise<void> {
     this.record('deleteRepositoryCollaborator', { repo, login });
   }
 
-  async deleteRepositoryInvitation(
-    _owner: string,
-    repo: string,
-    invitationId: number,
-  ): Promise<void> {
+  async deleteRepositoryInvitation(_owner: string, repo: string, invitationId: number): Promise<void> {
     this.record('deleteRepositoryInvitation', { repo, invitationId });
   }
 
-  async getEnvironment(
-    _owner: string,
-    repo: string,
-    name: string,
-  ): Promise<LiveEnvironment | undefined> {
+  async getEnvironment(_owner: string, repo: string, name: string): Promise<LiveEnvironment | undefined> {
     return this.environments[repo]?.[name];
   }
 
-  async putEnvironment(
-    _owner: string,
-    repo: string,
-    name: string,
-    settings: EnvironmentSettings,
-  ): Promise<void> {
+  async putEnvironment(_owner: string, repo: string, name: string, settings: EnvironmentSettings): Promise<void> {
     this.record('putEnvironment', { repo, name, settings });
   }
 
@@ -764,32 +596,27 @@ export class FakeClient implements GitHubClient {
     this.record('createEnvironmentBranchPolicy', { repo, environment, name, type });
   }
 
-  async deleteEnvironmentBranchPolicy(
-    _owner: string,
-    repo: string,
-    environment: string,
-    id: number,
-  ): Promise<void> {
+  async deleteEnvironmentBranchPolicy(_owner: string, repo: string, environment: string, id: number): Promise<void> {
     this.record('deleteEnvironmentBranchPolicy', { repo, environment, id });
   }
 
   async getTeamId(_org: string, slug: string): Promise<number> {
     const team = this.teams.find((t) => t.slug === slug);
-    if (!team) throw Object.assign(new Error(`no team ${slug}`), { status: 404 });
+    if (!team) {
+      throw Object.assign(new Error(`no team ${slug}`), { status: 404 });
+    }
     return team.id;
   }
 
   async getUserId(login: string): Promise<number> {
     let h = 0;
-    for (let i = 0; i < login.length; i++) h = (h * 31 + login.charCodeAt(i)) | 0;
+    for (let i = 0; i < login.length; i++) {
+      h = (h * 31 + login.charCodeAt(i)) | 0;
+    }
     return Math.abs(h);
   }
 
-  async listEnvironmentSecrets(
-    _owner: string,
-    repo: string,
-    environment: string,
-  ): Promise<Array<{ name: string }>> {
+  async listEnvironmentSecrets(_owner: string, repo: string, environment: string): Promise<Array<{ name: string }>> {
     return this.environmentSecrets[repo]?.[environment] ?? [];
   }
 
@@ -803,12 +630,7 @@ export class FakeClient implements GitHubClient {
     this.record('putEnvironmentSecret', { repo, environment, name, value });
   }
 
-  async deleteEnvironmentSecret(
-    _owner: string,
-    repo: string,
-    environment: string,
-    name: string,
-  ): Promise<void> {
+  async deleteEnvironmentSecret(_owner: string, repo: string, environment: string, name: string): Promise<void> {
     this.record('deleteEnvironmentSecret', { repo, environment, name });
   }
 
@@ -840,12 +662,7 @@ export class FakeClient implements GitHubClient {
     this.record('updateEnvironmentVariable', { repo, environment, name, value });
   }
 
-  async deleteEnvironmentVariable(
-    _owner: string,
-    repo: string,
-    environment: string,
-    name: string,
-  ): Promise<void> {
+  async deleteEnvironmentVariable(_owner: string, repo: string, environment: string, name: string): Promise<void> {
     this.record('deleteEnvironmentVariable', { repo, environment, name });
   }
 
@@ -874,27 +691,15 @@ export class FakeClient implements GitHubClient {
     this.record('deleteOrgSecret', name);
   }
 
-  async listRepositorySecrets(
-    _owner: string,
-    repo: string,
-  ): Promise<Array<{ name: string }>> {
+  async listRepositorySecrets(_owner: string, repo: string): Promise<Array<{ name: string }>> {
     return this.repositorySecrets[repo] ?? [];
   }
 
-  async putRepositorySecret(
-    _owner: string,
-    repo: string,
-    name: string,
-    value: string,
-  ): Promise<void> {
+  async putRepositorySecret(_owner: string, repo: string, name: string, value: string): Promise<void> {
     this.record('putRepositorySecret', { repo, name, value });
   }
 
-  async deleteRepositorySecret(
-    _owner: string,
-    repo: string,
-    name: string,
-  ): Promise<void> {
+  async deleteRepositorySecret(_owner: string, repo: string, name: string): Promise<void> {
     this.record('deleteRepositorySecret', { repo, name });
   }
 
@@ -911,16 +716,11 @@ export class FakeClient implements GitHubClient {
     return this.securityConfigurationRepositories[id] ?? [];
   }
 
-  async listDefaultSecurityConfigurations(): Promise<
-    LiveDefaultSecurityConfiguration[]
-  > {
+  async listDefaultSecurityConfigurations(): Promise<LiveDefaultSecurityConfiguration[]> {
     return this.defaultSecurityConfigurations;
   }
 
-  async createSecurityConfiguration(
-    _org: string,
-    config: CodeSecurityConfigurationManifest,
-  ): Promise<number> {
+  async createSecurityConfiguration(_org: string, config: CodeSecurityConfigurationManifest): Promise<number> {
     this.record('createSecurityConfiguration', config);
     const id = this.nextId++;
     this.securityConfigurations.push({
@@ -943,11 +743,7 @@ export class FakeClient implements GitHubClient {
     this.record('deleteSecurityConfiguration', id);
   }
 
-  async setSecurityConfigurationAsDefault(
-    _org: string,
-    id: number,
-    scope: SecurityDefaultScope,
-  ): Promise<void> {
+  async setSecurityConfigurationAsDefault(_org: string, id: number, scope: SecurityDefaultScope): Promise<void> {
     this.record('setSecurityConfigurationAsDefault', { id, scope });
   }
 
@@ -970,10 +766,7 @@ export class FakeClient implements GitHubClient {
     return this.repositoryProperties;
   }
 
-  async putCustomProperty(
-    _org: string,
-    property: CustomPropertyManifest,
-  ): Promise<void> {
+  async putCustomProperty(_org: string, property: CustomPropertyManifest): Promise<void> {
     this.record('putCustomProperty', property);
   }
 
@@ -987,18 +780,11 @@ export class FakeClient implements GitHubClient {
     return this.issueFields;
   }
 
-  async createIssueField(
-    _org: string,
-    field: IssueFieldManifest,
-  ): Promise<void> {
+  async createIssueField(_org: string, field: IssueFieldManifest): Promise<void> {
     this.record('createIssueField', field);
   }
 
-  async updateIssueField(
-    _org: string,
-    live: LiveIssueField,
-    field: IssueFieldManifest,
-  ): Promise<void> {
+  async updateIssueField(_org: string, live: LiveIssueField, field: IssueFieldManifest): Promise<void> {
     this.record('updateIssueField', { id: live.id, field });
   }
 
@@ -1016,40 +802,25 @@ export class FakeClient implements GitHubClient {
 
   // ---- branch protection ---------------------------------------------------
 
-  async getBranchProtection(
-    _owner: string,
-    repo: string,
-    branch: string,
-  ): Promise<LiveBranchProtection> {
+  async getBranchProtection(_owner: string, repo: string, branch: string): Promise<LiveBranchProtection> {
     return (
-      this.branchProtection.find(
-        (p) => p.repository === repo && p.branch === branch,
-      ) ?? { repository: repo, branch, enabled: false }
+      this.branchProtection.find((p) => p.repository === repo && p.branch === branch) ?? {
+        repository: repo,
+        branch,
+        enabled: false,
+      }
     );
   }
 
-  async putBranchProtection(
-    _owner: string,
-    repo: string,
-    protection: BranchProtectionManifest,
-  ): Promise<void> {
+  async putBranchProtection(_owner: string, repo: string, protection: BranchProtectionManifest): Promise<void> {
     this.record('putBranchProtection', { repo, protection });
   }
 
-  async deleteBranchProtection(
-    _owner: string,
-    repo: string,
-    branch: string,
-  ): Promise<void> {
+  async deleteBranchProtection(_owner: string, repo: string, branch: string): Promise<void> {
     this.record('deleteBranchProtection', { repo, branch });
   }
 
-  async setSignatureProtection(
-    _owner: string,
-    repo: string,
-    branch: string,
-    required: boolean,
-  ): Promise<void> {
+  async setSignatureProtection(_owner: string, repo: string, branch: string, required: boolean): Promise<void> {
     this.record('setSignatureProtection', { repo, branch, required });
   }
 }

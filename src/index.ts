@@ -27,6 +27,10 @@ export {
   type CodeSecurityConfigurationProps,
 } from './constructs/code-security.ts';
 export {
+  Collaborator,
+  type CollaboratorProps,
+} from './constructs/collaborator.ts';
+export {
   CustomProperty,
   type CustomPropertyProps,
 } from './constructs/custom-property.ts';
@@ -35,23 +39,19 @@ export {
   type CustomRepositoryRoleProps,
 } from './constructs/custom-repository-role.ts';
 export {
-  admin,
-  maintain,
-  pull,
-  push,
-  role,
-  triage,
-  type RepositoryGrant,
-} from './constructs/grants.ts';
-export {
-  Collaborator,
-  type CollaboratorProps,
-} from './constructs/collaborator.ts';
-export {
   Environment,
   type EnvironmentProps,
 } from './constructs/environment.ts';
 export type { ExternalGroupProps } from './constructs/external-group.ts';
+export {
+  admin,
+  maintain,
+  pull,
+  push,
+  type RepositoryGrant,
+  role,
+  triage,
+} from './constructs/grants.ts';
 export {
   IssueField,
   type IssueFieldProps,
@@ -73,16 +73,16 @@ export {
   RepositoryRuleset,
   type RepositoryRulesetProps,
 } from './constructs/repository-ruleset.ts';
+export { Ruleset, type RulesetProps } from './constructs/ruleset.ts';
 export {
   RunnerGroup,
   type RunnerGroupProps,
 } from './constructs/runner-group.ts';
-export { Ruleset, type RulesetProps } from './constructs/ruleset.ts';
 export {
   ScimProvisioning,
   type ScimProvisioningProps,
 } from './constructs/scim-provisioning.ts';
-export { Team, teamOf, type TeamProps } from './constructs/team.ts';
+export { Team, type TeamProps, teamOf } from './constructs/team.ts';
 export {
   UserAccount,
   type UserAccountProps,
@@ -101,13 +101,14 @@ export type {
   BypassActorType,
   BypassMode,
   CodeScanningTool,
-  CollaboratorManifest,
   CodeSecurityConfigurationManifest,
+  CollaboratorManifest,
   CustomPropertyManifest,
   CustomPropertyValueType,
   CustomRepositoryRoleManifest,
   DefaultRepositoryPermission,
   DefaultWorkflowPermissions,
+  DeployKeyBypass,
   DeploymentBranchPolicy,
   DesiredState,
   EnabledRepositories,
@@ -118,22 +119,18 @@ export type {
   IssueFieldManifest,
   IssueFieldOptionColor,
   IssueFieldOptionManifest,
-  OrgConfigVisibility,
+  OrganizationAdminBypass,
   OrganizationRoleManifest,
+  OrgConfigVisibility,
   OrgSettingsManifest,
   OwnerType,
   PatternRuleParameters,
-  DeployKeyBypass,
-  OrganizationAdminBypass,
   RepoPermission,
   RepositoryAccess,
+  RepositoryRoleBypass,
   RepositoryRulesetManifest,
   RepositoryRulesetTarget,
   RepositoryVisibility,
-  RepositoryRoleBypass,
-  RunnerGroupManifest,
-  RunnerGroupVisibility,
-  ScimProvisioningManifest,
   RequiredPullRequestReviews,
   RequiredStatusChecks,
   ResolvedBypassActor,
@@ -146,6 +143,9 @@ export type {
   RulesetPropertySpec,
   RulesetRule,
   RulesetTarget,
+  RunnerGroupManifest,
+  RunnerGroupVisibility,
+  ScimProvisioningManifest,
   SecurityAttachScope,
   SecurityDefaultScope,
   SecurityFeature,
@@ -159,9 +159,9 @@ export {
   BUILT_IN_REPO_PERMISSIONS,
   isBuiltInRepoPermission,
 } from './synth/manifest.ts';
+export { collectWarnings } from './synth/warnings.ts';
 export type {
   Vocabulary,
   VocabularyMember,
   VocabularyRepository,
 } from './vocabulary.ts';
-export { collectWarnings } from './synth/warnings.ts';

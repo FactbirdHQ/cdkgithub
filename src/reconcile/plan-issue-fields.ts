@@ -11,19 +11,15 @@
  */
 
 import type { LiveIssueField } from '../github/client.ts';
-import type {
-  IssueFieldManifest,
-  IssueFieldOptionManifest,
-} from '../synth/manifest.ts';
+import type { IssueFieldManifest, IssueFieldOptionManifest } from '../synth/manifest.ts';
 import type { Change, FieldChange } from './changes.ts';
 import type { LiveState } from './live.ts';
 import { matchesSubset } from './subset.ts';
 
-export function planIssueFields(
-  desired: IssueFieldManifest[] | undefined,
-  live: LiveState,
-): Change[] {
-  if (!desired) return [];
+export function planIssueFields(desired: IssueFieldManifest[] | undefined, live: LiveState): Change[] {
+  if (!desired) {
+    return [];
+  }
 
   const liveByName = new Map((live.issueFields ?? []).map((f) => [f.name, f]));
   const declared = new Set(desired.map((f) => f.name));
@@ -39,7 +35,7 @@ export function planIssueFields(
       throw new Error(
         `Issue field "${field.name}" is a ${current.dataType} field on GitHub, ` +
           `and the definition declares ${field.dataType}. GitHub cannot change ` +
-          'a field\'s type in place. To replace it, remove the field from the ' +
+          "a field's type in place. To replace it, remove the field from the " +
           'definition, apply with --allow-delete=issue-fields (which clears its ' +
           'value from every issue), then declare it again.',
       );
@@ -51,7 +47,9 @@ export function planIssueFields(
   }
 
   for (const current of liveByName.values()) {
-    if (declared.has(current.name)) continue;
+    if (declared.has(current.name)) {
+      continue;
+    }
     changes.push({ kind: 'delete-issue-field', live: current });
   }
 
@@ -82,7 +80,5 @@ function diff(desired: IssueFieldManifest, live: LiveIssueField): FieldChange[] 
 /** An option as one comparable string: name, color, then description if any. */
 function describeOption(option: IssueFieldOptionManifest): string {
   const color = option.color ?? 'gray';
-  return option.description
-    ? `${option.name} [${color}] ${option.description}`
-    : `${option.name} [${color}]`;
+  return option.description ? `${option.name} [${color}] ${option.description}` : `${option.name} [${color}]`;
 }

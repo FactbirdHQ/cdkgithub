@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test';
+
+import { apply } from '../src/reconcile/applier.ts';
 import type { LiveState } from '../src/reconcile/live.ts';
 import { planRepositories } from '../src/reconcile/plan-repositories.ts';
-import { apply } from '../src/reconcile/applier.ts';
 import { FakeClient } from './fake-client.ts';
 
 const live: LiveState = {
@@ -18,9 +19,7 @@ describe('planning repositories', () => {
   });
 
   test('one GitHub already has is adopted, not changed', () => {
-    expect(
-      planRepositories([{ name: 'netcore', description: 'different' }], live),
-    ).toEqual([]);
+    expect(planRepositories([{ name: 'netcore', description: 'different' }], live)).toEqual([]);
   });
 
   test('matching ignores case, because GitHub does', () => {
@@ -52,30 +51,14 @@ describe('visibility', () => {
 
   test('unset resolves to internal under an enterprise account', async () => {
     const client = new FakeClient({ internalRepositoriesAllowed: true });
-    await apply(
-      client,
-      'acme',
-      [{ kind: 'create-repository', repository: { name: 'brand-new' } }],
-      { teams: [] },
-      {},
-    );
-    expect(client.callsTo('createRepository')).toEqual([
-      { name: 'brand-new', visibility: 'internal' },
-    ]);
+    await apply(client, 'acme', [{ kind: 'create-repository', repository: { name: 'brand-new' } }], { teams: [] }, {});
+    expect(client.callsTo('createRepository')).toEqual([{ name: 'brand-new', visibility: 'internal' }]);
   });
 
   test('unset resolves to private without one', async () => {
     const client = new FakeClient({ internalRepositoriesAllowed: false });
-    await apply(
-      client,
-      'acme',
-      [{ kind: 'create-repository', repository: { name: 'brand-new' } }],
-      { teams: [] },
-      {},
-    );
-    expect(client.callsTo('createRepository')).toEqual([
-      { name: 'brand-new', visibility: 'private' },
-    ]);
+    await apply(client, 'acme', [{ kind: 'create-repository', repository: { name: 'brand-new' } }], { teams: [] }, {});
+    expect(client.callsTo('createRepository')).toEqual([{ name: 'brand-new', visibility: 'private' }]);
   });
 
   test('an explicit visibility is honoured, enterprise or not', async () => {
@@ -92,8 +75,6 @@ describe('visibility', () => {
       { teams: [] },
       {},
     );
-    expect(client.callsTo('createRepository')).toEqual([
-      { name: 'the-blog', visibility: 'public' },
-    ]);
+    expect(client.callsTo('createRepository')).toEqual([{ name: 'the-blog', visibility: 'public' }]);
   });
 });

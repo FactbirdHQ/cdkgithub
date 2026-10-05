@@ -92,9 +92,7 @@ export function accessByPerson(tree: OrgTree): Map<string, PersonAccess> {
     };
     entry.teams.push(team.slug);
 
-    for (const [repository, permission] of Object.entries(
-      team.effectiveRepositories,
-    )) {
+    for (const [repository, permission] of Object.entries(team.effectiveRepositories)) {
       const source = declaringTeam(team, repository, tree);
       const held = entry.reach.get(repository);
       if (!held) {
@@ -105,11 +103,7 @@ export function accessByPerson(tree: OrgTree): Map<string, PersonAccess> {
         });
         continue;
       }
-      const strongest = strongerPermission(
-        held.permission,
-        permission,
-        tree.ranks,
-      );
+      const strongest = strongerPermission(held.permission, permission, tree.ranks);
       entry.reach.set(repository, {
         repository,
         permission: strongest,
@@ -120,11 +114,19 @@ export function accessByPerson(tree: OrgTree): Map<string, PersonAccess> {
   };
 
   const walk = (team: TeamNode) => {
-    for (const login of team.maintainers) record(login, team);
-    for (const login of team.members) record(login, team);
-    for (const child of team.children) walk(child);
+    for (const login of team.maintainers) {
+      record(login, team);
+    }
+    for (const login of team.members) {
+      record(login, team);
+    }
+    for (const child of team.children) {
+      walk(child);
+    }
   };
-  for (const root of tree.roots) walk(root);
+  for (const root of tree.roots) {
+    walk(root);
+  }
 
   // Organization roles, folded in last.
   //
@@ -135,7 +137,9 @@ export function accessByPerson(tree: OrgTree): Map<string, PersonAccess> {
   // team-only report leaves out.
   const estate = (tree.repositories ?? []).map((r) => r.name);
   for (const role of tree.orgRoles ?? []) {
-    if (!role.baseRole || estate.length === 0) continue;
+    if (!role.baseRole || estate.length === 0) {
+      continue;
+    }
     const permission = comparableRoleName(role.baseRole) as RepoPermission;
     const holders = holdersOf(role, (slug) => membersBelow(slug, tree));
     for (const login of holders) {
@@ -149,18 +153,15 @@ export function accessByPerson(tree: OrgTree): Map<string, PersonAccess> {
         // role keeps the credit, and so does the stronger of two roles. Every
         // holder is folded in this way, one role at a time, which is why the
         // tag a previous round set has to survive a round it does not win.
-        const heldWins =
-          held !== undefined &&
-          rankOf(held.permission, tree.ranks) >= rankOf(permission, tree.ranks);
-        if (heldWins) continue;
+        const heldWins = held !== undefined && rankOf(held.permission, tree.ranks) >= rankOf(permission, tree.ranks);
+        if (heldWins) {
+          continue;
+        }
 
         entry.reach.set(repository, {
           repository,
           permission,
-          through: [
-            ...(held?.through ?? []),
-            `${role.name} (organization role)`,
-          ],
+          through: [...(held?.through ?? []), `${role.name} (organization role)`],
           blanket: role.name,
         });
       }
@@ -176,9 +177,7 @@ export function accessByPerson(tree: OrgTree): Map<string, PersonAccess> {
       reach: new Map(),
     };
     const held = entry.reach.get(grant.repository);
-    const heldWins =
-      held !== undefined &&
-      rankOf(held.permission, tree.ranks) >= rankOf(grant.permission, tree.ranks);
+    const heldWins = held !== undefined && rankOf(held.permission, tree.ranks) >= rankOf(grant.permission, tree.ranks);
     if (!heldWins) {
       entry.reach.set(grant.repository, {
         repository: grant.repository,
@@ -222,11 +221,7 @@ export function accessByPerson(tree: OrgTree): Map<string, PersonAccess> {
  * strongest declaration, preferring the shallowest on a tie: that is where the
  * grant originates, and a child repeating it changes nothing.
  */
-function declaringTeam(
-  team: TeamNode,
-  repository: string,
-  tree: OrgTree,
-): string {
+function declaringTeam(team: TeamNode, repository: string, tree: OrgTree): string {
   let source = team.slug;
   let best = -1;
   let node: TeamNode | undefined = team;
@@ -253,28 +248,20 @@ function orderByStrength(slugs: string[], tree: OrgTree): string[] {
   return [...new Set(slugs)].sort((a, b) => {
     const rank = (slug: string) => {
       const node = tree.bySlug.get(slug);
-      if (!node) return 0;
-      return Math.max(
-        0,
-        ...Object.values(node.effectiveRepositories).map((p) =>
-          rankOf(p, tree.ranks),
-        ),
-      );
+      if (!node) {
+        return 0;
+      }
+      return Math.max(0, ...Object.values(node.effectiveRepositories).map((p) => rankOf(p, tree.ranks)));
     };
     return rank(b) - rank(a) || a.localeCompare(b);
   });
 }
 
 /** Compare the two trees person by person. */
-export function diffAccessByPerson(
-  live: OrgTree,
-  desired: OrgTree,
-): PersonDiff[] {
+export function diffAccessByPerson(live: OrgTree, desired: OrgTree): PersonDiff[] {
   const before = accessByPerson(live);
   const after = accessByPerson(desired);
-  const logins = [...new Set([...before.keys(), ...after.keys()])].sort(
-    (a, b) => a.localeCompare(b),
-  );
+  const logins = [...new Set([...before.keys(), ...after.keys()])].sort((a, b) => a.localeCompare(b));
 
   const empty = (login: string): PersonAccess => ({
     login,
@@ -292,13 +279,16 @@ export function diffAccessByPerson(
 
     for (const [repository, to] of now.repositories) {
       const from = was.repositories.get(repository);
-      if (!from) gained.push({ repository, to });
-      else if (from.permission !== to.permission) {
+      if (!from) {
+        gained.push({ repository, to });
+      } else if (from.permission !== to.permission) {
         changed.push({ repository, from, to });
       }
     }
     for (const [repository, from] of was.repositories) {
-      if (!now.repositories.has(repository)) lost.push({ repository, from });
+      if (!now.repositories.has(repository)) {
+        lost.push({ repository, from });
+      }
     }
 
     const wasTeams = new Set(was.teams);
@@ -313,8 +303,7 @@ export function diffAccessByPerson(
       changed,
       teamsJoined: now.teams.filter((t) => !wasTeams.has(t)),
       teamsLeft: was.teams.filter((t) => !nowTeams.has(t)),
-      unchanged:
-        gained.length === 0 && lost.length === 0 && changed.length === 0,
+      unchanged: gained.length === 0 && lost.length === 0 && changed.length === 0,
     };
   });
 }
@@ -328,14 +317,20 @@ export function diffAccessByPerson(
  */
 function membersBelow(slug: string, tree: OrgTree): string[] {
   const root = tree.bySlug.get(slug);
-  if (!root) return [];
+  if (!root) {
+    return [];
+  }
   const out: string[] = [];
   const seen = new Set<string>();
   const walk = (node: TeamNode) => {
-    if (seen.has(node.slug)) return;
+    if (seen.has(node.slug)) {
+      return;
+    }
     seen.add(node.slug);
     out.push(...node.maintainers, ...node.members);
-    for (const child of node.children) walk(child);
+    for (const child of node.children) {
+      walk(child);
+    }
   };
   walk(root);
   return out;

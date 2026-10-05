@@ -2,7 +2,9 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
 import type { Octokit } from '@octokit/rest';
+
 import { OctokitGitHubClient } from '../src/github/client.ts';
 import { EtagCache } from '../src/github/etag-cache.ts';
 
@@ -26,7 +28,9 @@ function serveTeams(pages: Array<Array<{ slug: string }>>) {
       page < pages.length
         ? `<https://api.github.com/orgs/acme/teams?per_page=100&page=${page + 1}>; rel="next"`
         : undefined;
-    if (asked === etag) return new Response(null, { status: 304, headers: { etag, ...rate } });
+    if (asked === etag) {
+      return new Response(null, { status: 304, headers: { etag, ...rate } });
+    }
     return new Response(
       JSON.stringify(
         pages[page - 1]!.map((t, i) => ({
@@ -72,7 +76,9 @@ describe('the ETag cache', () => {
           headers: { 'content-type': 'application/json', ...rate },
         });
       }
-      if (init?.method === 'PATCH') return new Response(null, { status: 422, headers: rate });
+      if (init?.method === 'PATCH') {
+        return new Response(null, { status: 422, headers: rate });
+      }
       return realServe(input, init);
     }) as typeof fetch;
     const cache = new EtagCache();
@@ -136,9 +142,7 @@ describe('a wrapped list answered from the cache', () => {
       const response = new Response(
         JSON.stringify({
           total_count: 1,
-          installations: [
-            { id: 7, app_id: 150926, app_slug: 'ci-token-generator', repository_selection: 'all' },
-          ],
+          installations: [{ id: 7, app_id: 150926, app_slug: 'ci-token-generator', repository_selection: 'all' }],
         }),
         { status: 200, headers: { 'content-type': 'application/json', etag, ...rate } },
       );
@@ -153,9 +157,7 @@ describe('a wrapped list answered from the cache', () => {
     const warmClient = new OctokitGitHubClient('token', undefined, undefined, cache);
     const warm = await warmClient.listAppInstallations('acme');
 
-    expect(cold).toEqual([
-      { id: 7, appId: 150926, slug: 'ci-token-generator', repositorySelection: 'all' },
-    ]);
+    expect(cold).toEqual([{ id: 7, appId: 150926, slug: 'ci-token-generator', repositorySelection: 'all' }]);
     expect(warm).toEqual(cold);
     expect(warmClient.meter.snapshot().requests.cached).toBe(1);
   });

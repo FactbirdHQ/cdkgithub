@@ -1,4 +1,5 @@
 import { Construct } from 'constructs';
+
 import type { CustomPropertyValueType } from '../synth/governance.ts';
 
 export interface CustomPropertyProps {

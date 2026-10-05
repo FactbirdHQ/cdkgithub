@@ -31,10 +31,7 @@ export interface GovernanceContext {
  * rulesets that target them, configurations before they are defaulted or
  * attached.
  */
-export async function applyGovernanceChange(
-  change: GovernanceChange,
-  ctx: GovernanceContext,
-): Promise<void> {
+export async function applyGovernanceChange(change: GovernanceChange, ctx: GovernanceContext): Promise<void> {
   const { client, org } = ctx;
 
   switch (change.kind) {
@@ -46,8 +43,7 @@ export async function applyGovernanceChange(
     case 'actions-policy': {
       const policy = change.policy;
       const changed = new Set(change.fields.map((f) => f.field));
-      const changedAny = (...names: string[]) =>
-        names.some((n) => changed.has(n));
+      const changedAny = (...names: string[]) => names.some((n) => changed.has(n));
       ctx.log(`Updating the Actions policy (${fieldNames(change.fields)})`);
 
       // The policy spans three endpoints, so each one is written only when one
@@ -61,19 +57,14 @@ export async function applyGovernanceChange(
       }
       // The allowlist has to be written after `allowed_actions: selected`, or
       // GitHub rejects it as not applicable.
-      if (
-        policy.allowedActionsConfig &&
-        [...changed].some((f) => f.startsWith('allowedActionsConfig'))
-      ) {
+      if (policy.allowedActionsConfig && [...changed].some((f) => f.startsWith('allowedActionsConfig'))) {
         await client.setAllowedActions(org, policy.allowedActionsConfig);
       }
       if (policy.selectedRepositories && changed.has('selectedRepositories')) {
         const ids = await ctx.resolveRepositoryIds(policy.selectedRepositories);
         await client.setActionsSelectedRepositories(org, ids);
       }
-      if (
-        changedAny('defaultWorkflowPermissions', 'canApprovePullRequestReviews')
-      ) {
+      if (changedAny('defaultWorkflowPermissions', 'canApprovePullRequestReviews')) {
         await client.setDefaultWorkflowPermissions(org, {
           defaultWorkflowPermissions: policy.defaultWorkflowPermissions,
           canApprovePullRequestReviews: policy.canApprovePullRequestReviews,
@@ -86,14 +77,9 @@ export async function applyGovernanceChange(
       // GitHub does not make ruleset names unique, so a create retried after a
       // lost response, or re-run after a partial apply, would enforce twice.
       // An existing ruleset of this name is adopted and updated instead.
-      const existing = await client.findRulesetIdByName(
-        org,
-        change.ruleset.name,
-      );
+      const existing = await client.findRulesetIdByName(org, change.ruleset.name);
       if (existing !== undefined) {
-        ctx.log(
-          `Ruleset "${change.ruleset.name}" already exists (id ${existing}), updating it`,
-        );
+        ctx.log(`Ruleset "${change.ruleset.name}" already exists (id ${existing}), updating it`);
         await client.updateRuleset(org, existing, change.ruleset);
         return;
       }
@@ -103,9 +89,7 @@ export async function applyGovernanceChange(
     }
 
     case 'update-ruleset':
-      ctx.log(
-        `Updating ruleset "${change.ruleset.name}" (${fieldNames(change.fields)})`,
-      );
+      ctx.log(`Updating ruleset "${change.ruleset.name}" (${fieldNames(change.fields)})`);
       await client.updateRuleset(org, change.id, change.ruleset);
       return;
 
@@ -118,55 +102,27 @@ export async function applyGovernanceChange(
       // The same adoption as the org-level create: ruleset names are not
       // unique, so a create retried after a lost response must update rather
       // than enforce twice.
-      const existing = await client.findRepositoryRulesetIdByName(
-        org,
-        change.repository,
-        change.ruleset.name,
-      );
+      const existing = await client.findRepositoryRulesetIdByName(org, change.repository, change.ruleset.name);
       if (existing !== undefined) {
         ctx.log(
           `Ruleset "${change.ruleset.name}" already exists on ${change.repository} (id ${existing}), updating it`,
         );
-        await client.updateRepositoryRuleset(
-          org,
-          change.repository,
-          existing,
-          change.ruleset,
-        );
+        await client.updateRepositoryRuleset(org, change.repository, existing, change.ruleset);
         return;
       }
-      ctx.log(
-        `Creating ruleset "${change.ruleset.name}" on ${change.repository}`,
-      );
-      await client.createRepositoryRuleset(
-        org,
-        change.repository,
-        change.ruleset,
-      );
+      ctx.log(`Creating ruleset "${change.ruleset.name}" on ${change.repository}`);
+      await client.createRepositoryRuleset(org, change.repository, change.ruleset);
       return;
     }
 
     case 'update-repo-ruleset':
-      ctx.log(
-        `Updating ruleset "${change.ruleset.name}" on ${change.repository} (${fieldNames(change.fields)})`,
-      );
-      await client.updateRepositoryRuleset(
-        org,
-        change.repository,
-        change.id,
-        change.ruleset,
-      );
+      ctx.log(`Updating ruleset "${change.ruleset.name}" on ${change.repository} (${fieldNames(change.fields)})`);
+      await client.updateRepositoryRuleset(org, change.repository, change.id, change.ruleset);
       return;
 
     case 'delete-repo-ruleset':
-      ctx.log(
-        `Deleting ruleset "${change.live.name}" from ${change.repository}`,
-      );
-      await client.deleteRepositoryRuleset(
-        org,
-        change.repository,
-        change.live.id,
-      );
+      ctx.log(`Deleting ruleset "${change.live.name}" from ${change.repository}`);
+      await client.deleteRepositoryRuleset(org, change.repository, change.live.id);
       return;
 
     case 'create-runner-group': {
@@ -179,16 +135,11 @@ export async function applyGovernanceChange(
     }
 
     case 'update-runner-group': {
-      ctx.log(
-        `Updating runner group "${change.group.name}" (${fieldNames(change.fields)})`,
-      );
+      ctx.log(`Updating runner group "${change.group.name}" (${fieldNames(change.fields)})`);
       await client.updateRunnerGroup(org, change.id, change.group);
       // The repository list has its own endpoint, so it is written only when
       // it is what differs.
-      if (
-        change.group.selectedRepositories &&
-        change.fields.some((f) => f.field === 'selectedRepositories')
-      ) {
+      if (change.group.selectedRepositories && change.fields.some((f) => f.field === 'selectedRepositories')) {
         await client.setRunnerGroupRepositories(
           org,
           change.id,
@@ -229,27 +180,13 @@ export async function applyGovernanceChange(
         return;
       }
       if (variable.repository) {
-        ctx.log(
-          `${creating ? 'Creating' : 'Updating'} variable ${variable.name} on ${variable.repository}`,
-        );
+        ctx.log(`${creating ? 'Creating' : 'Updating'} variable ${variable.name} on ${variable.repository}`);
         await (creating
-          ? client.createRepositoryVariable(
-              org,
-              variable.repository,
-              variable.name,
-              variable.value,
-            )
-          : client.updateRepositoryVariable(
-              org,
-              variable.repository,
-              variable.name,
-              variable.value,
-            ));
+          ? client.createRepositoryVariable(org, variable.repository, variable.name, variable.value)
+          : client.updateRepositoryVariable(org, variable.repository, variable.name, variable.value));
         return;
       }
-      ctx.log(
-        `${creating ? 'Creating' : 'Updating'} organization variable ${variable.name}`,
-      );
+      ctx.log(`${creating ? 'Creating' : 'Updating'} organization variable ${variable.name}`);
       const visibility = requireVisibility(variable.visibility, variable.name);
       const ids = variable.selectedRepositories
         ? await ctx.resolveRepositoryIds(variable.selectedRepositories)
@@ -262,15 +199,8 @@ export async function applyGovernanceChange(
 
     case 'delete-variable':
       if (change.repository && change.environment) {
-        ctx.log(
-          `Deleting variable ${change.name} from ${change.repository} (${change.environment})`,
-        );
-        await client.deleteEnvironmentVariable(
-          org,
-          change.repository,
-          change.environment,
-          change.name,
-        );
+        ctx.log(`Deleting variable ${change.name} from ${change.repository} (${change.environment})`);
+        await client.deleteEnvironmentVariable(org, change.repository, change.environment, change.name);
         return;
       }
       ctx.log(
@@ -295,26 +225,13 @@ export async function applyGovernanceChange(
         );
       }
       if (secret.repository && secret.environment) {
-        ctx.log(
-          `Writing secret ${secret.name} on ${secret.repository} (${secret.environment})`,
-        );
-        await client.putEnvironmentSecret(
-          org,
-          secret.repository,
-          secret.environment,
-          secret.name,
-          value,
-        );
+        ctx.log(`Writing secret ${secret.name} on ${secret.repository} (${secret.environment})`);
+        await client.putEnvironmentSecret(org, secret.repository, secret.environment, secret.name, value);
         return;
       }
       if (secret.repository) {
         ctx.log(`Writing secret ${secret.name} on ${secret.repository}`);
-        await client.putRepositorySecret(
-          org,
-          secret.repository,
-          secret.name,
-          value,
-        );
+        await client.putRepositorySecret(org, secret.repository, secret.name, value);
         return;
       }
       ctx.log(`Writing organization secret ${secret.name}`);
@@ -323,24 +240,15 @@ export async function applyGovernanceChange(
         secret.name,
         value,
         requireVisibility(secret.visibility, secret.name),
-        secret.selectedRepositories
-          ? await ctx.resolveRepositoryIds(secret.selectedRepositories)
-          : undefined,
+        secret.selectedRepositories ? await ctx.resolveRepositoryIds(secret.selectedRepositories) : undefined,
       );
       return;
     }
 
     case 'delete-secret':
       if (change.repository && change.environment) {
-        ctx.log(
-          `Deleting secret ${change.name} from ${change.repository} (${change.environment})`,
-        );
-        await client.deleteEnvironmentSecret(
-          org,
-          change.repository,
-          change.environment,
-          change.name,
-        );
+        ctx.log(`Deleting secret ${change.name} from ${change.repository} (${change.environment})`);
+        await client.deleteEnvironmentSecret(org, change.repository, change.environment, change.name);
         return;
       }
       ctx.log(
@@ -356,9 +264,7 @@ export async function applyGovernanceChange(
     case 'set-collaborator': {
       const { collaborator, current } = change;
       if (current?.invitationId !== undefined) {
-        ctx.log(
-          `Updating the invitation of ${collaborator.login} to ${collaborator.repository}`,
-        );
+        ctx.log(`Updating the invitation of ${collaborator.login} to ${collaborator.repository}`);
         await client.updateRepositoryInvitation(
           org,
           collaborator.repository,
@@ -370,12 +276,7 @@ export async function applyGovernanceChange(
       ctx.log(
         `${current ? 'Updating' : 'Adding'} ${collaborator.login} on ${collaborator.repository} as ${collaborator.permission}`,
       );
-      await client.putRepositoryCollaborator(
-        org,
-        collaborator.repository,
-        collaborator.login,
-        collaborator.permission,
-      );
+      await client.putRepositoryCollaborator(org, collaborator.repository, collaborator.login, collaborator.permission);
       return;
     }
 
@@ -393,17 +294,13 @@ export async function applyGovernanceChange(
 
     case 'put-environment': {
       const { environment, current } = change;
-      ctx.log(
-        `${current ? 'Updating' : 'Creating'} environment ${environment.name} on ${environment.repository}`,
-      );
+      ctx.log(`${current ? 'Updating' : 'Creating'} environment ${environment.name} on ${environment.repository}`);
       // The write replaces the protection rules, so every field the
       // declaration leaves out is sent as it stands on GitHub.
       const reviewers = environment.reviewers ?? current?.reviewers;
       await client.putEnvironment(org, environment.repository, environment.name, {
         deploymentBranchPolicy:
-          policyMode(environment.deploymentBranchPolicy) ??
-          current?.deploymentBranchPolicy ??
-          'all',
+          policyMode(environment.deploymentBranchPolicy) ?? current?.deploymentBranchPolicy ?? 'all',
         reviewers: [
           ...(await Promise.all(
             (reviewers?.teams ?? []).map(async (slug) => ({
@@ -418,8 +315,7 @@ export async function applyGovernanceChange(
             })),
           )),
         ],
-        preventSelfReview:
-          environment.preventSelfReview ?? current?.preventSelfReview ?? false,
+        preventSelfReview: environment.preventSelfReview ?? current?.preventSelfReview ?? false,
         waitTimer: environment.waitTimer ?? current?.waitTimer ?? 0,
       });
       for (const policy of change.addPolicies) {
@@ -438,12 +334,7 @@ export async function applyGovernanceChange(
       ctx.log(
         `Removing ${change.policy.type} ${change.policy.name} from environment ${change.environment} on ${change.repository}`,
       );
-      await client.deleteEnvironmentBranchPolicy(
-        org,
-        change.repository,
-        change.environment,
-        change.policy.id,
-      );
+      await client.deleteEnvironmentBranchPolicy(org, change.repository, change.environment, change.policy.id);
       return;
 
     case 'create-security-config': {
@@ -456,9 +347,7 @@ export async function applyGovernanceChange(
     }
 
     case 'update-security-config':
-      ctx.log(
-        `Updating code security configuration "${change.config.name}" (${fieldNames(change.fields)})`,
-      );
+      ctx.log(`Updating code security configuration "${change.config.name}" (${fieldNames(change.fields)})`);
       await client.updateSecurityConfiguration(org, change.id, change.config);
       return;
 
@@ -468,32 +357,20 @@ export async function applyGovernanceChange(
       return;
 
     case 'default-security-config': {
-      ctx.log(
-        `Making "${change.configName}" the default for ${change.scope} new repositories`,
-      );
+      ctx.log(`Making "${change.configName}" the default for ${change.scope} new repositories`);
       const configId = await ctx.resolveConfigurationId(change.configName);
-      await client.setSecurityConfigurationAsDefault(
-        org,
-        configId,
-        change.scope,
-      );
+      await client.setSecurityConfigurationAsDefault(org, configId, change.scope);
       return;
     }
 
     case 'attach-security-config': {
-      ctx.log(
-        `Attaching "${change.configName}" to ${change.scope} repositories`,
-      );
+      ctx.log(`Attaching "${change.configName}" to ${change.scope} repositories`);
       const configId = await ctx.resolveConfigurationId(change.configName);
-      const repositoryIds = change.repositories
-        ? await ctx.resolveRepositoryIds(change.repositories)
-        : undefined;
+      const repositoryIds = change.repositories ? await ctx.resolveRepositoryIds(change.repositories) : undefined;
       await client.attachSecurityConfiguration(
         org,
         configId,
-        change.scope as Parameters<
-          GitHubClient['attachSecurityConfiguration']
-        >[2],
+        change.scope as Parameters<GitHubClient['attachSecurityConfiguration']>[2],
         repositoryIds,
       );
       return;
@@ -505,9 +382,7 @@ export async function applyGovernanceChange(
       return;
 
     case 'update-property':
-      ctx.log(
-        `Updating custom property "${change.property.name}" (${fieldNames(change.fields)})`,
-      );
+      ctx.log(`Updating custom property "${change.property.name}" (${fieldNames(change.fields)})`);
       await client.putCustomProperty(org, change.property);
       return;
 
@@ -522,9 +397,7 @@ export async function applyGovernanceChange(
       return;
 
     case 'update-issue-field':
-      ctx.log(
-        `Updating issue field "${change.field.name}" (${fieldNames(change.fields)})`,
-      );
+      ctx.log(`Updating issue field "${change.field.name}" (${fieldNames(change.fields)})`);
       await client.updateIssueField(org, change.live, change.field);
       return;
 
@@ -538,10 +411,7 @@ export async function applyGovernanceChange(
       // is `internal` under an enterprise account and `private` otherwise.
       // Asked outright, it is honoured; `public` is never inferred.
       const visibility =
-        change.repository.visibility ??
-        ((await client.supportsInternalRepositories(org))
-          ? 'internal'
-          : 'private');
+        change.repository.visibility ?? ((await client.supportsInternalRepositories(org)) ? 'internal' : 'private');
       ctx.log(`Creating ${visibility} repository "${change.repository.name}"`);
       const repository = await client.createRepository(org, {
         ...change.repository,
@@ -569,36 +439,22 @@ export async function applyGovernanceChange(
       return;
 
     case 'assign-org-role':
-      ctx.log(
-        `Granting org role "${change.role}" to ${change.subject} ${change.name}`,
-      );
+      ctx.log(`Granting org role "${change.role}" to ${change.subject} ${change.name}`);
       await (change.subject === 'team'
-        ? client.assignRoleToTeam(
-            org,
-            change.roleId,
-            ctx.resolveTeamSlug(change.name),
-          )
+        ? client.assignRoleToTeam(org, change.roleId, ctx.resolveTeamSlug(change.name))
         : client.assignRoleToUser(org, change.roleId, change.name));
       return;
 
     case 'revoke-org-role':
-      ctx.log(
-        `Revoking org role "${change.role}" from ${change.subject} ${change.name}`,
-      );
+      ctx.log(`Revoking org role "${change.role}" from ${change.subject} ${change.name}`);
       await (change.subject === 'team'
-        ? client.removeRoleFromTeam(
-            org,
-            change.roleId,
-            ctx.resolveTeamSlug(change.name),
-          )
+        ? client.removeRoleFromTeam(org, change.roleId, ctx.resolveTeamSlug(change.name))
         : client.removeRoleFromUser(org, change.roleId, change.name));
       return;
 
     case 'branch-protection': {
       const { protection } = change;
-      ctx.log(
-        `Protecting ${protection.repository}#${protection.branch} (${fieldNames(change.fields)})`,
-      );
+      ctx.log(`Protecting ${protection.repository}#${protection.branch} (${fieldNames(change.fields)})`);
       await client.putBranchProtection(org, protection.repository, protection);
       // Signed commits have their own endpoint, so they are written after the
       // protection payload that everything else travels in.
@@ -614,14 +470,8 @@ export async function applyGovernanceChange(
     }
 
     case 'remove-branch-protection':
-      ctx.log(
-        `Removing legacy protection from ${change.repository}#${change.branch}`,
-      );
-      await client.deleteBranchProtection(
-        org,
-        change.repository,
-        change.branch,
-      );
+      ctx.log(`Removing legacy protection from ${change.repository}#${change.branch}`);
+      await client.deleteBranchProtection(org, change.repository, change.branch);
       return;
 
     case 'property-values': {
@@ -641,15 +491,16 @@ export async function applyGovernanceChange(
 }
 
 /** Group repositories by the value they should get, so each value is one call. */
-function groupByValue(
-  values: Record<string, string | string[] | null>,
-): Array<[string, string[]]> {
+function groupByValue(values: Record<string, string | string[] | null>): Array<[string, string[]]> {
   const groups = new Map<string, string[]>();
   for (const [repository, value] of Object.entries(values)) {
     const key = JSON.stringify(value);
     const group = groups.get(key);
-    if (group) group.push(repository);
-    else groups.set(key, [repository]);
+    if (group) {
+      group.push(repository);
+    } else {
+      groups.set(key, [repository]);
+    }
   }
   return [...groups];
 }
@@ -663,10 +514,7 @@ function fieldNames(fields: ReadonlyArray<{ field: string }>): string {
  * guarantees it, so this only fires on a hand-written manifest, where writing
  * with a guessed visibility would decide who reads the value.
  */
-function requireVisibility<T>(
-  visibility: T | undefined,
-  name: string,
-): T {
+function requireVisibility<T>(visibility: T | undefined, name: string): T {
   if (visibility === undefined) {
     throw new Error(
       `Organization secret or variable "${name}" declares no visibility. ` +

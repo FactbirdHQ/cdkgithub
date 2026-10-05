@@ -93,10 +93,7 @@ export interface ActionsSecretManifest {
  * Which refs may deploy to an environment: any branch, only protected
  * branches, or the branches and tags matching the listed name patterns.
  */
-export type DeploymentBranchPolicy =
-  | 'all'
-  | 'protected'
-  | { readonly branches?: string[]; readonly tags?: string[] };
+export type DeploymentBranchPolicy = 'all' | 'protected' | { readonly branches?: string[]; readonly tags?: string[] };
 
 /** Who must approve a deployment before it runs. At most six in total. */
 export interface EnvironmentReviewers {

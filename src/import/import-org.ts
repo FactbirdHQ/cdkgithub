@@ -22,16 +22,13 @@
 import type {
   GitHubClient,
   LiveAppInstallation,
+  LiveEnvironment,
   LiveTeam,
   LiveTeamMember,
   LiveTeamRepository,
-  LiveEnvironment,
 } from '../github/client.ts';
 import { comparableRoleName } from '../github/client.ts';
-import type {
-  ResolvedBypassActor,
-  RulesetBypassActor,
-} from '../synth/manifest.ts';
+import type { ResolvedBypassActor, RulesetBypassActor } from '../synth/manifest.ts';
 
 export interface ImportOptions {
   /**
@@ -48,25 +45,17 @@ export async function importOrganization(
   options: ImportOptions = {},
 ): Promise<string> {
   const skipped: string[] = [];
-  const optional = async <T>(
-    surface: string,
-    read: () => Promise<T>,
-  ): Promise<T | undefined> => {
+  const optional = async <T>(surface: string, read: () => Promise<T>): Promise<T | undefined> => {
     try {
       return await read();
     } catch (error) {
-      skipped.push(
-        `${surface} (${error instanceof Error ? error.message : String(error)})`,
-      );
+      skipped.push(`${surface} (${error instanceof Error ? error.message : String(error)})`);
       return undefined;
     }
   };
 
   const teams = await client.listTeams(org);
-  const details = new Map<
-    string,
-    { repos: LiveTeamRepository[]; members: LiveTeamMember[] }
-  >();
+  const details = new Map<string, { repos: LiveTeamRepository[]; members: LiveTeamMember[] }>();
   for (const team of teams) {
     details.set(team.slug, {
       repos: await client.listTeamRepositories(org, team.slug),
@@ -92,9 +81,7 @@ export async function importOrganization(
   ] = await Promise.all([
     optional('organization settings', () => client.getOrgSettings(org)),
     optional('Actions policy', () => client.getActionsPolicy(org)),
-    optional('custom repository roles', () =>
-      client.listCustomRepositoryRoles(org),
-    ),
+    optional('custom repository roles', () => client.listCustomRepositoryRoles(org)),
     optional('organization roles', async () => {
       const roles = await client.listOrganizationRoles(org);
       return Promise.all(
@@ -106,16 +93,10 @@ export async function importOrganization(
     }),
     optional('rulesets', () => client.listRulesets(org)),
     optional('app installations', () => client.listAppInstallations(org)),
-    optional('code security configurations', () =>
-      client.listSecurityConfigurations(org),
-    ),
-    optional('code security defaults', () =>
-      client.listDefaultSecurityConfigurations(org),
-    ),
+    optional('code security configurations', () => client.listSecurityConfigurations(org)),
+    optional('code security defaults', () => client.listDefaultSecurityConfigurations(org)),
     optional('custom properties', () => client.listCustomProperties(org)),
-    optional('custom property values', () =>
-      client.listRepositoryProperties(org),
-    ),
+    optional('custom property values', () => client.listRepositoryProperties(org)),
     optional('issue fields', () => client.listIssueFields(org)),
     optional('runner groups', () => client.listRunnerGroups(org)),
     optional('Actions variables', () => client.listOrgVariables(org)),
@@ -133,7 +114,9 @@ export async function importOrganization(
     });
   }
   for (const role of orgRoles ?? []) {
-    if (role.teams.length === 0 && role.users.length === 0) continue;
+    if (role.teams.length === 0 && role.users.length === 0) {
+      continue;
+    }
     emit.construct('OrganizationRole', role.name, {
       teams: role.teams.length > 0 ? role.teams : undefined,
       users: role.users.length > 0 ? role.users : undefined,
@@ -155,17 +138,15 @@ export async function importOrganization(
 
   for (const ruleset of rulesets ?? []) {
     // Enterprise rulesets are inherited, not this organization's to declare.
-    if (ruleset.sourceType === 'Enterprise') continue;
+    if (ruleset.sourceType === 'Enterprise') {
+      continue;
+    }
     emit.construct('Ruleset', ruleset.name, {
       target: ruleset.target,
       enforcement: ruleset.enforcement,
       conditions: ruleset.conditions,
       rules: ruleset.rules,
-      bypassActors: unresolveBypassActors(
-        ruleset.bypassActors,
-        teams,
-        appInstallations ?? [],
-      ),
+      bypassActors: unresolveBypassActors(ruleset.bypassActors, teams, appInstallations ?? []),
     });
   }
 
@@ -176,7 +157,9 @@ export async function importOrganization(
   );
   for (const config of securityConfigurations ?? []) {
     // GitHub's own presets cannot be managed, so they are not declared either.
-    if (config.targetType === 'global') continue;
+    if (config.targetType === 'global') {
+      continue;
+    }
     emit.construct('CodeSecurityConfiguration', config.name, {
       description: config.description ?? '',
       advancedSecurity: config.advancedSecurity,
@@ -188,8 +171,7 @@ export async function importOrganization(
       secretScanning: config.secretScanning,
       secretScanningPushProtection: config.secretScanningPushProtection,
       secretScanningValidityChecks: config.secretScanningValidityChecks,
-      secretScanningNonProviderPatterns:
-        config.secretScanningNonProviderPatterns,
+      secretScanningNonProviderPatterns: config.secretScanningNonProviderPatterns,
       privateVulnerabilityReporting: config.privateVulnerabilityReporting,
       enforcement: config.enforcement,
       defaultForNewRepos: defaultsByName.get(config.name),
@@ -239,10 +221,7 @@ export async function importOrganization(
       selectedRepositories: group.selectedRepositories,
       allowsPublicRepositories: group.allowsPublicRepositories || undefined,
       restrictedToWorkflows: group.restrictedToWorkflows || undefined,
-      selectedWorkflows:
-        group.selectedWorkflows.length > 0
-          ? group.selectedWorkflows
-          : undefined,
+      selectedWorkflows: group.selectedWorkflows.length > 0 ? group.selectedWorkflows : undefined,
     });
   }
 
@@ -265,13 +244,8 @@ export async function importOrganization(
   }
 
   if (options.repositories) {
-    await importRepositories(
-      client,
-      org,
-      options.repositories,
-      emit,
-      skipped,
-      (actors) => unresolveBypassActors(actors, teams, appInstallations ?? []),
+    await importRepositories(client, org, options.repositories, emit, skipped, (actors) =>
+      unresolveBypassActors(actors, teams, appInstallations ?? []),
     );
   }
 
@@ -292,22 +266,13 @@ async function importRepositories(
   scope: true | readonly string[],
   emit: Emitter,
   skipped: string[],
-  unresolve: (
-    actors: ResolvedBypassActor[],
-  ) => RulesetBypassActor[] | undefined,
+  unresolve: (actors: ResolvedBypassActor[]) => RulesetBypassActor[] | undefined,
 ): Promise<void> {
-  const names =
-    scope === true
-      ? ((await client.listRepositories(org)).map((r) => r.name) as string[])
-      : [...scope];
+  const names = scope === true ? ((await client.listRepositories(org)).map((r) => r.name) as string[]) : [...scope];
   names.sort((a, b) => a.localeCompare(b));
 
   const failures = new Map<string, { repositories: string[]; message: string }>();
-  const attempt = async <T>(
-    surface: string,
-    repository: string,
-    read: () => Promise<T>,
-  ): Promise<T | undefined> => {
+  const attempt = async <T>(surface: string, repository: string, read: () => Promise<T>): Promise<T | undefined> => {
     try {
       return await read();
     } catch (error) {
@@ -319,17 +284,12 @@ async function importRepositories(
     }
   };
 
-  const byName = (a: { name: string }, b: { name: string }) =>
-    a.name.localeCompare(b.name);
+  const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
 
   for (const repository of names) {
     const [rulesets, variables, environments, secrets, collaborators] = await Promise.all([
-      attempt('rulesets', repository, () =>
-        client.listRepositoryRulesets(org, repository),
-      ),
-      attempt('variables', repository, () =>
-        client.listRepositoryVariables(org, repository),
-      ),
+      attempt('rulesets', repository, () => client.listRepositoryRulesets(org, repository)),
+      attempt('variables', repository, () => client.listRepositoryVariables(org, repository)),
       attempt('environments', repository, async () => {
         const names = await client.listRepositoryEnvironments(org, repository);
         return Promise.all(
@@ -341,12 +301,8 @@ async function importRepositories(
           })),
         );
       }),
-      attempt('secrets', repository, () =>
-        client.listRepositorySecrets(org, repository),
-      ),
-      attempt('collaborators', repository, () =>
-        client.listRepositoryCollaborators(org, repository),
-      ),
+      attempt('secrets', repository, () => client.listRepositorySecrets(org, repository)),
+      attempt('collaborators', repository, () => client.listRepositoryCollaborators(org, repository)),
     ]);
 
     const children = [
@@ -405,18 +361,18 @@ async function importRepositories(
         })),
       ]),
     ];
-    if (children.length === 0) continue;
-    const anySecret =
-      (secrets ?? []).length > 0 ||
-      (environments ?? []).some((e) => e.secrets.length > 0);
-    if (anySecret) emit.secretNote();
+    if (children.length === 0) {
+      continue;
+    }
+    const anySecret = (secrets ?? []).length > 0 || (environments ?? []).some((e) => e.secrets.length > 0);
+    if (anySecret) {
+      emit.secretNote();
+    }
     emit.repository(repository, children);
   }
 
   for (const [surface, failure] of failures) {
-    skipped.push(
-      `repository ${surface} on ${failure.repositories.join(', ')} (${failure.message})`,
-    );
+    skipped.push(`repository ${surface} on ${failure.repositories.join(', ')} (${failure.message})`);
   }
 }
 
@@ -431,7 +387,9 @@ function unresolveBypassActors(
   teams: LiveTeam[],
   apps: LiveAppInstallation[],
 ): RulesetBypassActor[] | undefined {
-  if (actors.length === 0) return undefined;
+  if (actors.length === 0) {
+    return undefined;
+  }
   const teamById = new Map(teams.map((t) => [t.id, t.slug]));
   const appById = new Map(apps.map((a) => [a.appId, a.slug]));
 
@@ -460,6 +418,10 @@ function unresolveBypassActors(
           app: appById.get(actor.actorId ?? -1) ?? actor.actorId ?? 0,
           bypassMode,
         };
+      default: {
+        const unhandled: never = actor.actorType;
+        throw new Error(`Unhandled bypass actor type ${String(unhandled)}`);
+      }
     }
   });
 }
@@ -468,10 +430,10 @@ function unresolveBypassActors(
  * An environment's settings as `Environment` props, leaving out what matches
  * GitHub's defaults so the import reads like something written by hand.
  */
-function environmentProps(
-  settings: LiveEnvironment | undefined,
-): Record<string, unknown> {
-  if (!settings) return {};
+function environmentProps(settings: LiveEnvironment | undefined): Record<string, unknown> {
+  if (!settings) {
+    return {};
+  }
   const props: Record<string, unknown> = {};
   if (settings.deploymentBranchPolicy === 'protected') {
     props.deploymentBranchPolicy = 'protected';
@@ -491,8 +453,12 @@ function environmentProps(
       ...(users.length > 0 ? { users } : {}),
     };
   }
-  if (settings.preventSelfReview) props.preventSelfReview = true;
-  if (settings.waitTimer > 0) props.waitTimer = settings.waitTimer;
+  if (settings.preventSelfReview) {
+    props.preventSelfReview = true;
+  }
+  if (settings.waitTimer > 0) {
+    props.waitTimer = settings.waitTimer;
+  }
   return props;
 }
 
@@ -539,10 +505,7 @@ class Emitter {
     if (Object.values(settings).some((v) => v !== undefined)) {
       props.settings = settings;
     }
-    this.chunks.push(
-      `const org = new Organization(app, ${lit(this.org)}, ${lit(props)});`,
-      '',
-    );
+    this.chunks.push(`const org = new Organization(app, ${lit(this.org)}, ${lit(props)});`, '');
   }
 
   comment(text: string): void {
@@ -556,7 +519,9 @@ class Emitter {
 
   /** The one warning secrets need, above the first block that declares any. */
   secretNote(): void {
-    if (this.secretNoteShown) return;
+    if (this.secretNoteShown) {
+      return;
+    }
     this.secretNoteShown = true;
     this.comment(
       'Secret values are unreadable, so each secret reads its value from an\n' +
@@ -578,9 +543,7 @@ class Emitter {
     this.chunks.push(`const ${variable} = new Repository(org, ${lit(name)});`);
     for (const child of children) {
       this.used.add(child.type);
-      this.chunks.push(
-        `new ${child.type}(${variable}, ${lit(child.id)}, ${lit(child.props)});`,
-      );
+      this.chunks.push(`new ${child.type}(${variable}, ${lit(child.id)}, ${lit(child.props)});`);
     }
     this.chunks.push('');
   }
@@ -592,42 +555,38 @@ class Emitter {
    */
   teams(
     teams: LiveTeam[],
-    details: ReadonlyMap<
-      string,
-      { repos: LiveTeamRepository[]; members: LiveTeamMember[] }
-    >,
+    details: ReadonlyMap<string, { repos: LiveTeamRepository[]; members: LiveTeamMember[] }>,
   ): void {
-    if (teams.length === 0) return;
+    if (teams.length === 0) {
+      return;
+    }
     this.used.add('Team');
     const names = this.names;
 
     const childrenOf = (slug: string | null) =>
-      teams
-        .filter((t) => t.parentSlug === slug)
-        .sort((a, b) => a.slug.localeCompare(b.slug));
+      teams.filter((t) => t.parentSlug === slug).sort((a, b) => a.slug.localeCompare(b.slug));
 
     const emitSubtree = (team: LiveTeam, scope: string) => {
       const children = childrenOf(team.slug);
       const variable = children.length > 0 ? names.for(team.slug) : undefined;
       const declaration = variable ? `const ${variable} = ` : '';
       this.chunks.push(
-        `${declaration}new Team(${scope}, ${lit(team.slug)}, ${lit(
-          this.teamProps(team, details),
-        )});`,
+        `${declaration}new Team(${scope}, ${lit(team.slug)}, ${lit(this.teamProps(team, details))});`,
         '',
       );
-      for (const child of children) emitSubtree(child, variable!);
+      for (const child of children) {
+        emitSubtree(child, variable!);
+      }
     };
 
-    for (const root of childrenOf(null)) emitSubtree(root, 'org');
+    for (const root of childrenOf(null)) {
+      emitSubtree(root, 'org');
+    }
   }
 
   private teamProps(
     team: LiveTeam,
-    details: ReadonlyMap<
-      string,
-      { repos: LiveTeamRepository[]; members: LiveTeamMember[] }
-    >,
+    details: ReadonlyMap<string, { repos: LiveTeamRepository[]; members: LiveTeamMember[] }>,
   ): Record<string, unknown> {
     // A member held through a team below is declared on that team, not here.
     const own = (details.get(team.slug)?.members ?? []).filter((m) => !m.inherited);
@@ -647,17 +606,13 @@ class Emitter {
     );
 
     return {
-      name: team.name !== team.slug ? team.name : undefined,
+      name: team.name === team.slug ? undefined : team.name,
       description: team.description ?? undefined,
-      privacy: team.privacy !== 'closed' ? team.privacy : undefined,
-      notificationSetting:
-        team.notificationSetting === 'notifications_disabled'
-          ? team.notificationSetting
-          : undefined,
+      privacy: team.privacy === 'closed' ? undefined : team.privacy,
+      notificationSetting: team.notificationSetting === 'notifications_disabled' ? team.notificationSetting : undefined,
       maintainers: maintainers.length > 0 ? maintainers : undefined,
       members: members.length > 0 ? members : undefined,
-      repositories:
-        Object.keys(repositories).length > 0 ? repositories : undefined,
+      repositories: Object.keys(repositories).length > 0 ? repositories : undefined,
     };
   }
 
@@ -701,24 +656,60 @@ class VariableNames {
   private readonly taken = new Set<string>(['app', 'org']);
 
   for(slug: string): string {
-    let base = slug.replace(/[^a-zA-Z0-9]+([a-zA-Z0-9])/g, (_, c: string) =>
-      c.toUpperCase(),
-    );
+    let base = slug.replace(/[^a-zA-Z0-9]+([a-zA-Z0-9])/g, (_, c: string) => c.toUpperCase());
     base = base.replace(/[^a-zA-Z0-9_$]/g, '');
-    if (!/^[a-zA-Z_$]/.test(base) || RESERVED.has(base)) base = `team${base ? base[0]!.toUpperCase() + base.slice(1) : ''}`;
+    if (!/^[a-zA-Z_$]/.test(base) || RESERVED.has(base)) {
+      base = `team${base ? base[0]!.toUpperCase() + base.slice(1) : ''}`;
+    }
     let name = base;
-    for (let i = 2; this.taken.has(name); i++) name = `${base}${i}`;
+    for (let i = 2; this.taken.has(name); i++) {
+      name = `${base}${i}`;
+    }
     this.taken.add(name);
     return name;
   }
 }
 
 const RESERVED = new Set([
-  'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
-  'default', 'delete', 'do', 'else', 'enum', 'export', 'extends', 'false',
-  'finally', 'for', 'function', 'if', 'import', 'in', 'instanceof', 'let',
-  'new', 'null', 'return', 'static', 'super', 'switch', 'this', 'throw',
-  'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield',
+  'break',
+  'case',
+  'catch',
+  'class',
+  'const',
+  'continue',
+  'debugger',
+  'default',
+  'delete',
+  'do',
+  'else',
+  'enum',
+  'export',
+  'extends',
+  'false',
+  'finally',
+  'for',
+  'function',
+  'if',
+  'import',
+  'in',
+  'instanceof',
+  'let',
+  'new',
+  'null',
+  'return',
+  'static',
+  'super',
+  'switch',
+  'this',
+  'throw',
+  'true',
+  'try',
+  'typeof',
+  'var',
+  'void',
+  'while',
+  'with',
+  'yield',
 ]);
 
 /**
@@ -727,34 +718,38 @@ const RESERVED = new Set([
  * across several. What this prints is what the generated file is made of.
  */
 function lit(value: unknown, indent = ''): string {
-  if (value === null) return 'null';
-  if (typeof value === 'string') return JSON.stringify(value);
+  if (value === null) {
+    return 'null';
+  }
+  if (typeof value === 'string') {
+    return JSON.stringify(value);
+  }
   if (typeof value === 'number' || typeof value === 'boolean') {
     return String(value);
   }
 
   if (Array.isArray(value)) {
-    if (value.length === 0) return '[]';
+    if (value.length === 0) {
+      return '[]';
+    }
     const inline = `[${value.map((v) => lit(v, indent)).join(', ')}]`;
-    if (fits(inline, indent)) return inline;
+    if (fits(inline, indent)) {
+      return inline;
+    }
     const inner = `${indent}  `;
-    return `[\n${value
-      .map((v) => `${inner}${lit(v, inner)},`)
-      .join('\n')}\n${indent}]`;
+    return `[\n${value.map((v) => `${inner}${lit(v, inner)},`).join('\n')}\n${indent}]`;
   }
 
-  const entries = Object.entries(value as Record<string, unknown>).filter(
-    ([, v]) => v !== undefined,
-  );
-  if (entries.length === 0) return '{}';
-  const inline = `{ ${entries
-    .map(([k, v]) => `${key(k)}: ${lit(v, indent)}`)
-    .join(', ')} }`;
-  if (fits(inline, indent)) return inline;
+  const entries = Object.entries(value as Record<string, unknown>).filter(([, v]) => v !== undefined);
+  if (entries.length === 0) {
+    return '{}';
+  }
+  const inline = `{ ${entries.map(([k, v]) => `${key(k)}: ${lit(v, indent)}`).join(', ')} }`;
+  if (fits(inline, indent)) {
+    return inline;
+  }
   const inner = `${indent}  `;
-  return `{\n${entries
-    .map(([k, v]) => `${inner}${key(k)}: ${lit(v, inner)},`)
-    .join('\n')}\n${indent}}`;
+  return `{\n${entries.map(([k, v]) => `${inner}${key(k)}: ${lit(v, inner)},`).join('\n')}\n${indent}}`;
 }
 
 function fits(rendered: string, indent: string): boolean {

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+
 import type { LiveTeam } from '../src/github/client.ts';
 import { readLiveState } from '../src/reconcile/live.ts';
 import { plan } from '../src/reconcile/planner.ts';
@@ -110,17 +111,13 @@ describe('plan order', () => {
         },
       ],
       repositories: [{ name: 'fresh' }],
-      branchProtection: [
-        { repository: 'fresh', branch: 'main', enforceAdmins: true },
-      ],
+      branchProtection: [{ repository: 'fresh', branch: 'main', enforceAdmins: true }],
     };
     const changes = plan(definition, {
       teams: [team({ slug: 'web' })],
       teamRepositories: new Map([['web', []]]),
       repositories: [],
-      branchProtection: [
-        { repository: 'fresh', branch: 'main', enabled: false },
-      ],
+      branchProtection: [{ repository: 'fresh', branch: 'main', enabled: false }],
     });
 
     const order = changes.map((c) => c.kind);

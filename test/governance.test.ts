@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+
 import { toCamelCaseKeys, toSnakeCaseKeys } from '../src/github/casing.ts';
 import type { LiveRuleset, LiveTeam } from '../src/github/client.ts';
 import { apply } from '../src/reconcile/applier.ts';
@@ -81,20 +82,14 @@ describe('surfaces are unmanaged until declared', () => {
   });
 
   test('a declared surface prunes what the definition omits', () => {
-    const changes = plan(
-      desired({ rulesets: [] }),
-      live({ rulesets: [liveProtectMain()] }),
-    );
+    const changes = plan(desired({ rulesets: [] }), live({ rulesets: [liveProtectMain()] }));
     expect(changes.map((c) => c.kind)).toEqual(['delete-ruleset']);
   });
 });
 
 describe('rulesets', () => {
   test('reports no change when the live ruleset only adds defaults', () => {
-    const changes = plan(
-      desired({ rulesets: [protectMain] }),
-      live({ rulesets: [liveProtectMain()] }),
-    );
+    const changes = plan(desired({ rulesets: [protectMain] }), live({ rulesets: [liveProtectMain()] }));
     expect(changes).toEqual([]);
   });
 
@@ -116,10 +111,7 @@ describe('rulesets', () => {
     const withExtraRule = liveProtectMain({
       rules: [...liveProtectMain().rules, { type: 'required_signatures' }],
     });
-    const changes = plan(
-      desired({ rulesets: [protectMain] }),
-      live({ rulesets: [withExtraRule] }),
-    );
+    const changes = plan(desired({ rulesets: [protectMain] }), live({ rulesets: [withExtraRule] }));
     expect(changes).toHaveLength(1);
     if (changes[0]!.kind === 'update-ruleset') {
       expect(changes[0]!.fields.map((f) => f.field)).toEqual(['rules']);
@@ -162,9 +154,7 @@ describe('organization settings and the actions policy', () => {
     );
     expect(changes).toHaveLength(1);
     if (changes[0]!.kind === 'org-settings') {
-      expect(changes[0]!.fields).toEqual([
-        { field: 'defaultRepositoryPermission', from: 'write', to: 'read' },
-      ]);
+      expect(changes[0]!.fields).toEqual([{ field: 'defaultRepositoryPermission', from: 'write', to: 'read' }]);
     }
   });
 
@@ -194,9 +184,7 @@ describe('organization settings and the actions policy', () => {
     );
     expect(changes).toHaveLength(1);
     if (changes[0]!.kind === 'actions-policy') {
-      expect(changes[0]!.fields.map((f) => f.field)).toEqual([
-        'allowedActionsConfig.patternsAllowed',
-      ]);
+      expect(changes[0]!.fields.map((f) => f.field)).toEqual(['allowedActionsConfig.patternsAllowed']);
     }
   });
 
@@ -228,9 +216,7 @@ describe('organization settings and the actions policy', () => {
     expect(client.callsTo('setActionsPermissions')).toEqual([
       { enabledRepositories: undefined, allowedActions: 'selected' },
     ]);
-    expect(client.callsTo('setAllowedActions')).toEqual([
-      { patternsAllowed: ['acme/*'] },
-    ]);
+    expect(client.callsTo('setAllowedActions')).toEqual([{ patternsAllowed: ['acme/*'] }]);
     expect(client.callsTo('setDefaultWorkflowPermissions')).toEqual([
       {
         defaultWorkflowPermissions: 'read',
@@ -275,9 +261,7 @@ describe('custom properties', () => {
   test('sets values only on the repositories that differ, one call per value', async () => {
     const client = new FakeClient();
     const state = live({
-      customProperties: [
-        { name: 'tier', valueType: 'single_select', allowedValues: ['a', 'b'] },
-      ],
+      customProperties: [{ name: 'tier', valueType: 'single_select', allowedValues: ['a', 'b'] }],
       repositoryProperties: [
         { repository: 'already', properties: { tier: 'a' } },
         { repository: 'stale', properties: { tier: 'b' } },
@@ -346,9 +330,7 @@ describe('code security configurations', () => {
       scope: 'selected',
       repositoryIds: [5],
     });
-    expect(client.callsTo('setSecurityConfigurationAsDefault')).toEqual([
-      { id: 1000, scope: 'all' },
-    ]);
+    expect(client.callsTo('setSecurityConfigurationAsDefault')).toEqual([{ id: 1000, scope: 'all' }]);
   });
 
   test('resolves the id of each configuration this run creates', async () => {
@@ -409,10 +391,7 @@ describe('deletes stay gated behind --allow-delete', () => {
       rulesets: client.rulesets,
       customProperties: [{ name: 'tier', valueType: 'string' }],
     });
-    const changes = plan(
-      desired({ rulesets: [], customProperties: [] }),
-      state,
-    );
+    const changes = plan(desired({ rulesets: [], customProperties: [] }), state);
 
     const skipped = await apply(client, 'acme', changes, state, {});
     expect(skipped.skipped).toEqual([
@@ -530,12 +509,9 @@ describe('ruleset rule coverage', () => {
       },
     ];
 
-    const payload = toSnakeCaseKeys(everyRule) as Array<
-      Record<string, unknown>
-    >;
+    const payload = toSnakeCaseKeys(everyRule) as Array<Record<string, unknown>>;
 
-    const paramsOf = (type: string) =>
-      payload.find((r) => r.type === type)?.parameters;
+    const paramsOf = (type: string) => payload.find((r) => r.type === type)?.parameters;
 
     // 21 rule types, but the 5 pattern rules share one shape and two of them
     // stand in for the set.
@@ -560,9 +536,7 @@ describe('ruleset rule coverage', () => {
         },
       ],
     });
-    expect(toCamelCaseKeys<RulesetManifest['rules']>(payload)).toEqual(
-      everyRule,
-    );
+    expect(toCamelCaseKeys<RulesetManifest['rules']>(payload)).toEqual(everyRule);
   });
 });
 
@@ -586,9 +560,7 @@ describe('ruleset bypass actors', () => {
     parentSlug: null,
   };
 
-  const withActors = (
-    bypassActors: RulesetManifest['bypassActors'],
-  ): DesiredState =>
+  const withActors = (bypassActors: RulesetManifest['bypassActors']): DesiredState =>
     desired({
       teams: [platform],
       rulesets: [{ ...protectMain, bypassActors }],
@@ -612,7 +584,9 @@ describe('ruleset bypass actors', () => {
 
     expect(changes).toHaveLength(1);
     const change = changes[0]!;
-    if (change.kind !== 'create-ruleset') throw new Error('expected a create');
+    if (change.kind !== 'create-ruleset') {
+      throw new Error('expected a create');
+    }
     expect(change.ruleset.bypassActors).toEqual([
       { actorType: 'OrganizationAdmin', actorId: 1, bypassMode: undefined },
       { actorType: 'Team', actorId: 42, bypassMode: 'pull_request' },
@@ -631,9 +605,7 @@ describe('ruleset bypass actors', () => {
         teams: [livePlatform],
         rulesets: [
           liveProtectMain({
-            bypassActors: [
-              { actorType: 'Team', actorId: 42, bypassMode: 'always' },
-            ],
+            bypassActors: [{ actorType: 'Team', actorId: 42, bypassMode: 'always' }],
           }),
         ],
       }),
@@ -643,10 +615,7 @@ describe('ruleset bypass actors', () => {
 
   test('an unknown team fails while planning, before anything is written', () => {
     expect(() =>
-      plan(
-        withActors([{ actorType: 'Team', team: 'ghosts' }]),
-        live({ teams: [livePlatform], rulesets: [] }),
-      ),
+      plan(withActors([{ actorType: 'Team', team: 'ghosts' }]), live({ teams: [livePlatform], rulesets: [] })),
     ).toThrow(/team "ghosts" bypass it, but the organization has no such team/);
   });
 
@@ -660,15 +629,11 @@ describe('ruleset bypass actors', () => {
   });
 
   test('a numeric id skips the lookup entirely', () => {
-    const changes = plan(
-      withActors([{ actorType: 'Team', team: 99 }]),
-      live({ teams: [livePlatform], rulesets: [] }),
-    );
-    if (changes[0]?.kind !== 'create-ruleset')
+    const changes = plan(withActors([{ actorType: 'Team', team: 99 }]), live({ teams: [livePlatform], rulesets: [] }));
+    if (changes[0]?.kind !== 'create-ruleset') {
       throw new Error('expected a create');
-    expect(changes[0].ruleset.bypassActors).toEqual([
-      { actorType: 'Team', actorId: 99, bypassMode: undefined },
-    ]);
+    }
+    expect(changes[0].ruleset.bypassActors).toEqual([{ actorType: 'Team', actorId: 99, bypassMode: undefined }]);
   });
 });
 
@@ -719,13 +684,9 @@ describe('attaching a configuration to named repositories', () => {
     attachRepositories: ['app', 'Api'],
   };
 
-  async function planFor(
-    repositories: Array<{ name: string; status: string }>,
-  ) {
+  async function planFor(repositories: Array<{ name: string; status: string }>) {
     const client = new FakeClient({
-      securityConfigurations: [
-        { id: 7, name: 'critical', description: 'Everything on', targetType: 'organization' },
-      ],
+      securityConfigurations: [{ id: 7, name: 'critical', description: 'Everything on', targetType: 'organization' }],
       securityConfigurationRepositories: { 7: repositories },
     });
     const wanted = desired({ codeSecurityConfigurations: [critical] });

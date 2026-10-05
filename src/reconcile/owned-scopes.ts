@@ -24,7 +24,9 @@ export function scopesOf(
 ): Scopes {
   const repositories = new Set<string>();
   for (const entry of entries ?? []) {
-    if (entry.repository) repositories.add(entry.repository);
+    if (entry.repository) {
+      repositories.add(entry.repository);
+    }
   }
   for (const repository of desired.repositories ?? []) {
     repositories.add(repository.name);

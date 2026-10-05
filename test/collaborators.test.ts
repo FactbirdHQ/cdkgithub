@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+
 import { App, Collaborator, Organization, Repository } from '../src/index.ts';
 import { accessByPerson } from '../src/reconcile/access-by-person.ts';
 import { apply } from '../src/reconcile/applier.ts';
@@ -20,10 +21,7 @@ describe('synthesis', () => {
       collaborator: { dawn: 'triage' },
     });
     const asMethod = new App();
-    new Repository(new Organization(asMethod, 'acme', { login: 'acme' }), 'atat').addCollaborator(
-      'dawn',
-      'triage',
-    );
+    new Repository(new Organization(asMethod, 'acme', { login: 'acme' }), 'atat').addCollaborator('dawn', 'triage');
     const asConstruct = new App();
     new Collaborator(new Repository(new Organization(asConstruct, 'acme', { login: 'acme' }), 'atat'), 'dawn', {
       permission: 'triage',
@@ -76,9 +74,7 @@ describe('plan and apply', () => {
         rustot: [{ login: 'ada', permission: 'pull', invitationId: 42 }],
       },
     });
-    const changes = plan(state, await readLiveState(client, state)).filter((c) =>
-      c.kind.includes('collaborator'),
-    );
+    const changes = plan(state, await readLiveState(client, state)).filter((c) => c.kind.includes('collaborator'));
 
     expect(changes.map((c) => c.kind)).toEqual([
       'set-collaborator',

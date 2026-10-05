@@ -1,8 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  orphanRepositories,
-  renderOrphans,
-} from '../src/reconcile/orphan-repositories.ts';
+
+import { orphanRepositories, renderOrphans } from '../src/reconcile/orphan-repositories.ts';
 
 const live = [
   { id: 1, name: 'netcore' },
@@ -21,11 +19,9 @@ describe('orphaned repositories', () => {
   });
 
   test('a repository a team reaches is not orphaned, declared or not', () => {
-    expect(
-      orphanRepositories(live, ['netcore'], ['netcore', 'forgotten']).map(
-        (o) => o.name,
-      ),
-    ).toEqual(['Also-Forgotten']);
+    expect(orphanRepositories(live, ['netcore'], ['netcore', 'forgotten']).map((o) => o.name)).toEqual([
+      'Also-Forgotten',
+    ]);
   });
 
   test('a declared repository no team reaches is unreachable, not undeclared', () => {
@@ -38,19 +34,11 @@ describe('orphaned repositories', () => {
   });
 
   test('matching ignores case, because GitHub does', () => {
-    expect(
-      orphanRepositories(live, undefined, [
-        'netcore',
-        'forgotten',
-        'also-forgotten',
-      ]),
-    ).toEqual([]);
+    expect(orphanRepositories(live, undefined, ['netcore', 'forgotten', 'also-forgotten'])).toEqual([]);
   });
 
   test('a definition declaring no repositories reports by grants alone', () => {
-    expect(
-      orphanRepositories(live, undefined, ['netcore']).map((o) => o.reason),
-    ).toEqual(['undeclared', 'undeclared']);
+    expect(orphanRepositories(live, undefined, ['netcore']).map((o) => o.reason)).toEqual(['undeclared', 'undeclared']);
   });
 
   test('nothing is reported when the live list was never read', () => {
@@ -58,13 +46,8 @@ describe('orphaned repositories', () => {
   });
 
   test('the report separates the two and says what to do about each', () => {
-    const text = renderOrphans(
-      orphanRepositories(live, ['forgotten'], ['netcore']),
-      plain,
-    );
-    expect(text).toContain(
-      '1 repository the definition does not mention at all',
-    );
+    const text = renderOrphans(orphanRepositories(live, ['forgotten'], ['netcore']), plain);
+    expect(text).toContain('1 repository the definition does not mention at all');
     expect(text).toContain('Declare it or archive it');
     expect(text).toContain('1 declared repository that no team reaches');
     expect(text).toContain('open to nobody except the organization owners');

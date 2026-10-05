@@ -1,9 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import type {
-  LiveTeam,
-  LiveTeamMember,
-  LiveTeamRepository,
-} from '../src/github/client.ts';
+
+import type { LiveTeam, LiveTeamMember, LiveTeamRepository } from '../src/github/client.ts';
 import { apply } from '../src/reconcile/applier.ts';
 import type { LiveState } from '../src/reconcile/live.ts';
 import { plan } from '../src/reconcile/planner.ts';
@@ -21,10 +18,7 @@ function team(slug: string, parentSlug: string | null = null): LiveTeam {
   };
 }
 
-function manifest(
-  slug: string,
-  overrides: Partial<TeamManifest> = {},
-): TeamManifest {
+function manifest(slug: string, overrides: Partial<TeamManifest> = {}): TeamManifest {
   return { slug, name: slug, privacy: 'closed', ...overrides };
 }
 
@@ -32,22 +26,15 @@ function desired(teams: TeamManifest[]): DesiredState {
   return { owner: 'acme', ownerType: 'organization', teams };
 }
 
-function live(
-  teams: LiveTeam[],
-  overrides: Partial<LiveState> = {},
-): LiveState {
+function live(teams: LiveTeam[], overrides: Partial<LiveState> = {}): LiveState {
   return { teams, ...overrides };
 }
 
-function repos(
-  entries: Record<string, LiveTeamRepository[]>,
-): Map<string, LiveTeamRepository[]> {
+function repos(entries: Record<string, LiveTeamRepository[]>): Map<string, LiveTeamRepository[]> {
   return new Map(Object.entries(entries));
 }
 
-function members(
-  entries: Record<string, LiveTeamMember[]>,
-): Map<string, LiveTeamMember[]> {
+function members(entries: Record<string, LiveTeamMember[]>): Map<string, LiveTeamMember[]> {
   return new Map(Object.entries(entries));
 }
 
@@ -84,9 +71,7 @@ describe('repository access', () => {
     // `write` back and `push` out are the same permission, so a definition that
     // already matches must not report drift on every run.
     const changes = plan(
-      desired([
-        manifest('cloud', { repositories: { netcore: 'push', docs: 'pull' } }),
-      ]),
+      desired([manifest('cloud', { repositories: { netcore: 'push', docs: 'pull' } })]),
       live([team('cloud')], {
         teamRepositories: repos({
           cloud: [
@@ -171,10 +156,7 @@ describe('repository access', () => {
       users: [],
     });
     const changes = plan(
-      desired([
-        manifest('cloud', { repositories: {} }),
-        manifest('devops', { parentSlug: 'cloud', repositories: {} }),
-      ]),
+      desired([manifest('cloud', { repositories: {} }), manifest('devops', { parentSlug: 'cloud', repositories: {} })]),
       live([team('cloud'), team('devops', 'cloud')], {
         teamRepositories: repos({
           cloud: [{ name: 'docs', roleName: 'admin' }],
@@ -237,12 +219,7 @@ describe('custom repository roles', () => {
   });
 
   test('match by name without reporting drift', () => {
-    const changes = plan(
-      desired([
-        manifest('cloud', { repositories: { netcore: 'Merge Queue Jumper' } }),
-      ]),
-      state,
-    );
+    const changes = plan(desired([manifest('cloud', { repositories: { netcore: 'Merge Queue Jumper' } })]), state);
     expect(changes).toEqual([]);
   });
 
@@ -273,12 +250,9 @@ describe('custom repository roles', () => {
   });
 
   test('fail the plan when the organization defines no such role', () => {
-    expect(() =>
-      plan(
-        desired([manifest('cloud', { repositories: { netcore: 'pul' } })]),
-        state,
-      ),
-    ).toThrow(/neither a built-in permission/);
+    expect(() => plan(desired([manifest('cloud', { repositories: { netcore: 'pul' } })]), state)).toThrow(
+      /neither a built-in permission/,
+    );
   });
 });
 
@@ -295,9 +269,7 @@ describe('team roster', () => {
 
   test('adds, promotes and removes against the declared roster', () => {
     const changes = plan(
-      desired([
-        manifest('cloud', { maintainers: ['ada'], members: ['grace'] }),
-      ]),
+      desired([manifest('cloud', { maintainers: ['ada'], members: ['grace'] })]),
       live([team('cloud')], {
         teamMembers: members({
           cloud: [
@@ -335,10 +307,7 @@ describe('team roster', () => {
     // A child team's members are reported as the parent's, so taking the
     // listing at face value would propose evicting every one of them.
     const changes = plan(
-      desired([
-        manifest('engineering', { members: ['ada'] }),
-        manifest('cloud', { parentSlug: 'engineering' }),
-      ]),
+      desired([manifest('engineering', { members: ['ada'] }), manifest('cloud', { parentSlug: 'engineering' })]),
       live([team('engineering'), team('cloud', 'engineering')], {
         teamMembers: members({
           engineering: [
@@ -423,9 +392,7 @@ describe('team roster', () => {
         }),
       }),
     );
-    expect(changes).toEqual([
-      { kind: 'remove-membership', slug: 'cloud', username: 'ada', from: 'member' },
-    ]);
+    expect(changes).toEqual([{ kind: 'remove-membership', slug: 'cloud', username: 'ada', from: 'member' }]);
   });
 
   test('takes an organization owner reported as maintainer as the declared member', () => {
@@ -461,8 +428,6 @@ describe('team roster', () => {
         teamMembers: members({ cloud: [{ login: 'alan', role: 'member', inherited: false }] }),
       }),
     );
-    expect(changes).toEqual([
-      { kind: 'link-group', slug: 'cloud', group: { id: 7 } },
-    ]);
+    expect(changes).toEqual([{ kind: 'link-group', slug: 'cloud', group: { id: 7 } }]);
   });
 });

@@ -13,8 +13,12 @@ export function interactive(
   stream: { readonly isTTY?: boolean },
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  if (stream.isTTY !== true) return false;
-  if (env.TERM === 'dumb') return false;
+  if (stream.isTTY !== true) {
+    return false;
+  }
+  if (env.TERM === 'dumb') {
+    return false;
+  }
   return env.CI === undefined || env.CI === '' || env.CI === 'false';
 }
 

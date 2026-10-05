@@ -1,11 +1,8 @@
 import { describe, expect, test } from 'bun:test';
+
 import type { LiveTeam } from '../src/github/client.ts';
 import { renderTreeDiff } from '../src/reconcile/render-tree.ts';
-import {
-  desiredTree,
-  readLiveTree,
-  redundantGrants,
-} from '../src/reconcile/tree.ts';
+import { desiredTree, readLiveTree, redundantGrants } from '../src/reconcile/tree.ts';
 import { diffTrees } from '../src/reconcile/tree-diff.ts';
 import type { DesiredState, TeamManifest } from '../src/synth/manifest.ts';
 import { FakeClient } from './fake-client.ts';
@@ -140,9 +137,7 @@ describe('diffing the two trees', () => {
 
     const engineering = diff.roots[0];
     expect(engineering?.slug).toBe('engineering');
-    expect(engineering?.children.map((c) => [c.slug, c.mark])).toEqual([
-      ['app-1', 'removed'],
-    ]);
+    expect(engineering?.children.map((c) => [c.slug, c.mark])).toEqual([['app-1', 'removed']]);
   });
 
   test('previousSlug pairs a rename into one changed team', async () => {
@@ -172,39 +167,23 @@ describe('diffing the two trees', () => {
     ]);
     // The roster moved with the team rather than being dropped and re-added.
     expect(renamed?.rosters).toEqual([]);
-    expect(renderTreeDiff(diff)).toContain(
-      'team analytics-platform   (was app-1)',
-    );
+    expect(renderTreeDiff(diff)).toContain('team analytics-platform   (was app-1)');
   });
 
   test('a team that moves is reported once, under where it is headed', async () => {
     const client = new FakeClient({
-      teams: [
-        liveTeam('engineering'),
-        liveTeam('software'),
-        liveTeam('review', 'engineering'),
-      ],
+      teams: [liveTeam('engineering'), liveTeam('software'), liveTeam('review', 'engineering')],
     });
     const live = await readLiveTree(client, 'acme');
     const diff = diffTrees(
       live,
-      desiredTree(
-        manifest([
-          team('engineering'),
-          team('software'),
-          team('review', { parentSlug: 'software' }),
-        ]),
-      ),
+      desiredTree(manifest([team('engineering'), team('software'), team('review', { parentSlug: 'software' })])),
     );
 
     const software = diff.roots.find((r) => r.slug === 'software');
     expect(software?.children.map((c) => c.slug)).toEqual(['review']);
-    expect(diff.roots.find((r) => r.slug === 'engineering')?.children).toEqual(
-      [],
-    );
-    expect(software?.children[0]?.properties).toEqual([
-      { property: 'parent', from: 'engineering', to: 'software' },
-    ]);
+    expect(diff.roots.find((r) => r.slug === 'engineering')?.children).toEqual([]);
+    expect(software?.children[0]?.properties).toEqual([{ property: 'parent', from: 'engineering', to: 'software' }]);
   });
 
   test('a re-declared child grant is no change at all, only redundant', async () => {
@@ -233,9 +212,7 @@ describe('diffing the two trees', () => {
       removed: 0,
       changed: 0,
     });
-    expect(redundantGrants(wanted)).toEqual([
-      { slug: 'cloud', repositories: ['docs'] },
-    ]);
+    expect(redundantGrants(wanted)).toEqual([{ slug: 'cloud', repositories: ['docs'] }]);
   });
 
   test('a custom role matches when the live roles rank it', async () => {
@@ -255,9 +232,7 @@ describe('diffing the two trees', () => {
     });
     const live = await readLiveTree(client, 'acme');
     const wanted = desiredTree(
-      manifest([
-        team('cloud', { repositories: { netcore: 'Merge Queue Jumper' } }),
-      ]),
+      manifest([team('cloud', { repositories: { netcore: 'Merge Queue Jumper' } })]),
       live.customRoles,
     );
 
@@ -311,9 +286,7 @@ describe('diffing the two trees', () => {
       { repository: 'api', from: 'pull', to: 'push' },
       { repository: 'docs', from: undefined, to: 'pull' },
     ]);
-    expect(cloud?.rosters).toEqual([
-      { role: 'member', added: ['joiner'], removed: ['leaver'] },
-    ]);
+    expect(cloud?.rosters).toEqual([{ role: 'member', added: ['joiner'], removed: ['leaver'] }]);
   });
 });
 
@@ -345,15 +318,10 @@ describe('rendering', () => {
   });
 
   test('samples a long grant list unless --full is passed', async () => {
-    const repositories = Object.fromEntries(
-      Array.from({ length: 20 }, (_, i) => [`repo-${i}`, 'push' as const]),
-    );
+    const repositories = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`repo-${i}`, 'push' as const]));
     const client = new FakeClient({ teams: [liveTeam('devops')] });
     const live = await readLiveTree(client, 'acme');
-    const diff = diffTrees(
-      live,
-      desiredTree(manifest([team('devops', { repositories })])),
-    );
+    const diff = diffTrees(live, desiredTree(manifest([team('devops', { repositories })])));
 
     expect(renderTreeDiff(diff)).toContain('… and 12 more grants');
     expect(renderTreeDiff(diff, { full: true })).not.toContain('more grants');
@@ -366,13 +334,7 @@ describe('rendering', () => {
     const live = await readLiveTree(client, 'acme');
     const diff = diffTrees(
       live,
-      desiredTree(
-        manifest([
-          team('engineering'),
-          team('quiet'),
-          team('cloud', { parentSlug: 'engineering' }),
-        ]),
-      ),
+      desiredTree(manifest([team('engineering'), team('quiet'), team('cloud', { parentSlug: 'engineering' })])),
     );
 
     const output = renderTreeDiff(diff, { changedOnly: true });
@@ -384,14 +346,9 @@ describe('rendering', () => {
   test('--full marks a created team’s repositories as additions', async () => {
     const client = new FakeClient({ teams: [] });
     const live = await readLiveTree(client, 'acme');
-    const diff = diffTrees(
-      live,
-      desiredTree(manifest([team('cloud', { repositories: { api: 'push' } })])),
-    );
+    const diff = diffTrees(live, desiredTree(manifest([team('cloud', { repositories: { api: 'push' } })])));
 
-    expect(renderTreeDiff(diff, { full: true })).toContain(
-      '+ repo api = "push"',
-    );
+    expect(renderTreeDiff(diff, { full: true })).toContain('+ repo api = "push"');
   });
 
   test('--full marks a deleted team’s repositories as removals', async () => {
@@ -402,9 +359,7 @@ describe('rendering', () => {
     const live = await readLiveTree(client, 'acme');
     const diff = diffTrees(live, desiredTree(manifest([])));
 
-    expect(renderTreeDiff(diff, { full: true })).toContain(
-      '- repo legacy = "push"',
-    );
+    expect(renderTreeDiff(diff, { full: true })).toContain('- repo legacy = "push"');
   });
 
   test('says nothing changed when the trees match', async () => {
@@ -412,8 +367,6 @@ describe('rendering', () => {
     const live = await readLiveTree(client, 'acme');
     const diff = diffTrees(live, desiredTree(manifest([team('cloud')])));
 
-    expect(renderTreeDiff(diff)).toContain(
-      'No differences. The organization tree matches the definition.',
-    );
+    expect(renderTreeDiff(diff)).toContain('No differences. The organization tree matches the definition.');
   });
 });

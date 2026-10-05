@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test';
+
 import type { Octokit } from '@octokit/rest';
+
 import { OctokitGitHubClient } from '../src/github/client.ts';
 
 /**
@@ -27,9 +29,11 @@ describe('getBranchProtection', () => {
         },
       },
     });
-    await expect(
-      client.getBranchProtection('acme', 'app', 'main'),
-    ).resolves.toEqual({ repository: 'app', branch: 'main', enabled: false });
+    await expect(client.getBranchProtection('acme', 'app', 'main')).resolves.toEqual({
+      repository: 'app',
+      branch: 'main',
+      enabled: false,
+    });
   });
 
   test('a 404 with the branch also missing is a failure, not "unprotected"', async () => {
@@ -47,9 +51,9 @@ describe('getBranchProtection', () => {
         },
       },
     });
-    await expect(
-      client.getBranchProtection('acme', 'typo', 'main'),
-    ).rejects.toThrow('repository or branch does not exist');
+    await expect(client.getBranchProtection('acme', 'typo', 'main')).rejects.toThrow(
+      'repository or branch does not exist',
+    );
   });
 });
 
@@ -65,10 +69,7 @@ describe('listExternalGroups', () => {
         requests.push({ route, page: params.page });
         return {
           data: {
-            groups:
-              params.page === 1
-                ? pageOne
-                : [{ group_id: 100, group_name: 'group-100' }],
+            groups: params.page === 1 ? pageOne : [{ group_id: 100, group_name: 'group-100' }],
           },
         };
       },
@@ -86,15 +87,9 @@ describe('wrapped list responses', () => {
     const client = clientWith({
       request: async () => ({ data: { message: 'maintenance' } }),
     });
-    await expect(client.listOrganizationRoles('acme')).rejects.toThrow(
-      'expected an array under "roles"',
-    );
-    await expect(client.listCustomRepositoryRoles('acme')).rejects.toThrow(
-      'expected an array under "custom_roles"',
-    );
-    await expect(client.listExternalGroups('acme')).rejects.toThrow(
-      'expected an array under "groups"',
-    );
+    await expect(client.listOrganizationRoles('acme')).rejects.toThrow('expected an array under "roles"');
+    await expect(client.listCustomRepositoryRoles('acme')).rejects.toThrow('expected an array under "custom_roles"');
+    await expect(client.listExternalGroups('acme')).rejects.toThrow('expected an array under "groups"');
   });
 });
 
@@ -256,9 +251,7 @@ describe('listRepositoryCollaborators', () => {
           {
             // Reached only through a team: not a direct collaborator.
             node: { login: 'teamonly' },
-            permissionSources: [
-              { permission: 'WRITE', roleName: 'write', source: { __typename: 'Team' } },
-            ],
+            permissionSources: [{ permission: 'WRITE', roleName: 'write', source: { __typename: 'Team' } }],
           },
         ],
       },
@@ -272,9 +265,7 @@ describe('listRepositoryCollaborators', () => {
       paginate: async () => [],
       rest: { repos: { listInvitations: () => undefined } },
     });
-    await expect(
-      client.listRepositoryCollaborators('acme', 'afterkit'),
-    ).resolves.toEqual([
+    await expect(client.listRepositoryCollaborators('acme', 'afterkit')).resolves.toEqual([
       { login: 'MonaAH', permission: 'pull' },
       { login: 'ahmed', permission: 'Merge Queue Jumper' },
     ]);
@@ -303,7 +294,9 @@ describe('listEnvironmentsOfRepositories', () => {
               : { environments: { pageInfo: { hasNextPage: false }, nodes: [{ name: `${name}-prod` }] } },
           ]),
         );
-        if (names.includes('repo-3')) throw graphqlError(data, [{ type: 'NOT_FOUND' }]);
+        if (names.includes('repo-3')) {
+          throw graphqlError(data, [{ type: 'NOT_FOUND' }]);
+        }
         return data;
       },
     });
@@ -321,9 +314,7 @@ describe('listEnvironmentsOfRepositories', () => {
         throw graphqlError({ r0: null }, [{ type: 'FORBIDDEN' }]);
       },
     });
-    await expect(
-      client.listEnvironmentsOfRepositories('acme', ['deck']),
-    ).rejects.toThrow('partial');
+    await expect(client.listEnvironmentsOfRepositories('acme', ['deck'])).rejects.toThrow('partial');
   });
 });
 
@@ -365,14 +356,14 @@ describe('listCollaboratorsOfRepositories', () => {
                 },
           ]),
         );
-        if (names.includes('repo-3')) throw graphqlError(data, [{ type: 'NOT_FOUND' }]);
+        if (names.includes('repo-3')) {
+          throw graphqlError(data, [{ type: 'NOT_FOUND' }]);
+        }
         return data;
       },
       paginate: async (_method: unknown, params: { repo: string }) => {
         invited.push(params.repo);
-        return params.repo === 'repo-25'
-          ? [{ id: 7, invitee: { login: 'guest' }, permissions: 'triage' }]
-          : [];
+        return params.repo === 'repo-25' ? [{ id: 7, invitee: { login: 'guest' }, permissions: 'triage' }] : [];
       },
       rest: { repos: { listInvitations: () => undefined } },
     });
@@ -401,9 +392,10 @@ describe('listCollaboratorsOfRepositories', () => {
             },
           };
         }
-        const page = vars.after === null
-          ? { pageInfo: { hasNextPage: true, endCursor: 'c1' }, edges: [direct('big', 'first')] }
-          : { pageInfo: { hasNextPage: false, endCursor: null }, edges: [direct('big', 'last')] };
+        const page =
+          vars.after === null
+            ? { pageInfo: { hasNextPage: true, endCursor: 'c1' }, edges: [direct('big', 'first')] }
+            : { pageInfo: { hasNextPage: false, endCursor: null }, edges: [direct('big', 'last')] };
         return { repository: { collaborators: page } };
       },
       paginate: async () => [],
@@ -424,8 +416,6 @@ describe('listCollaboratorsOfRepositories', () => {
         throw graphqlError({ r0: null }, [{ type: 'FORBIDDEN' }]);
       },
     });
-    await expect(
-      client.listCollaboratorsOfRepositories('acme', ['deck']),
-    ).rejects.toThrow('partial');
+    await expect(client.listCollaboratorsOfRepositories('acme', ['deck'])).rejects.toThrow('partial');
   });
 });

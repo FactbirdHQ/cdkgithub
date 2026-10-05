@@ -21,15 +21,8 @@ export const PERMISSION_RANK: Record<string, number> = {
 };
 
 /** Ranks each custom role by the built-in it extends, so it sorts with them. */
-export function rankCustomRoles(
-  roles: readonly LiveCustomRepositoryRole[],
-): Map<string, number> {
-  return new Map(
-    roles.map((r) => [
-      r.name,
-      PERMISSION_RANK[comparableRoleName(r.baseRole)] ?? 0,
-    ]),
-  );
+export function rankCustomRoles(roles: readonly LiveCustomRepositoryRole[]): Map<string, number> {
+  return new Map(roles.map((r) => [r.name, PERMISSION_RANK[comparableRoleName(r.baseRole)] ?? 0]));
 }
 
 /** Where a permission sits in the order. An unknown one ranks below them all. */
@@ -38,10 +31,6 @@ export function rankOf(permission: string, roles: Map<string, number>): number {
 }
 
 /** The stronger of two permissions, which is what GitHub grants on an overlap. */
-export function strongerPermission(
-  a: RepoPermission,
-  b: RepoPermission,
-  roles: Map<string, number>,
-): RepoPermission {
+export function strongerPermission(a: RepoPermission, b: RepoPermission, roles: Map<string, number>): RepoPermission {
   return rankOf(a, roles) >= rankOf(b, roles) ? a : b;
 }

@@ -64,14 +64,9 @@ export class RequestMeter {
   onWait?: (wait: RateWait) => void;
 
   /** Count one response, error responses included, and read its rate headers. */
-  record(
-    route: string,
-    headers: Record<string, string | number | undefined> | undefined,
-  ): void {
+  record(route: string, headers: Record<string, string | number | undefined> | undefined): void {
     const resource: RateResource =
-      route.endsWith(' /graphql') || headers?.['x-ratelimit-resource'] === 'graphql'
-        ? 'graphql'
-        : 'core';
+      route.endsWith(' /graphql') || headers?.['x-ratelimit-resource'] === 'graphql' ? 'graphql' : 'core';
     this.requests[headers?.[CACHE_HIT_HEADER] === 'hit' ? 'cached' : resource] += 1;
     this.routes.set(route, (this.routes.get(route) ?? 0) + 1);
     this.waiting = undefined;
@@ -101,19 +96,13 @@ export class RequestMeter {
     if (pending.length > 0) {
       return pending.reduce((a, b) => (b.remaining < a.remaining ? b : a));
     }
-    return budgets.reduce<RateBudget | undefined>(
-      (a, b) => (!a || b.resetsAt > a.resetsAt ? b : a),
-      undefined,
-    );
+    return budgets.reduce<RateBudget | undefined>((a, b) => (!a || b.resetsAt > a.resetsAt ? b : a), undefined);
   }
 
   /** Note that a request is sitting out a rate limit for `seconds`. */
   wait(seconds: number, secondary: boolean): void {
     const until = new Date(Date.now() + seconds * 1000);
-    if (
-      !this.waiting ||
-      until.getTime() - this.waiting.until.getTime() > 60_000
-    ) {
+    if (!this.waiting || until.getTime() - this.waiting.until.getTime() > 60_000) {
       this.waiting = { secondary, until };
       this.onWait?.(this.waiting);
     }
@@ -123,7 +112,9 @@ export class RequestMeter {
     const budgets: Partial<Record<RateResource, RateBudget>> = {};
     for (const resource of ['core', 'graphql'] as const) {
       const budget = this.budget(resource, nowMs);
-      if (budget) budgets[resource] = budget;
+      if (budget) {
+        budgets[resource] = budget;
+      }
     }
     return {
       requests: { ...this.requests },

@@ -1,13 +1,8 @@
 import { describe, expect, test } from 'bun:test';
+
 import type { LiveTeam } from '../src/github/client.ts';
-import {
-  accessByPerson,
-  diffAccessByPerson,
-} from '../src/reconcile/access-by-person.ts';
-import {
-  renderAccessByPerson,
-  renderAccessCsv,
-} from '../src/reconcile/render-person.ts';
+import { accessByPerson, diffAccessByPerson } from '../src/reconcile/access-by-person.ts';
+import { renderAccessByPerson, renderAccessCsv } from '../src/reconcile/render-person.ts';
 import { desiredTree, readLiveTree } from '../src/reconcile/tree.ts';
 import type { DesiredState, TeamManifest } from '../src/synth/manifest.ts';
 import { FakeClient } from './fake-client.ts';
@@ -91,11 +86,7 @@ describe('pivoting a tree onto its people', () => {
   });
 
   test('a maintainer counts as reaching the team’s repositories', () => {
-    const tree = desiredTree(
-      manifest([
-        team('cloud', { maintainers: ['boss'], repositories: { api: 'push' } }),
-      ]),
-    );
+    const tree = desiredTree(manifest([team('cloud', { maintainers: ['boss'], repositories: { api: 'push' } })]));
     expect(accessByPerson(tree).get('boss')?.repositories.size).toBe(1);
   });
 });
@@ -153,11 +144,7 @@ describe('diffing access person by person', () => {
       teamRepositories: { cloud: [{ name: 'api', roleName: 'read' }] },
     });
     const live = await readLiveTree(client, 'acme');
-    const wanted = desiredTree(
-      manifest([
-        team('cloud', { members: ['dev'], repositories: { api: 'admin' } }),
-      ]),
-    );
+    const wanted = desiredTree(manifest([team('cloud', { members: ['dev'], repositories: { api: 'admin' } })]));
 
     const dev = diffAccessByPerson(live, wanted)[0];
     expect(dev?.gained).toEqual([]);
@@ -175,11 +162,7 @@ describe('rendering the person view', () => {
       teamRepositories: { cloud: [{ name: 'legacy', roleName: 'write' }] },
     });
     const live = await readLiveTree(client, 'acme');
-    const wanted = desiredTree(
-      manifest([
-        team('cloud', { members: ['dev'], repositories: { fresh: 'push' } }),
-      ]),
-    );
+    const wanted = desiredTree(manifest([team('cloud', { members: ['dev'], repositories: { fresh: 'push' } })]));
     return diffAccessByPerson(live, wanted);
   }
 
@@ -188,9 +171,7 @@ describe('rendering the person view', () => {
     expect(output).toContain('dev   (1 repo)');
     expect(output).toContain('+ fresh = "push"   via cloud');
     expect(output).toContain('- legacy   (had "push" via cloud)');
-    expect(output).toContain(
-      '1 of 1 person sees their repository access change.',
-    );
+    expect(output).toContain('1 of 1 person sees their repository access change.');
   });
 
   test('--full keeps the marks rather than flattening to a listing', async () => {
@@ -240,9 +221,7 @@ describe('rendering the person view', () => {
       teamMembers: { quiet: [{ login: 'nobody', role: 'member', inherited: false }] },
     });
     const live = await readLiveTree(client, 'acme');
-    const wanted = desiredTree(
-      manifest([team('quiet', { members: ['nobody'] })]),
-    );
+    const wanted = desiredTree(manifest([team('quiet', { members: ['nobody'] })]));
     const output = renderAccessByPerson(diffAccessByPerson(live, wanted), {
       changedOnly: true,
     });
@@ -265,9 +244,7 @@ describe('where a grant comes from', () => {
     );
 
     // `dev` joined the leaf, but nothing there mentions netcore.
-    expect(
-      accessByPerson(tree).get('dev')?.repositories.get('netcore')?.through,
-    ).toEqual(['engineering']);
+    expect(accessByPerson(tree).get('dev')?.repositories.get('netcore')?.through).toEqual(['engineering']);
   });
 
   test('a grant the team makes itself names the team', () => {
@@ -300,9 +277,7 @@ describe('where a grant comes from', () => {
       ]),
     );
 
-    expect(
-      accessByPerson(tree).get('dev')?.repositories.get('netcore')?.through,
-    ).toEqual(['engineering']);
+    expect(accessByPerson(tree).get('dev')?.repositories.get('netcore')?.through).toEqual(['engineering']);
   });
 
   test('a child granting more than its parent names the child', () => {
@@ -350,9 +325,7 @@ describe('organization roles in the access review', () => {
 
     // No team grants `yarnix`. The role is the only route to it.
     expect(vil?.repositories.get('yarnix')?.permission).toBe('maintain');
-    expect(vil?.repositories.get('yarnix')?.through).toEqual([
-      'all_repo_maintain (organization role)',
-    ]);
+    expect(vil?.repositories.get('yarnix')?.through).toEqual(['all_repo_maintain (organization role)']);
   });
 
   test('moving a repository from a team grant to the role withdraws nothing', async () => {
@@ -403,9 +376,7 @@ describe('organization roles in the access review', () => {
       teams: [liveTeam('devops')],
       teamMembers: { devops: [{ login: 'vil', role: 'member', inherited: false }] },
       repositories: ESTATE,
-      organizationRoles: [
-        { id: 2, name: 'app_manager', permissions: [], source: 'Predefined' },
-      ],
+      organizationRoles: [{ id: 2, name: 'app_manager', permissions: [], source: 'Predefined' }],
       roleAssignments: { 2: { teams: ['devops'], users: [] } },
     });
 
@@ -486,9 +457,7 @@ describe('a blanket role in the rendered report', () => {
     const rendered = renderAccessByPerson(diffAccessByPerson(live, wanted), {
       full: true,
     });
-    expect(rendered).toContain(
-      'all 2 repositories = "maintain"   via all_repo_maintain (organization role)',
-    );
+    expect(rendered).toContain('all 2 repositories = "maintain"   via all_repo_maintain (organization role)');
     // The one the team grants above the role still gets its own line.
     expect(rendered).toContain('netcore = "admin"   via devops');
     expect(rendered).not.toContain('yarnix =');

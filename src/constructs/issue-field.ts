@@ -1,8 +1,6 @@
 import { Construct } from 'constructs';
-import type {
-  IssueFieldDataType,
-  IssueFieldOptionManifest,
-} from '../synth/governance.ts';
+
+import type { IssueFieldDataType, IssueFieldOptionManifest } from '../synth/governance.ts';
 
 export interface IssueFieldProps {
   /** Field name as issues show it. Defaults to the construct id. */

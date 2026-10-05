@@ -15,12 +15,11 @@ import { resolveRuleset } from './resolve-actors.ts';
  * enterprise rulesets are visible from the repository but owned elsewhere, and
  * the live read leaves them out.
  */
-export function planRepositoryRulesets(
-  desired: DesiredState,
-  live: LiveState,
-): Change[] {
+export function planRepositoryRulesets(desired: DesiredState, live: LiveState): Change[] {
   const declared = desired.repositoryRulesets;
-  if (!declared) return [];
+  if (!declared) {
+    return [];
+  }
 
   const liveByRepo = new Map<string, LiveRepositoryRuleset[]>();
   for (const ruleset of live.repositoryRulesets ?? []) {

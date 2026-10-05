@@ -16,7 +16,6 @@ import type {
   RunnerGroupManifest,
 } from './actions-admin.ts';
 import type { BranchProtectionManifest } from './branch-protection.ts';
-import type { ScimProvisioningManifest } from './scim.ts';
 import type {
   ActionsPolicyManifest,
   CodeSecurityConfigurationManifest,
@@ -30,6 +29,7 @@ import type {
   RepositoryRulesetManifest,
   RulesetManifest,
 } from './governance.ts';
+import type { ScimProvisioningManifest } from './scim.ts';
 
 export * from './actions-admin.ts';
 export * from './branch-protection.ts';
@@ -40,17 +40,10 @@ export * from './scim.ts';
 export type TeamPrivacy = 'closed' | 'secret';
 
 /** Whether mentioning the team notifies its members. */
-export type TeamNotificationSetting =
-  | 'notifications_enabled'
-  | 'notifications_disabled';
+export type TeamNotificationSetting = 'notifications_enabled' | 'notifications_disabled';
 
 /** The five permissions GitHub ships with every repository. */
-export type BuiltInRepoPermission =
-  | 'pull'
-  | 'triage'
-  | 'push'
-  | 'maintain'
-  | 'admin';
+export type BuiltInRepoPermission = 'pull' | 'triage' | 'push' | 'maintain' | 'admin';
 
 /**
  * Repository access level granted to a team: one of the five built-ins, or the
@@ -76,9 +69,7 @@ export const BUILT_IN_REPO_PERMISSIONS: readonly BuiltInRepoPermission[] = [
   'admin',
 ];
 
-export function isBuiltInRepoPermission(
-  permission: string,
-): permission is BuiltInRepoPermission {
+export function isBuiltInRepoPermission(permission: string): permission is BuiltInRepoPermission {
   return (BUILT_IN_REPO_PERMISSIONS as readonly string[]).includes(permission);
 }
 

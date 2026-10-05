@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test';
+
 import { render } from 'ink-testing-library';
+
 import { RequestMeter } from '../src/github/meter.ts';
 import { PLAIN } from '../src/reconcile/color.ts';
 import { ApplyTasks, ApplyTasksView } from '../src/ui/apply-tasks.tsx';
@@ -40,7 +42,9 @@ describe('the read screen', () => {
     const frame = lastFrame() ?? '';
     unmount();
     expect(frame).toContain('Reading live state  1 REST request, 0 GraphQL queries · 4s');
-    expect(frame).toContain(`API budget ${budgetBar({ remaining: 1250, limit: 5000, resetsAt: new Date() })} 1,250 of 5,000 left`);
+    expect(frame).toContain(
+      `API budget ${budgetBar({ remaining: 1250, limit: 5000, resetsAt: new Date() })} 1,250 of 5,000 left`,
+    );
   });
 
   test('draws the budget left as a share of the limit', () => {

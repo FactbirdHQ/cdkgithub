@@ -17,11 +17,10 @@ import type { LiveState } from './live.ts';
 
 type LiveRole = LiveOrganizationRole & { teams: string[]; users: string[] };
 
-export function planOrganizationRoles(
-  desired: OrganizationRoleManifest[] | undefined,
-  live: LiveState,
-): Change[] {
-  if (!desired) return [];
+export function planOrganizationRoles(desired: OrganizationRoleManifest[] | undefined, live: LiveState): Change[] {
+  if (!desired) {
+    return [];
+  }
   const known = new Map((live.organizationRoles ?? []).map((r) => [r.name, r]));
   assertRolesExist(desired, known);
 
@@ -31,14 +30,18 @@ export function planOrganizationRoles(
 
     for (const subject of ['team', 'user'] as const) {
       const wanted = subject === 'team' ? declaration.teams : declaration.users;
-      if (wanted === undefined) continue; // Surface not owned here.
+      if (wanted === undefined) {
+        continue; // Surface not owned here.
+      }
 
       const held = subject === 'team' ? current.teams : current.users;
       const heldSet = new Set(held);
       const wantedSet = new Set(wanted);
 
       for (const name of wanted) {
-        if (heldSet.has(name)) continue;
+        if (heldSet.has(name)) {
+          continue;
+        }
         changes.push({
           kind: 'assign-org-role',
           role: declaration.name,
@@ -48,7 +51,9 @@ export function planOrganizationRoles(
         });
       }
       for (const name of held) {
-        if (wantedSet.has(name)) continue;
+        if (wantedSet.has(name)) {
+          continue;
+        }
         changes.push({
           kind: 'revoke-org-role',
           role: declaration.name,
@@ -69,12 +74,11 @@ export function planOrganizationRoles(
  * matches nothing is a typo. Left alone it would read as a grant and do nothing
  * at all, which is the failure worth catching early.
  */
-function assertRolesExist(
-  desired: OrganizationRoleManifest[],
-  known: Map<string, LiveRole>,
-): void {
+function assertRolesExist(desired: OrganizationRoleManifest[], known: Map<string, LiveRole>): void {
   for (const declaration of desired) {
-    if (known.has(declaration.name)) continue;
+    if (known.has(declaration.name)) {
+      continue;
+    }
     const available = [...known.keys()].sort().join(', ');
     throw new Error(
       `Organization role "${declaration.name}" does not exist in this ` +
@@ -109,8 +113,8 @@ export function unmanagedRoleAssignments(
         role: role.name,
         baseRole: role.baseRole,
         // A surface the definition owns is not unmanaged, even when it is empty.
-        teams: d?.teams !== undefined ? [] : role.teams,
-        users: d?.users !== undefined ? [] : role.users,
+        teams: d?.teams === undefined ? role.teams : [],
+        users: d?.users === undefined ? role.users : [],
       };
     })
     .filter((r) => r.teams.length > 0 || r.users.length > 0);

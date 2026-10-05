@@ -22,19 +22,10 @@ import type {
   LiveTeamRepository,
 } from '../github/client.ts';
 import { comparableRoleName } from '../github/client.ts';
-import type {
-  DesiredState,
-  RepoPermission,
-  RepositoryAccess,
-  TeamPrivacy,
-} from '../synth/manifest.ts';
-import { assignmentFromLive } from './org-role-access.ts';
+import type { DesiredState, RepoPermission, RepositoryAccess, TeamPrivacy } from '../synth/manifest.ts';
 import type { OrgRoleAssignment } from './org-role-access.ts';
-import {
-  rankCustomRoles,
-  rankOf,
-  strongerPermission,
-} from './permission-rank.ts';
+import { assignmentFromLive } from './org-role-access.ts';
+import { rankCustomRoles, rankOf, strongerPermission } from './permission-rank.ts';
 
 /** One team, with its roster narrowed and its repository access resolved. */
 export interface TeamNode {
@@ -123,16 +114,11 @@ export async function readLiveTree(
   ownerType: DesiredState['ownerType'] = 'organization',
   collaboratorRepositories: readonly string[] = [],
 ): Promise<OrgTree> {
-  const found = await client.listCollaboratorsOfRepositories(
-    owner,
-    collaboratorRepositories,
-  );
+  const found = await client.listCollaboratorsOfRepositories(owner, collaboratorRepositories);
   const collaborators = collaboratorRepositories.flatMap((repository) => {
     const entries = found.get(repository);
     if (!entries) {
-      throw new Error(
-        `Repository "${repository}" was not found: it does not exist, or the token cannot see it.`,
-      );
+      throw new Error(`Repository "${repository}" was not found: it does not exist, or the token cannot see it.`);
     }
     return entries
       .filter((c) => c.invitationId === undefined)
@@ -140,7 +126,9 @@ export async function readLiveTree(
   });
 
   // A personal account has no teams, and asking for them 404s.
-  if (ownerType === 'user') return { ...buildTree(owner, [], []), collaborators };
+  if (ownerType === 'user') {
+    return { ...buildTree(owner, [], []), collaborators };
+  }
 
   const [teams, customRoles, repositories, orgRoles] = await Promise.all([
     client.listTeams(owner),
@@ -176,10 +164,7 @@ export async function readLiveTree(
  * describes a smaller organization than the real one. Not worth failing the
  * whole diff over, though.
  */
-async function readOrgRoles(
-  client: GitHubClient,
-  owner: string,
-): Promise<OrgRoleAssignment[]> {
+async function readOrgRoles(client: GitHubClient, owner: string): Promise<OrgRoleAssignment[]> {
   try {
     const roles = await client.listOrganizationRoles(owner);
     return await Promise.all(
@@ -194,7 +179,9 @@ async function readOrgRoles(
     // Only lack of access is an acceptable non-answer. A rate limit or a 5xx
     // swallowed here would print an access review missing the widest grants
     // in the organization, which is worse than no review.
-    if (isAccessDenied(error)) return [];
+    if (isAccessDenied(error)) {
+      return [];
+    }
     throw error;
   }
 }
@@ -213,23 +200,18 @@ function isAccessDenied(error: unknown): boolean {
  * reads as drift. Reading them is not worth failing the whole diff over,
  * though: a token that cannot see them still gets a tree.
  */
-async function readCustomRoles(
-  client: GitHubClient,
-  owner: string,
-): Promise<LiveCustomRepositoryRole[]> {
+async function readCustomRoles(client: GitHubClient, owner: string): Promise<LiveCustomRepositoryRole[]> {
   try {
     return await client.listCustomRepositoryRoles(owner);
   } catch (error) {
-    if (isAccessDenied(error)) return [];
+    if (isAccessDenied(error)) {
+      return [];
+    }
     throw error;
   }
 }
 
-function seedFromLive(
-  team: LiveTeam,
-  roster: LiveTeamMember[],
-  repos: LiveTeamRepository[],
-): TeamSeed {
+function seedFromLive(team: LiveTeam, roster: LiveTeamMember[], repos: LiveTeamRepository[]): TeamSeed {
   const repositories: RepositoryAccess = {};
   for (const repo of repos) {
     repositories[repo.name] = comparableRoleName(repo.roleName);
@@ -313,10 +295,7 @@ export function desiredTree(
  * definition does not declare those, so they are removed here, and come back
  * as `effectiveRepositories` once the tree is assembled.
  */
-function narrowLiveSeeds(
-  seeds: TeamSeed[],
-  ranks: Map<string, number>,
-): TeamSeed[] {
+function narrowLiveSeeds(seeds: TeamSeed[], ranks: Map<string, number>): TeamSeed[] {
   const bySlug = new Map(seeds.map((s) => [s.slug, s] as const));
 
   const ancestors = (slug: string): TeamSeed[] => {
@@ -326,7 +305,9 @@ function narrowLiveSeeds(
     while (current && !seen.has(current)) {
       seen.add(current);
       const parent = bySlug.get(current);
-      if (!parent) break;
+      if (!parent) {
+        break;
+      }
       out.push(parent);
       current = parent.parentSlug;
     }
@@ -345,14 +326,8 @@ function narrowLiveSeeds(
       const strongest = above
         .map((a) => a.repositories[repo])
         .filter((p): p is RepoPermission => p !== undefined)
-        .reduce<RepoPermission | undefined>(
-          (acc, p) => (acc ? strongerPermission(acc, p, ranks) : p),
-          undefined,
-        );
-      if (
-        strongest === undefined ||
-        rankOf(strongest, ranks) < rankOf(permission, ranks)
-      ) {
+        .reduce<RepoPermission | undefined>((acc, p) => (acc ? strongerPermission(acc, p, ranks) : p), undefined);
+      if (strongest === undefined || rankOf(strongest, ranks) < rankOf(permission, ranks)) {
         own[repo] = permission;
       }
     }
@@ -362,11 +337,7 @@ function narrowLiveSeeds(
 }
 
 /** Assemble seeds into a tree, resolving effective repository access on the way. */
-function buildTree(
-  owner: string,
-  seeds: TeamSeed[],
-  customRoles: readonly LiveCustomRepositoryRole[],
-): OrgTree {
+function buildTree(owner: string, seeds: TeamSeed[], customRoles: readonly LiveCustomRepositoryRole[]): OrgTree {
   const ranks = rankCustomRoles(customRoles);
   const bySlug = new Map<string, TeamNode>();
   const seedBySlug = new Map(seeds.map((s) => [s.slug, s] as const));
@@ -374,10 +345,7 @@ function buildTree(
   for (const seed of seeds) {
     // A team whose declared parent is missing from this side is treated as
     // top-level, so an unreadable parent never hides a subtree from the diff.
-    const parent =
-      seed.parentSlug && seedBySlug.has(seed.parentSlug)
-        ? seed.parentSlug
-        : null;
+    const parent = seed.parentSlug && seedBySlug.has(seed.parentSlug) ? seed.parentSlug : null;
     const bucket = childrenOf.get(parent) ?? [];
     bucket.push(seed);
     childrenOf.set(parent, bucket);
@@ -387,9 +355,7 @@ function buildTree(
     const effective: RepositoryAccess = { ...inherited };
     for (const [repo, permission] of Object.entries(seed.repositories)) {
       const existing = effective[repo];
-      effective[repo] = existing
-        ? strongerPermission(existing, permission, ranks)
-        : permission;
+      effective[repo] = existing ? strongerPermission(existing, permission, ranks) : permission;
     }
 
     const node: TeamNode = {
@@ -428,19 +394,14 @@ function buildTree(
  * because they are not drift: both sides agree, and the cleanup is a separate
  * edit to the definition.
  */
-export function redundantGrants(
-  tree: OrgTree,
-): Array<{ slug: string; repositories: string[] }> {
+export function redundantGrants(tree: OrgTree): Array<{ slug: string; repositories: string[] }> {
   const out: Array<{ slug: string; repositories: string[] }> = [];
 
   const walk = (node: TeamNode, inherited: RepositoryAccess): void => {
     const redundant = Object.entries(node.repositories)
       .filter(([repo, permission]) => {
         const from = inherited[repo];
-        return (
-          from !== undefined &&
-          rankOf(from, tree.ranks) >= rankOf(permission, tree.ranks)
-        );
+        return from !== undefined && rankOf(from, tree.ranks) >= rankOf(permission, tree.ranks);
       })
       .map(([repo]) => repo)
       .sort();
@@ -448,9 +409,13 @@ export function redundantGrants(
     if (redundant.length > 0) {
       out.push({ slug: node.slug, repositories: redundant });
     }
-    for (const child of node.children) walk(child, node.effectiveRepositories);
+    for (const child of node.children) {
+      walk(child, node.effectiveRepositories);
+    }
   };
 
-  for (const root of tree.roots) walk(root, {});
+  for (const root of tree.roots) {
+    walk(root, {});
+  }
   return out;
 }

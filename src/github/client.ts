@@ -1,7 +1,8 @@
-import { Octokit, type RestEndpointMethodTypes } from '@octokit/rest';
 import { retry } from '@octokit/plugin-retry';
 import { throttling } from '@octokit/plugin-throttling';
+import { Octokit, type RestEndpointMethodTypes } from '@octokit/rest';
 import Bottleneck from 'bottleneck';
+
 import type {
   ActorRestriction,
   AllowedActions,
@@ -10,7 +11,6 @@ import type {
   CodeSecurityConfigurationManifest,
   CustomPropertyManifest,
   CustomRepositoryRoleManifest,
-  RepositoryManifest,
   DefaultWorkflowPermissions,
   EnabledRepositories,
   IssueFieldDataType,
@@ -20,6 +20,7 @@ import type {
   OrgConfigVisibility,
   OrgSettingsManifest,
   RepoPermission,
+  RepositoryManifest,
   ResolvedBypassActor,
   ResolvedRuleset,
   RulesetConditions,
@@ -34,17 +35,13 @@ import type {
   TeamPrivacy,
 } from '../synth/manifest.ts';
 import { toCamelCaseKeys, toSnakeCaseKeys } from './casing.ts';
-import { type EtagCache, CACHE_HIT_HEADER } from './etag-cache.ts';
+import { CACHE_HIT_HEADER, type EtagCache } from './etag-cache.ts';
 import { RequestMeter } from './meter.ts';
 import { sealSecretValue } from './seal.ts';
 
 /** GitHub reports the setting as a plain string; anything else is unknown. */
-function notificationSettingOf(
-  value: string | undefined,
-): TeamNotificationSetting | undefined {
-  return value === 'notifications_enabled' || value === 'notifications_disabled'
-    ? value
-    : undefined;
+function notificationSettingOf(value: string | undefined): TeamNotificationSetting | undefined {
+  return value === 'notifications_enabled' || value === 'notifications_disabled' ? value : undefined;
 }
 
 /** Live representation of a team as read back from GitHub. */
@@ -288,18 +285,17 @@ export interface LiveRuleset {
  * A code security configuration. The feature fields come back under the same
  * names the manifest uses, so they are typed as a partial manifest.
  */
-export type LiveCodeSecurityConfiguration =
-  Partial<CodeSecurityConfigurationManifest> & {
-    readonly id: number;
-    readonly name: string;
-    /** `global` configurations are GitHub's own presets and are never managed here. */
-    readonly targetType?: 'global' | 'organization' | 'enterprise';
-    /**
-     * Repositories attached to this configuration or on their way to it. Read
-     * only for a configuration the definition attaches to named repositories.
-     */
-    readonly attachedRepositories?: string[];
-  };
+export type LiveCodeSecurityConfiguration = Partial<CodeSecurityConfigurationManifest> & {
+  readonly id: number;
+  readonly name: string;
+  /** `global` configurations are GitHub's own presets and are never managed here. */
+  readonly targetType?: 'global' | 'organization' | 'enterprise';
+  /**
+   * Repositories attached to this configuration or on their way to it. Read
+   * only for a configuration the definition attaches to named repositories.
+   */
+  readonly attachedRepositories?: string[];
+};
 
 /** Which configuration new repositories of a given scope inherit. */
 export interface LiveDefaultSecurityConfiguration {
@@ -463,25 +459,11 @@ export interface GitHubClient {
    * team as GitHub stores it afterwards: on a rename, the returned slug is the
    * one GitHub actually derived, which is the only trustworthy version of it.
    */
-  updateTeam(
-    org: string,
-    slug: string,
-    params: UpdateTeamParams,
-  ): Promise<LiveTeam>;
+  updateTeam(org: string, slug: string, params: UpdateTeamParams): Promise<LiveTeam>;
   deleteTeam(org: string, slug: string): Promise<void>;
-  setMembership(
-    org: string,
-    slug: string,
-    username: string,
-    role: 'member' | 'maintainer',
-  ): Promise<void>;
+  setMembership(org: string, slug: string, username: string, role: 'member' | 'maintainer'): Promise<void>;
   removeMembership(org: string, slug: string, username: string): Promise<void>;
-  setRepoPermission(
-    org: string,
-    slug: string,
-    repo: string,
-    permission: RepoPermission,
-  ): Promise<void>;
+  setRepoPermission(org: string, slug: string, repo: string, permission: RepoPermission): Promise<void>;
   removeRepoPermission(org: string, slug: string, repo: string): Promise<void>;
 
   /** A team's direct roster, read back only when the definition declares one. */
@@ -491,22 +473,12 @@ export interface GitHubClient {
   listOrganizationOwners(org: string): Promise<string[]>;
 
   /** A team's repository grants, read back only when the definition declares them. */
-  listTeamRepositories(
-    org: string,
-    slug: string,
-  ): Promise<LiveTeamRepository[]>;
+  listTeamRepositories(org: string, slug: string): Promise<LiveTeamRepository[]>;
 
   /** The org's custom repository roles, for resolving a non-built-in permission. */
   listCustomRepositoryRoles(org: string): Promise<LiveCustomRepositoryRole[]>;
-  createCustomRepositoryRole(
-    org: string,
-    role: CustomRepositoryRoleManifest,
-  ): Promise<void>;
-  updateCustomRepositoryRole(
-    org: string,
-    roleId: number,
-    role: CustomRepositoryRoleManifest,
-  ): Promise<void>;
+  createCustomRepositoryRole(org: string, role: CustomRepositoryRoleManifest): Promise<void>;
+  updateCustomRepositoryRole(org: string, roleId: number, role: CustomRepositoryRoleManifest): Promise<void>;
   deleteCustomRepositoryRole(org: string, roleId: number): Promise<void>;
 
   listExternalGroups(org: string): Promise<ExternalIdpGroup[]>;
@@ -514,22 +486,11 @@ export interface GitHubClient {
 
   // Organization roles — /orgs/{org}/organization-roles
   listOrganizationRoles(org: string): Promise<LiveOrganizationRole[]>;
-  readRoleAssignment(
-    org: string,
-    roleId: number,
-  ): Promise<{ teams: string[]; users: string[] }>;
+  readRoleAssignment(org: string, roleId: number): Promise<{ teams: string[]; users: string[] }>;
   assignRoleToTeam(org: string, roleId: number, team: string): Promise<void>;
   removeRoleFromTeam(org: string, roleId: number, team: string): Promise<void>;
-  assignRoleToUser(
-    org: string,
-    roleId: number,
-    username: string,
-  ): Promise<void>;
-  removeRoleFromUser(
-    org: string,
-    roleId: number,
-    username: string,
-  ): Promise<void>;
+  assignRoleToUser(org: string, roleId: number, username: string): Promise<void>;
+  removeRoleFromUser(org: string, roleId: number, username: string): Promise<void>;
 
   /** Repositories in the org, used to resolve names to ids. */
   listRepositories(org: string): Promise<LiveRepository[]>;
@@ -539,10 +500,7 @@ export interface GitHubClient {
    * it: an existing repository is adopted as it stands, and nothing here
    * removes one.
    */
-  createRepository(
-    org: string,
-    repository: RepositoryManifest,
-  ): Promise<LiveRepository>;
+  createRepository(org: string, repository: RepositoryManifest): Promise<LiveRepository>;
 
   /**
    * Whether this organization can have internal repositories, which is true
@@ -572,10 +530,7 @@ export interface GitHubClient {
       allowedActions?: AllowedActions;
     },
   ): Promise<void>;
-  setActionsSelectedRepositories(
-    org: string,
-    repositoryIds: number[],
-  ): Promise<void>;
+  setActionsSelectedRepositories(org: string, repositoryIds: number[]): Promise<void>;
   setAllowedActions(org: string, config: AllowedActionsConfig): Promise<void>;
   setDefaultWorkflowPermissions(
     org: string,
@@ -594,57 +549,24 @@ export interface GitHubClient {
    */
   findRulesetIdByName(org: string, name: string): Promise<number | undefined>;
   createRuleset(org: string, ruleset: ResolvedRuleset): Promise<void>;
-  updateRuleset(
-    org: string,
-    id: number,
-    ruleset: ResolvedRuleset,
-  ): Promise<void>;
+  updateRuleset(org: string, id: number, ruleset: ResolvedRuleset): Promise<void>;
   deleteRuleset(org: string, id: number): Promise<void>;
 
   // Repository rulesets — /repos/{owner}/{repo}/rulesets
   /** Only the rulesets the repository itself defines, never inherited ones. */
   listRepositoryRulesets(owner: string, repo: string): Promise<LiveRuleset[]>;
   /** Same reason as {@link findRulesetIdByName}: names are not unique, creates must adopt. */
-  findRepositoryRulesetIdByName(
-    owner: string,
-    repo: string,
-    name: string,
-  ): Promise<number | undefined>;
-  createRepositoryRuleset(
-    owner: string,
-    repo: string,
-    ruleset: ResolvedRuleset,
-  ): Promise<void>;
-  updateRepositoryRuleset(
-    owner: string,
-    repo: string,
-    id: number,
-    ruleset: ResolvedRuleset,
-  ): Promise<void>;
-  deleteRepositoryRuleset(
-    owner: string,
-    repo: string,
-    id: number,
-  ): Promise<void>;
+  findRepositoryRulesetIdByName(owner: string, repo: string, name: string): Promise<number | undefined>;
+  createRepositoryRuleset(owner: string, repo: string, ruleset: ResolvedRuleset): Promise<void>;
+  updateRepositoryRuleset(owner: string, repo: string, id: number, ruleset: ResolvedRuleset): Promise<void>;
+  deleteRepositoryRuleset(owner: string, repo: string, id: number): Promise<void>;
 
   // Runner groups — /orgs/{org}/actions/runner-groups
   listRunnerGroups(org: string): Promise<LiveRunnerGroup[]>;
-  createRunnerGroup(
-    org: string,
-    group: RunnerGroupManifest,
-    selectedRepositoryIds?: number[],
-  ): Promise<void>;
+  createRunnerGroup(org: string, group: RunnerGroupManifest, selectedRepositoryIds?: number[]): Promise<void>;
   /** Updates everything but the repository list, which has its own endpoint. */
-  updateRunnerGroup(
-    org: string,
-    id: number,
-    group: RunnerGroupManifest,
-  ): Promise<void>;
-  setRunnerGroupRepositories(
-    org: string,
-    id: number,
-    repositoryIds: number[],
-  ): Promise<void>;
+  updateRunnerGroup(org: string, id: number, group: RunnerGroupManifest): Promise<void>;
+  setRunnerGroupRepositories(org: string, id: number, repositoryIds: number[]): Promise<void>;
   deleteRunnerGroup(org: string, id: number): Promise<void>;
 
   // Actions variables — /orgs/{org}/actions/variables and per repository
@@ -664,49 +586,20 @@ export interface GitHubClient {
     selectedRepositoryIds?: number[],
   ): Promise<void>;
   deleteOrgVariable(org: string, name: string): Promise<void>;
-  listRepositoryVariables(
-    owner: string,
-    repo: string,
-  ): Promise<Array<{ name: string; value: string }>>;
-  createRepositoryVariable(
-    owner: string,
-    repo: string,
-    name: string,
-    value: string,
-  ): Promise<void>;
-  updateRepositoryVariable(
-    owner: string,
-    repo: string,
-    name: string,
-    value: string,
-  ): Promise<void>;
-  deleteRepositoryVariable(
-    owner: string,
-    repo: string,
-    name: string,
-  ): Promise<void>;
+  listRepositoryVariables(owner: string, repo: string): Promise<Array<{ name: string; value: string }>>;
+  createRepositoryVariable(owner: string, repo: string, name: string, value: string): Promise<void>;
+  updateRepositoryVariable(owner: string, repo: string, name: string, value: string): Promise<void>;
+  deleteRepositoryVariable(owner: string, repo: string, name: string): Promise<void>;
   /** Names of a repository's deployment environments. */
   listRepositoryEnvironments(owner: string, repo: string): Promise<string[]>;
   /**
    * Environment names for many repositories at once. A repository that does
    * not exist, or that the token cannot see, is absent from the result.
    */
-  listEnvironmentsOfRepositories(
-    owner: string,
-    repositories: readonly string[],
-  ): Promise<Map<string, string[]>>;
+  listEnvironmentsOfRepositories(owner: string, repositories: readonly string[]): Promise<Map<string, string[]>>;
   /** One environment, or undefined when the repository has no such environment. */
-  getEnvironment(
-    owner: string,
-    repo: string,
-    name: string,
-  ): Promise<LiveEnvironment | undefined>;
-  putEnvironment(
-    owner: string,
-    repo: string,
-    name: string,
-    settings: EnvironmentSettings,
-  ): Promise<void>;
+  getEnvironment(owner: string, repo: string, name: string): Promise<LiveEnvironment | undefined>;
+  putEnvironment(owner: string, repo: string, name: string, settings: EnvironmentSettings): Promise<void>;
   createEnvironmentBranchPolicy(
     owner: string,
     repo: string,
@@ -714,33 +607,13 @@ export interface GitHubClient {
     name: string,
     type: 'branch' | 'tag',
   ): Promise<void>;
-  deleteEnvironmentBranchPolicy(
-    owner: string,
-    repo: string,
-    environment: string,
-    id: number,
-  ): Promise<void>;
+  deleteEnvironmentBranchPolicy(owner: string, repo: string, environment: string, id: number): Promise<void>;
   /** Numeric ids, for naming reviewers. */
   getTeamId(org: string, slug: string): Promise<number>;
   getUserId(login: string): Promise<number>;
-  listEnvironmentSecrets(
-    owner: string,
-    repo: string,
-    environment: string,
-  ): Promise<Array<{ name: string }>>;
-  putEnvironmentSecret(
-    owner: string,
-    repo: string,
-    environment: string,
-    name: string,
-    value: string,
-  ): Promise<void>;
-  deleteEnvironmentSecret(
-    owner: string,
-    repo: string,
-    environment: string,
-    name: string,
-  ): Promise<void>;
+  listEnvironmentSecrets(owner: string, repo: string, environment: string): Promise<Array<{ name: string }>>;
+  putEnvironmentSecret(owner: string, repo: string, environment: string, name: string, value: string): Promise<void>;
+  deleteEnvironmentSecret(owner: string, repo: string, environment: string, name: string): Promise<void>;
   listEnvironmentVariables(
     owner: string,
     repo: string,
@@ -760,12 +633,7 @@ export interface GitHubClient {
     name: string,
     value: string,
   ): Promise<void>;
-  deleteEnvironmentVariable(
-    owner: string,
-    repo: string,
-    environment: string,
-    name: string,
-  ): Promise<void>;
+  deleteEnvironmentVariable(owner: string, repo: string, environment: string, name: string): Promise<void>;
 
   // Actions secrets — /orgs/{org}/actions/secrets and per repository.
   // The put methods take the plaintext and seal it to the right public key
@@ -781,10 +649,7 @@ export interface GitHubClient {
   ): Promise<void>;
   deleteOrgSecret(org: string, name: string): Promise<void>;
   /** Direct collaborators and pending invitations, as one list. */
-  listRepositoryCollaborators(
-    owner: string,
-    repo: string,
-  ): Promise<Array<Omit<LiveCollaborator, 'repository'>>>;
+  listRepositoryCollaborators(owner: string, repo: string): Promise<Array<Omit<LiveCollaborator, 'repository'>>>;
   /**
    * Collaborators for many repositories at once. A repository that does not
    * exist, or that the token cannot see, is absent from the result.
@@ -794,71 +659,23 @@ export interface GitHubClient {
     repositories: readonly string[],
   ): Promise<Map<string, Array<Omit<LiveCollaborator, 'repository'>>>>;
   /** Grant access directly; a person outside the organization is invited. */
-  putRepositoryCollaborator(
-    owner: string,
-    repo: string,
-    login: string,
-    permission: string,
-  ): Promise<void>;
-  updateRepositoryInvitation(
-    owner: string,
-    repo: string,
-    invitationId: number,
-    permission: string,
-  ): Promise<void>;
-  deleteRepositoryCollaborator(
-    owner: string,
-    repo: string,
-    login: string,
-  ): Promise<void>;
-  deleteRepositoryInvitation(
-    owner: string,
-    repo: string,
-    invitationId: number,
-  ): Promise<void>;
-  listRepositorySecrets(
-    owner: string,
-    repo: string,
-  ): Promise<Array<{ name: string }>>;
-  putRepositorySecret(
-    owner: string,
-    repo: string,
-    name: string,
-    value: string,
-  ): Promise<void>;
-  deleteRepositorySecret(
-    owner: string,
-    repo: string,
-    name: string,
-  ): Promise<void>;
+  putRepositoryCollaborator(owner: string, repo: string, login: string, permission: string): Promise<void>;
+  updateRepositoryInvitation(owner: string, repo: string, invitationId: number, permission: string): Promise<void>;
+  deleteRepositoryCollaborator(owner: string, repo: string, login: string): Promise<void>;
+  deleteRepositoryInvitation(owner: string, repo: string, invitationId: number): Promise<void>;
+  listRepositorySecrets(owner: string, repo: string): Promise<Array<{ name: string }>>;
+  putRepositorySecret(owner: string, repo: string, name: string, value: string): Promise<void>;
+  deleteRepositorySecret(owner: string, repo: string, name: string): Promise<void>;
 
   // Code security — /orgs/{org}/code-security/configurations
-  listSecurityConfigurations(
-    org: string,
-  ): Promise<LiveCodeSecurityConfiguration[]>;
-  listDefaultSecurityConfigurations(
-    org: string,
-  ): Promise<LiveDefaultSecurityConfiguration[]>;
+  listSecurityConfigurations(org: string): Promise<LiveCodeSecurityConfiguration[]>;
+  listDefaultSecurityConfigurations(org: string): Promise<LiveDefaultSecurityConfiguration[]>;
   /** Each repository a configuration applies to, with GitHub's attachment status. */
-  listSecurityConfigurationRepositories(
-    org: string,
-    id: number,
-  ): Promise<Array<{ name: string; status: string }>>;
-  createSecurityConfiguration(
-    org: string,
-    config: CodeSecurityConfigurationManifest,
-  ): Promise<number>;
-  updateSecurityConfiguration(
-    org: string,
-    id: number,
-    config: CodeSecurityConfigurationManifest,
-  ): Promise<void>;
+  listSecurityConfigurationRepositories(org: string, id: number): Promise<Array<{ name: string; status: string }>>;
+  createSecurityConfiguration(org: string, config: CodeSecurityConfigurationManifest): Promise<number>;
+  updateSecurityConfiguration(org: string, id: number, config: CodeSecurityConfigurationManifest): Promise<void>;
   deleteSecurityConfiguration(org: string, id: number): Promise<void>;
-  setSecurityConfigurationAsDefault(
-    org: string,
-    id: number,
-    scope: SecurityDefaultScope,
-  ): Promise<void>;
+  setSecurityConfigurationAsDefault(org: string, id: number, scope: SecurityDefaultScope): Promise<void>;
   attachSecurityConfiguration(
     org: string,
     id: number,
@@ -869,10 +686,7 @@ export interface GitHubClient {
   // Custom properties — /orgs/{org}/properties/{schema,values}
   listCustomProperties(org: string): Promise<LiveCustomProperty[]>;
   listRepositoryProperties(org: string): Promise<LiveRepositoryProperties[]>;
-  putCustomProperty(
-    org: string,
-    property: CustomPropertyManifest,
-  ): Promise<void>;
+  putCustomProperty(org: string, property: CustomPropertyManifest): Promise<void>;
   deleteCustomProperty(org: string, name: string): Promise<void>;
   setRepositoryPropertyValues(
     org: string,
@@ -884,43 +698,19 @@ export interface GitHubClient {
   listIssueFields(org: string): Promise<LiveIssueField[]>;
   createIssueField(org: string, field: IssueFieldManifest): Promise<void>;
   /** Write `field` over `live`, keeping every option whose name both share. */
-  updateIssueField(
-    org: string,
-    live: LiveIssueField,
-    field: IssueFieldManifest,
-  ): Promise<void>;
+  updateIssueField(org: string, live: LiveIssueField, field: IssueFieldManifest): Promise<void>;
   deleteIssueField(org: string, id: number): Promise<void>;
 
   // Legacy branch protection — /repos/{owner}/{repo}/branches/{branch}/protection
-  getBranchProtection(
-    owner: string,
-    repo: string,
-    branch: string,
-  ): Promise<LiveBranchProtection>;
-  putBranchProtection(
-    owner: string,
-    repo: string,
-    protection: BranchProtectionManifest,
-  ): Promise<void>;
-  deleteBranchProtection(
-    owner: string,
-    repo: string,
-    branch: string,
-  ): Promise<void>;
-  setSignatureProtection(
-    owner: string,
-    repo: string,
-    branch: string,
-    required: boolean,
-  ): Promise<void>;
+  getBranchProtection(owner: string, repo: string, branch: string): Promise<LiveBranchProtection>;
+  putBranchProtection(owner: string, repo: string, protection: BranchProtectionManifest): Promise<void>;
+  deleteBranchProtection(owner: string, repo: string, branch: string): Promise<void>;
+  setSignatureProtection(owner: string, repo: string, branch: string, required: boolean): Promise<void>;
 }
 
-type CreateRulesetParams =
-  RestEndpointMethodTypes['repos']['createOrgRuleset']['parameters'];
-type UpdateRulesetParams =
-  RestEndpointMethodTypes['repos']['updateOrgRuleset']['parameters'];
-type CreateSecurityConfigParams =
-  RestEndpointMethodTypes['codeSecurity']['createConfiguration']['parameters'];
+type CreateRulesetParams = RestEndpointMethodTypes['repos']['createOrgRuleset']['parameters'];
+type UpdateRulesetParams = RestEndpointMethodTypes['repos']['updateOrgRuleset']['parameters'];
+type CreateSecurityConfigParams = RestEndpointMethodTypes['codeSecurity']['createConfiguration']['parameters'];
 
 /**
  * Octokit with GitHub's own throttling and retry best practices: requests are
@@ -988,13 +778,14 @@ function createOctokit(
   });
   // Registered before the meter, so the meter sees a cache hit as one and the
   // throttling beneath still paces the conditional request.
-  if (cache) answerFromCache(octokit, cache);
+  if (cache) {
+    answerFromCache(octokit, cache);
+  }
   octokit.hook.after('request', (response, options) => {
     meter.record(`${options.method} ${options.url}`, response.headers);
   });
   octokit.hook.error('request', (error, options) => {
-    const response = (error as { response?: { headers?: Record<string, string> } })
-      .response;
+    const response = (error as { response?: { headers?: Record<string, string> } }).response;
     meter.record(`${options.method} ${options.url}`, response?.headers);
     throw error;
   });
@@ -1021,12 +812,16 @@ function answerFromCache(octokit: Octokit, cache: EtagCache): void {
       try {
         return await request(options);
       } finally {
-        if (writes(options)) cache.clear();
+        if (writes(options)) {
+          cache.clear();
+        }
       }
     }
     const { url } = octokit.request.endpoint.parse(options);
     const cached = cache.get(url);
-    if (cached) options.headers['if-none-match'] = cached.etag;
+    if (cached) {
+      options.headers['if-none-match'] = cached.etag;
+    }
     try {
       const response = await request(options);
       const etag = response.headers.etag;
@@ -1040,7 +835,9 @@ function answerFromCache(octokit: Octokit, cache: EtagCache): void {
       return response;
     } catch (error) {
       const failed = error as { status?: number; response?: { headers?: Record<string, string> } };
-      if (!cached || failed.status !== 304) throw error;
+      if (!cached || failed.status !== 304) {
+        throw error;
+      }
       return {
         status: 200,
         url,
@@ -1058,7 +855,9 @@ function answerFromCache(octokit: Octokit, cache: EtagCache): void {
 
 /** Whether a request other than a GET can change state on GitHub. */
 function writes(options: { url: string; query?: unknown }): boolean {
-  if (options.url !== '/graphql') return true;
+  if (options.url !== '/graphql') {
+    return true;
+  }
   return typeof options.query === 'string' && /^\s*mutation\b/.test(options.query);
 }
 
@@ -1127,17 +926,15 @@ function directGrants(
   const self = `${owner}/${repo}`.toLowerCase();
   return edges.flatMap((edge) => {
     const grant = edge.permissionSources.find(
-      (s) =>
-        s.source.__typename === 'Repository' &&
-        s.source.nameWithOwner?.toLowerCase() === self,
+      (s) => s.source.__typename === 'Repository' && s.source.nameWithOwner?.toLowerCase() === self,
     );
-    if (!grant) return [];
+    if (!grant) {
+      return [];
+    }
     return [
       {
         login: edge.node.login,
-        permission: comparableRoleName(
-          grant.roleName ?? grant.permission.toLowerCase(),
-        ),
+        permission: comparableRoleName(grant.roleName ?? grant.permission.toLowerCase()),
       },
     ];
   });
@@ -1161,18 +958,10 @@ export class OctokitGitHubClient implements GitHubClient {
    * `cache` answers unchanged GET requests for free across runs. The caller
    * owns it and saves it once the reads it should keep are done.
    */
-  constructor(
-    token: string,
-    baseUrl?: string,
-    octokit?: Octokit,
-    cache?: EtagCache,
-  ) {
+  constructor(token: string, baseUrl?: string, octokit?: Octokit, cache?: EtagCache) {
     const readQueue = new Bottleneck.Group({ maxConcurrent: READ_CONCURRENCY });
-    this.octokit =
-      octokit ?? createOctokit(token, this.meter, baseUrl, cache, readQueue);
-    this.reader =
-      octokit ??
-      createOctokit(token, this.meter, baseUrl, cache, readQueue, new Bottleneck.Group());
+    this.octokit = octokit ?? createOctokit(token, this.meter, baseUrl, cache, readQueue);
+    this.reader = octokit ?? createOctokit(token, this.meter, baseUrl, cache, readQueue, new Bottleneck.Group());
   }
 
   /** A mutation goes through the paced write queue, a query does not. */
@@ -1217,11 +1006,7 @@ export class OctokitGitHubClient implements GitHubClient {
     };
   }
 
-  async updateTeam(
-    org: string,
-    slug: string,
-    params: UpdateTeamParams,
-  ): Promise<LiveTeam> {
+  async updateTeam(org: string, slug: string, params: UpdateTeamParams): Promise<LiveTeam> {
     const { data } = await this.octokit.rest.teams.updateInOrg({
       org,
       team_slug: slug,
@@ -1246,12 +1031,7 @@ export class OctokitGitHubClient implements GitHubClient {
     await this.octokit.rest.teams.deleteInOrg({ org, team_slug: slug });
   }
 
-  async setMembership(
-    org: string,
-    slug: string,
-    username: string,
-    role: 'member' | 'maintainer',
-  ): Promise<void> {
+  async setMembership(org: string, slug: string, username: string, role: 'member' | 'maintainer'): Promise<void> {
     await this.octokit.rest.teams.addOrUpdateMembershipForUserInOrg({
       org,
       team_slug: slug,
@@ -1260,11 +1040,7 @@ export class OctokitGitHubClient implements GitHubClient {
     });
   }
 
-  async removeMembership(
-    org: string,
-    slug: string,
-    username: string,
-  ): Promise<void> {
+  async removeMembership(org: string, slug: string, username: string): Promise<void> {
     await this.octokit.rest.teams.removeMembershipForUserInOrg({
       org,
       team_slug: slug,
@@ -1272,12 +1048,7 @@ export class OctokitGitHubClient implements GitHubClient {
     });
   }
 
-  async setRepoPermission(
-    org: string,
-    slug: string,
-    repo: string,
-    permission: RepoPermission,
-  ): Promise<void> {
+  async setRepoPermission(org: string, slug: string, repo: string, permission: RepoPermission): Promise<void> {
     await this.octokit.rest.teams.addOrUpdateRepoPermissionsInOrg({
       org,
       team_slug: slug,
@@ -1287,11 +1058,7 @@ export class OctokitGitHubClient implements GitHubClient {
     });
   }
 
-  async removeRepoPermission(
-    org: string,
-    slug: string,
-    repo: string,
-  ): Promise<void> {
+  async removeRepoPermission(org: string, slug: string, repo: string): Promise<void> {
     await this.octokit.rest.teams.removeRepoInOrg({
       org,
       team_slug: slug,
@@ -1374,29 +1141,22 @@ export class OctokitGitHubClient implements GitHubClient {
     return edges;
   }
 
-  async listTeamRepositories(
-    org: string,
-    slug: string,
-  ): Promise<LiveTeamRepository[]> {
-    const repos = await this.octokit.paginate(
-      this.octokit.rest.teams.listReposInOrg,
-      { org, team_slug: slug, per_page: 100 },
-    );
+  async listTeamRepositories(org: string, slug: string): Promise<LiveTeamRepository[]> {
+    const repos = await this.octokit.paginate(this.octokit.rest.teams.listReposInOrg, {
+      org,
+      team_slug: slug,
+      per_page: 100,
+    });
     return repos.map((r) => ({
       name: r.name,
       roleName: r.role_name ?? 'read',
     }));
   }
 
-  async listCustomRepositoryRoles(
-    org: string,
-  ): Promise<LiveCustomRepositoryRole[]> {
+  async listCustomRepositoryRoles(org: string): Promise<LiveCustomRepositoryRole[]> {
     // Not among Octokit's generated typed methods at the pinned API version, so
     // it goes through the raw route with the response typed here.
-    const { data } = await this.octokit.request<string>(
-      'GET /orgs/{org}/custom-repository-roles',
-      { org },
-    );
+    const { data } = await this.octokit.request<string>('GET /orgs/{org}/custom-repository-roles', { org });
     const roles = expectArray(
       (data as CustomRepositoryRolesResponse).custom_roles,
       'GET /orgs/{org}/custom-repository-roles',
@@ -1420,15 +1180,8 @@ export class OctokitGitHubClient implements GitHubClient {
   // here. See https://docs.github.com/en/rest/orgs/organization-roles
 
   async listOrganizationRoles(org: string): Promise<LiveOrganizationRole[]> {
-    const { data } = await this.octokit.request(
-      'GET /orgs/{org}/organization-roles',
-      { org },
-    );
-    const roles = expectArray(
-      (data as OrganizationRolesResponse).roles,
-      'GET /orgs/{org}/organization-roles',
-      'roles',
-    );
+    const { data } = await this.octokit.request('GET /orgs/{org}/organization-roles', { org });
+    const roles = expectArray((data as OrganizationRolesResponse).roles, 'GET /orgs/{org}/organization-roles', 'roles');
     return roles.map((r) => ({
       id: r.id,
       name: r.name,
@@ -1438,19 +1191,18 @@ export class OctokitGitHubClient implements GitHubClient {
     }));
   }
 
-  async readRoleAssignment(
-    org: string,
-    roleId: number,
-  ): Promise<{ teams: string[]; users: string[] }> {
+  async readRoleAssignment(org: string, roleId: number): Promise<{ teams: string[]; users: string[] }> {
     const [teams, users] = await Promise.all([
-      this.octokit.paginate(
-        'GET /orgs/{org}/organization-roles/{role_id}/teams',
-        { org, role_id: roleId, per_page: 100 },
-      ),
-      this.octokit.paginate(
-        'GET /orgs/{org}/organization-roles/{role_id}/users',
-        { org, role_id: roleId, per_page: 100 },
-      ),
+      this.octokit.paginate('GET /orgs/{org}/organization-roles/{role_id}/teams', {
+        org,
+        role_id: roleId,
+        per_page: 100,
+      }),
+      this.octokit.paginate('GET /orgs/{org}/organization-roles/{role_id}/users', {
+        org,
+        role_id: roleId,
+        per_page: 100,
+      }),
     ]);
     return {
       teams: (teams as Array<RoleAssignee & { slug: string }>)
@@ -1464,56 +1216,41 @@ export class OctokitGitHubClient implements GitHubClient {
     };
   }
 
-  async assignRoleToTeam(
-    org: string,
-    roleId: number,
-    team: string,
-  ): Promise<void> {
-    await this.octokit.request(
-      'PUT /orgs/{org}/organization-roles/teams/{team_slug}/{role_id}',
-      { org, team_slug: team, role_id: roleId },
-    );
+  async assignRoleToTeam(org: string, roleId: number, team: string): Promise<void> {
+    await this.octokit.request('PUT /orgs/{org}/organization-roles/teams/{team_slug}/{role_id}', {
+      org,
+      team_slug: team,
+      role_id: roleId,
+    });
   }
 
-  async removeRoleFromTeam(
-    org: string,
-    roleId: number,
-    team: string,
-  ): Promise<void> {
-    await this.octokit.request(
-      'DELETE /orgs/{org}/organization-roles/teams/{team_slug}/{role_id}',
-      { org, team_slug: team, role_id: roleId },
-    );
+  async removeRoleFromTeam(org: string, roleId: number, team: string): Promise<void> {
+    await this.octokit.request('DELETE /orgs/{org}/organization-roles/teams/{team_slug}/{role_id}', {
+      org,
+      team_slug: team,
+      role_id: roleId,
+    });
   }
 
-  async assignRoleToUser(
-    org: string,
-    roleId: number,
-    username: string,
-  ): Promise<void> {
-    await this.octokit.request(
-      'PUT /orgs/{org}/organization-roles/users/{username}/{role_id}',
-      { org, username, role_id: roleId },
-    );
+  async assignRoleToUser(org: string, roleId: number, username: string): Promise<void> {
+    await this.octokit.request('PUT /orgs/{org}/organization-roles/users/{username}/{role_id}', {
+      org,
+      username,
+      role_id: roleId,
+    });
   }
 
-  async removeRoleFromUser(
-    org: string,
-    roleId: number,
-    username: string,
-  ): Promise<void> {
-    await this.octokit.request(
-      'DELETE /orgs/{org}/organization-roles/users/{username}/{role_id}',
-      { org, username, role_id: roleId },
-    );
+  async removeRoleFromUser(org: string, roleId: number, username: string): Promise<void> {
+    await this.octokit.request('DELETE /orgs/{org}/organization-roles/users/{username}/{role_id}', {
+      org,
+      username,
+      role_id: roleId,
+    });
   }
 
   // Custom repository roles — /orgs/{org}/custom-repository-roles
 
-  async createCustomRepositoryRole(
-    org: string,
-    role: CustomRepositoryRoleManifest,
-  ): Promise<void> {
+  async createCustomRepositoryRole(org: string, role: CustomRepositoryRoleManifest): Promise<void> {
     await this.octokit.request('POST /orgs/{org}/custom-repository-roles', {
       org,
       name: role.name,
@@ -1523,43 +1260,29 @@ export class OctokitGitHubClient implements GitHubClient {
     });
   }
 
-  async updateCustomRepositoryRole(
-    org: string,
-    roleId: number,
-    role: CustomRepositoryRoleManifest,
-  ): Promise<void> {
-    await this.octokit.request(
-      'PATCH /orgs/{org}/custom-repository-roles/{role_id}',
-      {
-        org,
-        role_id: roleId,
-        name: role.name,
-        description: role.description,
-        base_role: githubRoleName(role.baseRole),
-        permissions: [...role.permissions],
-      },
-    );
+  async updateCustomRepositoryRole(org: string, roleId: number, role: CustomRepositoryRoleManifest): Promise<void> {
+    await this.octokit.request('PATCH /orgs/{org}/custom-repository-roles/{role_id}', {
+      org,
+      role_id: roleId,
+      name: role.name,
+      description: role.description,
+      base_role: githubRoleName(role.baseRole),
+      permissions: [...role.permissions],
+    });
   }
 
   async deleteCustomRepositoryRole(org: string, roleId: number): Promise<void> {
-    await this.octokit.request(
-      'DELETE /orgs/{org}/custom-repository-roles/{role_id}',
-      { org, role_id: roleId },
-    );
+    await this.octokit.request('DELETE /orgs/{org}/custom-repository-roles/{role_id}', { org, role_id: roleId });
   }
 
   async supportsInternalRepositories(org: string): Promise<boolean> {
     const { data } = await this.octokit.rest.orgs.get({ org });
     return (
-      (data as { members_can_create_internal_repositories?: boolean })
-        .members_can_create_internal_repositories === true
+      (data as { members_can_create_internal_repositories?: boolean }).members_can_create_internal_repositories === true
     );
   }
 
-  async createRepository(
-    org: string,
-    repository: RepositoryManifest,
-  ): Promise<LiveRepository> {
+  async createRepository(org: string, repository: RepositoryManifest): Promise<LiveRepository> {
     const { data } = await this.octokit.request('POST /orgs/{org}/repos', {
       org,
       name: repository.name,
@@ -1590,49 +1313,36 @@ export class OctokitGitHubClient implements GitHubClient {
     const all: ExternalIdpGroup[] = [];
     const perPage = 100;
     for (let page = 1; ; page++) {
-      const { data } = await this.octokit.request(
-        'GET /orgs/{org}/external-groups',
-        { org, per_page: perPage, page },
-      );
-      const groups = expectArray(
-        (data as ExternalGroupsResponse).groups,
-        'GET /orgs/{org}/external-groups',
-        'groups',
-      );
-      all.push(
-        ...groups.map((g) => ({ id: Number(g.group_id), name: g.group_name })),
-      );
-      if (groups.length < perPage) return all;
+      const { data } = await this.octokit.request('GET /orgs/{org}/external-groups', { org, per_page: perPage, page });
+      const groups = expectArray((data as ExternalGroupsResponse).groups, 'GET /orgs/{org}/external-groups', 'groups');
+      all.push(...groups.map((g) => ({ id: Number(g.group_id), name: g.group_name })));
+      if (groups.length < perPage) {
+        return all;
+      }
     }
   }
 
-  async linkExternalGroup(
-    org: string,
-    slug: string,
-    groupId: number,
-  ): Promise<void> {
-    await this.octokit.request(
-      'PATCH /orgs/{org}/teams/{team_slug}/external-groups',
-      { org, team_slug: slug, group_id: groupId },
-    );
+  async linkExternalGroup(org: string, slug: string, groupId: number): Promise<void> {
+    await this.octokit.request('PATCH /orgs/{org}/teams/{team_slug}/external-groups', {
+      org,
+      team_slug: slug,
+      group_id: groupId,
+    });
   }
 
   async listRepositories(org: string): Promise<LiveRepository[]> {
-    const repos = await this.octokit.paginate(
-      this.octokit.rest.repos.listForOrg,
-      {
-        org,
-        per_page: 100,
-      },
-    );
+    const repos = await this.octokit.paginate(this.octokit.rest.repos.listForOrg, {
+      org,
+      per_page: 100,
+    });
     return repos.map((r) => ({ id: r.id, name: r.name }));
   }
 
   async listAppInstallations(org: string): Promise<LiveAppInstallation[]> {
-    const installations = await this.octokit.paginate(
-      this.octokit.rest.orgs.listAppInstallations,
-      { org, per_page: 100 },
-    );
+    const installations = await this.octokit.paginate(this.octokit.rest.orgs.listAppInstallations, {
+      org,
+      per_page: 100,
+    });
     return installations.map((i) => ({
       id: i.id,
       appId: i.app_id,
@@ -1642,10 +1352,10 @@ export class OctokitGitHubClient implements GitHubClient {
   }
 
   async listInstallationRepositories(installationId: number): Promise<string[]> {
-    const repositories = await this.octokit.paginate(
-      this.octokit.rest.apps.listInstallationReposForAuthenticatedUser,
-      { installation_id: installationId, per_page: 100 },
-    );
+    const repositories = await this.octokit.paginate(this.octokit.rest.apps.listInstallationReposForAuthenticatedUser, {
+      installation_id: installationId,
+      per_page: 100,
+    });
     return repositories.map((r) => r.name);
   }
 
@@ -1658,46 +1368,32 @@ export class OctokitGitHubClient implements GitHubClient {
       // undefined is what "not set" means everywhere else in this codebase.
       defaultRepositoryPermission:
         data.default_repository_permission as OrgSettingsManifest['defaultRepositoryPermission'],
-      membersCanCreateRepositories:
-        data.members_can_create_repositories ?? undefined,
-      membersCanCreatePublicRepositories:
-        data.members_can_create_public_repositories,
-      membersCanCreatePrivateRepositories:
-        data.members_can_create_private_repositories,
-      membersCanCreateInternalRepositories:
-        data.members_can_create_internal_repositories,
+      membersCanCreateRepositories: data.members_can_create_repositories ?? undefined,
+      membersCanCreatePublicRepositories: data.members_can_create_public_repositories,
+      membersCanCreatePrivateRepositories: data.members_can_create_private_repositories,
+      membersCanCreateInternalRepositories: data.members_can_create_internal_repositories,
       membersCanCreatePages: data.members_can_create_pages ?? undefined,
-      membersCanCreatePublicPages:
-        data.members_can_create_public_pages ?? undefined,
-      membersCanCreatePrivatePages:
-        data.members_can_create_private_pages ?? undefined,
-      membersCanForkPrivateRepositories:
-        data.members_can_fork_private_repositories ?? undefined,
+      membersCanCreatePublicPages: data.members_can_create_public_pages ?? undefined,
+      membersCanCreatePrivatePages: data.members_can_create_private_pages ?? undefined,
+      membersCanForkPrivateRepositories: data.members_can_fork_private_repositories ?? undefined,
       webCommitSignoffRequired: data.web_commit_signoff_required,
       hasOrganizationProjects: data.has_organization_projects,
       hasRepositoryProjects: data.has_repository_projects,
     };
   }
 
-  async updateOrgSettings(
-    org: string,
-    settings: OrgSettingsManifest,
-  ): Promise<void> {
+  async updateOrgSettings(org: string, settings: OrgSettingsManifest): Promise<void> {
     await this.octokit.rest.orgs.update({
       org,
       default_repository_permission: settings.defaultRepositoryPermission,
       members_can_create_repositories: settings.membersCanCreateRepositories,
-      members_can_create_public_repositories:
-        settings.membersCanCreatePublicRepositories,
-      members_can_create_private_repositories:
-        settings.membersCanCreatePrivateRepositories,
-      members_can_create_internal_repositories:
-        settings.membersCanCreateInternalRepositories,
+      members_can_create_public_repositories: settings.membersCanCreatePublicRepositories,
+      members_can_create_private_repositories: settings.membersCanCreatePrivateRepositories,
+      members_can_create_internal_repositories: settings.membersCanCreateInternalRepositories,
       members_can_create_pages: settings.membersCanCreatePages,
       members_can_create_public_pages: settings.membersCanCreatePublicPages,
       members_can_create_private_pages: settings.membersCanCreatePrivatePages,
-      members_can_fork_private_repositories:
-        settings.membersCanForkPrivateRepositories,
+      members_can_fork_private_repositories: settings.membersCanForkPrivateRepositories,
       web_commit_signoff_required: settings.webCommitSignoffRequired,
       has_organization_projects: settings.hasOrganizationProjects,
       has_repository_projects: settings.hasRepositoryProjects,
@@ -1707,19 +1403,16 @@ export class OctokitGitHubClient implements GitHubClient {
   // ---- Actions policy ------------------------------------------------------
 
   async getActionsPolicy(org: string): Promise<LiveActionsPolicy> {
-    const { data: permissions } =
-      await this.octokit.rest.actions.getGithubActionsPermissionsOrganization({
-        org,
-      });
-    const { data: workflow } =
-      await this.octokit.rest.actions.getGithubActionsDefaultWorkflowPermissionsOrganization(
-        { org },
-      );
+    const { data: permissions } = await this.octokit.rest.actions.getGithubActionsPermissionsOrganization({
+      org,
+    });
+    const { data: workflow } = await this.octokit.rest.actions.getGithubActionsDefaultWorkflowPermissionsOrganization({
+      org,
+    });
 
     let allowedActionsConfig: AllowedActionsConfig | undefined;
     if (permissions.allowed_actions === 'selected') {
-      const { data } =
-        await this.octokit.rest.actions.getAllowedActionsOrganization({ org });
+      const { data } = await this.octokit.rest.actions.getAllowedActionsOrganization({ org });
       allowedActionsConfig = {
         githubOwnedAllowed: data.github_owned_allowed,
         verifiedAllowed: data.verified_allowed,
@@ -1730,8 +1423,7 @@ export class OctokitGitHubClient implements GitHubClient {
     let selectedRepositories: string[] | undefined;
     if (permissions.enabled_repositories === 'selected') {
       const repos = await this.octokit.paginate(
-        this.octokit.rest.actions
-          .listSelectedRepositoriesEnabledGithubActionsOrganization,
+        this.octokit.rest.actions.listSelectedRepositoriesEnabledGithubActionsOrganization,
         { org, per_page: 100 },
       );
       selectedRepositories = repos.map((r) => r.name);
@@ -1756,31 +1448,24 @@ export class OctokitGitHubClient implements GitHubClient {
   ): Promise<void> {
     // The endpoint replaces both fields, so a partial declaration has to be
     // merged onto what the org has today.
-    const { data: current } =
-      await this.octokit.rest.actions.getGithubActionsPermissionsOrganization({
-        org,
-      });
+    const { data: current } = await this.octokit.rest.actions.getGithubActionsPermissionsOrganization({
+      org,
+    });
     await this.octokit.rest.actions.setGithubActionsPermissionsOrganization({
       org,
-      enabled_repositories:
-        params.enabledRepositories ?? current.enabled_repositories,
+      enabled_repositories: params.enabledRepositories ?? current.enabled_repositories,
       allowed_actions: params.allowedActions ?? current.allowed_actions,
     });
   }
 
-  async setActionsSelectedRepositories(
-    org: string,
-    repositoryIds: number[],
-  ): Promise<void> {
-    await this.octokit.rest.actions.setSelectedRepositoriesEnabledGithubActionsOrganization(
-      { org, selected_repository_ids: repositoryIds },
-    );
+  async setActionsSelectedRepositories(org: string, repositoryIds: number[]): Promise<void> {
+    await this.octokit.rest.actions.setSelectedRepositoriesEnabledGithubActionsOrganization({
+      org,
+      selected_repository_ids: repositoryIds,
+    });
   }
 
-  async setAllowedActions(
-    org: string,
-    config: AllowedActionsConfig,
-  ): Promise<void> {
+  async setAllowedActions(org: string, config: AllowedActionsConfig): Promise<void> {
     await this.octokit.rest.actions.setAllowedActionsOrganization({
       org,
       github_owned_allowed: config.githubOwnedAllowed,
@@ -1796,33 +1481,22 @@ export class OctokitGitHubClient implements GitHubClient {
       canApprovePullRequestReviews?: boolean;
     },
   ): Promise<void> {
-    await this.octokit.rest.actions.setGithubActionsDefaultWorkflowPermissionsOrganization(
-      {
-        org,
-        default_workflow_permissions: params.defaultWorkflowPermissions,
-        can_approve_pull_request_reviews: params.canApprovePullRequestReviews,
-      },
-    );
+    await this.octokit.rest.actions.setGithubActionsDefaultWorkflowPermissionsOrganization({
+      org,
+      default_workflow_permissions: params.defaultWorkflowPermissions,
+      can_approve_pull_request_reviews: params.canApprovePullRequestReviews,
+    });
   }
 
   // ---- Rulesets ------------------------------------------------------------
 
-  async findRulesetIdByName(
-    org: string,
-    name: string,
-  ): Promise<number | undefined> {
-    const summaries = await this.octokit.paginate(
-      this.octokit.rest.repos.getOrgRulesets,
-      { org, per_page: 100 },
-    );
+  async findRulesetIdByName(org: string, name: string): Promise<number | undefined> {
+    const summaries = await this.octokit.paginate(this.octokit.rest.repos.getOrgRulesets, { org, per_page: 100 });
     return summaries.find((s) => s.name === name)?.id;
   }
 
   async listRulesets(org: string): Promise<LiveRuleset[]> {
-    const summaries = await this.octokit.paginate(
-      this.octokit.rest.repos.getOrgRulesets,
-      { org, per_page: 100 },
-    );
+    const summaries = await this.octokit.paginate(this.octokit.rest.repos.getOrgRulesets, { org, per_page: 100 });
     // The list endpoint omits rules and conditions, so each ruleset is read back
     // in full before it can be diffed.
     const rulesets: LiveRuleset[] = [];
@@ -1836,13 +1510,9 @@ export class OctokitGitHubClient implements GitHubClient {
         name: data.name,
         target: (data.target ?? 'branch') as RulesetTarget,
         enforcement: data.enforcement,
-        conditions: data.conditions
-          ? toCamelCaseKeys<RulesetConditions>(data.conditions)
-          : undefined,
+        conditions: data.conditions ? toCamelCaseKeys<RulesetConditions>(data.conditions) : undefined,
         rules: toCamelCaseKeys<RulesetRule[]>(data.rules ?? []),
-        bypassActors: toCamelCaseKeys<ResolvedBypassActor[]>(
-          data.bypass_actors ?? [],
-        ),
+        bypassActors: toCamelCaseKeys<ResolvedBypassActor[]>(data.bypass_actors ?? []),
         sourceType: data.source_type ?? 'Organization',
       });
     }
@@ -1856,11 +1526,7 @@ export class OctokitGitHubClient implements GitHubClient {
     } as CreateRulesetParams);
   }
 
-  async updateRuleset(
-    org: string,
-    id: number,
-    ruleset: ResolvedRuleset,
-  ): Promise<void> {
+  async updateRuleset(org: string, id: number, ruleset: ResolvedRuleset): Promise<void> {
     await this.octokit.rest.repos.updateOrgRuleset({
       org,
       ruleset_id: id,
@@ -1874,17 +1540,16 @@ export class OctokitGitHubClient implements GitHubClient {
 
   // ---- Repository rulesets -------------------------------------------------
 
-  async listRepositoryRulesets(
-    owner: string,
-    repo: string,
-  ): Promise<LiveRuleset[]> {
+  async listRepositoryRulesets(owner: string, repo: string): Promise<LiveRuleset[]> {
     // `includes_parents: false` keeps org and enterprise rulesets out: they
     // are visible from the repository but owned elsewhere, and a pruning pass
     // that saw them would propose deleting policy it does not manage.
-    const summaries = await this.octokit.paginate(
-      this.octokit.rest.repos.getRepoRulesets,
-      { owner, repo, per_page: 100, includes_parents: false },
-    );
+    const summaries = await this.octokit.paginate(this.octokit.rest.repos.getRepoRulesets, {
+      owner,
+      repo,
+      per_page: 100,
+      includes_parents: false,
+    });
     const rulesets: LiveRuleset[] = [];
     for (const summary of summaries) {
       const { data } = await this.octokit.rest.repos.getRepoRuleset({
@@ -1898,36 +1563,26 @@ export class OctokitGitHubClient implements GitHubClient {
         name: data.name,
         target: (data.target ?? 'branch') as RulesetTarget,
         enforcement: data.enforcement,
-        conditions: data.conditions
-          ? toCamelCaseKeys<RulesetConditions>(data.conditions)
-          : undefined,
+        conditions: data.conditions ? toCamelCaseKeys<RulesetConditions>(data.conditions) : undefined,
         rules: toCamelCaseKeys<RulesetRule[]>(data.rules ?? []),
-        bypassActors: toCamelCaseKeys<ResolvedBypassActor[]>(
-          data.bypass_actors ?? [],
-        ),
+        bypassActors: toCamelCaseKeys<ResolvedBypassActor[]>(data.bypass_actors ?? []),
         sourceType: data.source_type ?? 'Repository',
       });
     }
     return rulesets;
   }
 
-  async findRepositoryRulesetIdByName(
-    owner: string,
-    repo: string,
-    name: string,
-  ): Promise<number | undefined> {
-    const summaries = await this.octokit.paginate(
-      this.octokit.rest.repos.getRepoRulesets,
-      { owner, repo, per_page: 100, includes_parents: false },
-    );
+  async findRepositoryRulesetIdByName(owner: string, repo: string, name: string): Promise<number | undefined> {
+    const summaries = await this.octokit.paginate(this.octokit.rest.repos.getRepoRulesets, {
+      owner,
+      repo,
+      per_page: 100,
+      includes_parents: false,
+    });
     return summaries.find((s) => s.name === name)?.id;
   }
 
-  async createRepositoryRuleset(
-    owner: string,
-    repo: string,
-    ruleset: ResolvedRuleset,
-  ): Promise<void> {
+  async createRepositoryRuleset(owner: string, repo: string, ruleset: ResolvedRuleset): Promise<void> {
     await this.octokit.rest.repos.createRepoRuleset({
       owner,
       repo,
@@ -1935,12 +1590,7 @@ export class OctokitGitHubClient implements GitHubClient {
     } as RestEndpointMethodTypes['repos']['createRepoRuleset']['parameters']);
   }
 
-  async updateRepositoryRuleset(
-    owner: string,
-    repo: string,
-    id: number,
-    ruleset: ResolvedRuleset,
-  ): Promise<void> {
+  async updateRepositoryRuleset(owner: string, repo: string, id: number, ruleset: ResolvedRuleset): Promise<void> {
     await this.octokit.rest.repos.updateRepoRuleset({
       owner,
       repo,
@@ -1949,11 +1599,7 @@ export class OctokitGitHubClient implements GitHubClient {
     } as RestEndpointMethodTypes['repos']['updateRepoRuleset']['parameters']);
   }
 
-  async deleteRepositoryRuleset(
-    owner: string,
-    repo: string,
-    id: number,
-  ): Promise<void> {
+  async deleteRepositoryRuleset(owner: string, repo: string, id: number): Promise<void> {
     await this.octokit.rest.repos.deleteRepoRuleset({
       owner,
       repo,
@@ -1974,17 +1620,20 @@ export class OctokitGitHubClient implements GitHubClient {
     const raw: RawRunnerGroup[] = [];
     const perPage = 100;
     for (let page = 1; ; page++) {
-      const { data } = await this.octokit.request(
-        'GET /orgs/{org}/actions/runner-groups',
-        { org, per_page: perPage, page },
-      );
+      const { data } = await this.octokit.request('GET /orgs/{org}/actions/runner-groups', {
+        org,
+        per_page: perPage,
+        page,
+      });
       const groups = expectArray(
         (data as { runner_groups?: RawRunnerGroup[] }).runner_groups,
         'GET /orgs/{org}/actions/runner-groups',
         'runner_groups',
       );
       raw.push(...groups);
-      if (groups.length < perPage) break;
+      if (groups.length < perPage) {
+        break;
+      }
     }
     // An enterprise shares its runner groups into every organization, and the
     // listing returns them marked `inherited`, possibly under the same name as
@@ -1996,25 +1645,20 @@ export class OctokitGitHubClient implements GitHubClient {
       raw
         .filter((g) => g.inherited !== true)
         .map(async (g) => ({
-        id: g.id,
-        name: g.name,
-        visibility: (g.visibility ?? 'all') as RunnerGroupVisibility,
-        isDefault: g.default === true,
-        allowsPublicRepositories: g.allows_public_repositories === true,
-        restrictedToWorkflows: g.restricted_to_workflows === true,
-        selectedWorkflows: g.selected_workflows ?? [],
-        selectedRepositories:
-          g.visibility === 'selected'
-            ? await this.listRunnerGroupRepositories(org, g.id)
-            : undefined,
-      })),
+          id: g.id,
+          name: g.name,
+          visibility: (g.visibility ?? 'all') as RunnerGroupVisibility,
+          isDefault: g.default === true,
+          allowsPublicRepositories: g.allows_public_repositories === true,
+          restrictedToWorkflows: g.restricted_to_workflows === true,
+          selectedWorkflows: g.selected_workflows ?? [],
+          selectedRepositories:
+            g.visibility === 'selected' ? await this.listRunnerGroupRepositories(org, g.id) : undefined,
+        })),
     );
   }
 
-  private async listRunnerGroupRepositories(
-    org: string,
-    id: number,
-  ): Promise<string[]> {
+  private async listRunnerGroupRepositories(org: string, id: number): Promise<string[]> {
     const names: string[] = [];
     const perPage = 100;
     for (let page = 1; ; page++) {
@@ -2028,15 +1672,13 @@ export class OctokitGitHubClient implements GitHubClient {
         'repositories',
       );
       names.push(...repos.map((r) => r.name));
-      if (repos.length < perPage) return names;
+      if (repos.length < perPage) {
+        return names;
+      }
     }
   }
 
-  async createRunnerGroup(
-    org: string,
-    group: RunnerGroupManifest,
-    selectedRepositoryIds?: number[],
-  ): Promise<void> {
+  async createRunnerGroup(org: string, group: RunnerGroupManifest, selectedRepositoryIds?: number[]): Promise<void> {
     await this.octokit.request('POST /orgs/{org}/actions/runner-groups', {
       org,
       ...runnerGroupPayload(group),
@@ -2044,63 +1686,50 @@ export class OctokitGitHubClient implements GitHubClient {
     });
   }
 
-  async updateRunnerGroup(
-    org: string,
-    id: number,
-    group: RunnerGroupManifest,
-  ): Promise<void> {
-    await this.octokit.request(
-      'PATCH /orgs/{org}/actions/runner-groups/{runner_group_id}',
-      { org, runner_group_id: id, ...runnerGroupPayload(group) },
-    );
+  async updateRunnerGroup(org: string, id: number, group: RunnerGroupManifest): Promise<void> {
+    await this.octokit.request('PATCH /orgs/{org}/actions/runner-groups/{runner_group_id}', {
+      org,
+      runner_group_id: id,
+      ...runnerGroupPayload(group),
+    });
   }
 
-  async setRunnerGroupRepositories(
-    org: string,
-    id: number,
-    repositoryIds: number[],
-  ): Promise<void> {
-    await this.octokit.request(
-      'PUT /orgs/{org}/actions/runner-groups/{runner_group_id}/repositories',
-      { org, runner_group_id: id, selected_repository_ids: repositoryIds },
-    );
+  async setRunnerGroupRepositories(org: string, id: number, repositoryIds: number[]): Promise<void> {
+    await this.octokit.request('PUT /orgs/{org}/actions/runner-groups/{runner_group_id}/repositories', {
+      org,
+      runner_group_id: id,
+      selected_repository_ids: repositoryIds,
+    });
   }
 
   async deleteRunnerGroup(org: string, id: number): Promise<void> {
-    await this.octokit.request(
-      'DELETE /orgs/{org}/actions/runner-groups/{runner_group_id}',
-      { org, runner_group_id: id },
-    );
+    await this.octokit.request('DELETE /orgs/{org}/actions/runner-groups/{runner_group_id}', {
+      org,
+      runner_group_id: id,
+    });
   }
 
   // ---- Actions variables -----------------------------------------------------
 
   async listOrgVariables(org: string): Promise<LiveOrgVariable[]> {
-    const variables = await this.octokit.paginate(
-      this.octokit.rest.actions.listOrgVariables,
-      { org, per_page: 100 },
-    );
+    const variables = await this.octokit.paginate(this.octokit.rest.actions.listOrgVariables, { org, per_page: 100 });
     return Promise.all(
       variables.map(async (v) => ({
         name: v.name,
         value: v.value,
         visibility: v.visibility as OrgConfigVisibility,
         selectedRepositories:
-          v.visibility === 'selected'
-            ? await this.listOrgVariableRepositories(org, v.name)
-            : undefined,
+          v.visibility === 'selected' ? await this.listOrgVariableRepositories(org, v.name) : undefined,
       })),
     );
   }
 
-  private async listOrgVariableRepositories(
-    org: string,
-    name: string,
-  ): Promise<string[]> {
-    const repos = await this.octokit.paginate(
-      this.octokit.rest.actions.listSelectedReposForOrgVariable,
-      { org, name, per_page: 100 },
-    );
+  private async listOrgVariableRepositories(org: string, name: string): Promise<string[]> {
+    const repos = await this.octokit.paginate(this.octokit.rest.actions.listSelectedReposForOrgVariable, {
+      org,
+      name,
+      per_page: 100,
+    });
     return repos.map((r) => r.name);
   }
 
@@ -2140,23 +1769,16 @@ export class OctokitGitHubClient implements GitHubClient {
     await this.octokit.rest.actions.deleteOrgVariable({ org, name });
   }
 
-  async listRepositoryVariables(
-    owner: string,
-    repo: string,
-  ): Promise<Array<{ name: string; value: string }>> {
-    const variables = await this.octokit.paginate(
-      this.octokit.rest.actions.listRepoVariables,
-      { owner, repo, per_page: 100 },
-    );
+  async listRepositoryVariables(owner: string, repo: string): Promise<Array<{ name: string; value: string }>> {
+    const variables = await this.octokit.paginate(this.octokit.rest.actions.listRepoVariables, {
+      owner,
+      repo,
+      per_page: 100,
+    });
     return variables.map((v) => ({ name: v.name, value: v.value }));
   }
 
-  async createRepositoryVariable(
-    owner: string,
-    repo: string,
-    name: string,
-    value: string,
-  ): Promise<void> {
+  async createRepositoryVariable(owner: string, repo: string, name: string, value: string): Promise<void> {
     await this.octokit.rest.actions.createRepoVariable({
       owner,
       repo,
@@ -2165,12 +1787,7 @@ export class OctokitGitHubClient implements GitHubClient {
     });
   }
 
-  async updateRepositoryVariable(
-    owner: string,
-    repo: string,
-    name: string,
-    value: string,
-  ): Promise<void> {
+  async updateRepositoryVariable(owner: string, repo: string, name: string, value: string): Promise<void> {
     await this.octokit.rest.actions.updateRepoVariable({
       owner,
       repo,
@@ -2179,18 +1796,11 @@ export class OctokitGitHubClient implements GitHubClient {
     });
   }
 
-  async deleteRepositoryVariable(
-    owner: string,
-    repo: string,
-    name: string,
-  ): Promise<void> {
+  async deleteRepositoryVariable(owner: string, repo: string, name: string): Promise<void> {
     await this.octokit.rest.actions.deleteRepoVariable({ owner, repo, name });
   }
 
-  async listRepositoryEnvironments(
-    owner: string,
-    repo: string,
-  ): Promise<string[]> {
+  async listRepositoryEnvironments(owner: string, repo: string): Promise<string[]> {
     // Octokit's paginate does not type this endpoint as a list, so page by hand.
     const names: string[] = [];
     for (let page = 1; ; page++) {
@@ -2202,14 +1812,13 @@ export class OctokitGitHubClient implements GitHubClient {
       });
       const environments = data.environments ?? [];
       names.push(...environments.map((e) => e.name));
-      if (environments.length < 100) return names;
+      if (environments.length < 100) {
+        return names;
+      }
     }
   }
 
-  async listEnvironmentsOfRepositories(
-    owner: string,
-    repositories: readonly string[],
-  ): Promise<Map<string, string[]>> {
+  async listEnvironmentsOfRepositories(owner: string, repositories: readonly string[]): Promise<Map<string, string[]>> {
     const batches: string[][] = [];
     for (let i = 0; i < repositories.length; i += ENVIRONMENT_BATCH) {
       batches.push(repositories.slice(i, i + ENVIRONMENT_BATCH));
@@ -2228,10 +1837,7 @@ export class OctokitGitHubClient implements GitHubClient {
    * aliased by position. A repository with more environments than one page
    * holds is listed over REST instead.
    */
-  private async environmentBatch(
-    owner: string,
-    batch: readonly string[],
-  ): Promise<Array<[string, string[]]>> {
+  private async environmentBatch(owner: string, batch: readonly string[]): Promise<Array<[string, string[]]>> {
     const variables = Object.fromEntries(batch.map((name, i) => [`r${i}`, name]));
     const query = `query ($owner: String!, ${batch.map((_, i) => `$r${i}: String!`).join(', ')}) {
 ${batch
@@ -2248,7 +1854,9 @@ ${batch
     return Promise.all(
       batch.flatMap((repository, i) => {
         const environments = data[`r${i}`]?.environments;
-        if (!environments) return [];
+        if (!environments) {
+          return [];
+        }
         return [
           (async (): Promise<[string, string[]]> => [
             repository,
@@ -2266,10 +1874,7 @@ ${batch
    * failing it. GitHub answers them with NOT_FOUND errors beside the data it
    * found, and Octokit throws on any error, so those are the ones let through.
    */
-  private async graphqlAllowingNotFound<T>(
-    query: string,
-    variables: Record<string, unknown>,
-  ): Promise<T> {
+  private async graphqlAllowingNotFound<T>(query: string, variables: Record<string, unknown>): Promise<T> {
     try {
       return await this.graphql<T>(query, variables);
     } catch (error) {
@@ -2285,11 +1890,7 @@ ${batch
     }
   }
 
-  async getEnvironment(
-    owner: string,
-    repo: string,
-    name: string,
-  ): Promise<LiveEnvironment | undefined> {
+  async getEnvironment(owner: string, repo: string, name: string): Promise<LiveEnvironment | undefined> {
     let data;
     try {
       ({ data } = await this.octokit.rest.repos.getEnvironment({
@@ -2298,19 +1899,19 @@ ${batch
         environment_name: name,
       }));
     } catch (error) {
-      if ((error as { status?: number }).status === 404) return undefined;
+      if ((error as { status?: number }).status === 404) {
+        return undefined;
+      }
       throw error;
     }
     const policy = data.deployment_branch_policy;
-    const deploymentBranchPolicy = !policy
-      ? ('all' as const)
-      : policy.protected_branches
+    const deploymentBranchPolicy = policy
+      ? policy.protected_branches
         ? ('protected' as const)
-        : ('custom' as const);
+        : ('custom' as const)
+      : ('all' as const);
     const branchPolicies =
-      deploymentBranchPolicy === 'custom'
-        ? await this.listEnvironmentBranchPolicies(owner, repo, name)
-        : [];
+      deploymentBranchPolicy === 'custom' ? await this.listEnvironmentBranchPolicies(owner, repo, name) : [];
     const teams: string[] = [];
     const users: string[] = [];
     let preventSelfReview = false;
@@ -2320,12 +1921,15 @@ ${batch
         waitTimer = rule.wait_timer ?? 0;
       }
       if (rule.type === 'required_reviewers' && 'reviewers' in rule) {
-        preventSelfReview =
-          'prevent_self_review' in rule ? Boolean(rule.prevent_self_review) : false;
+        preventSelfReview = 'prevent_self_review' in rule ? Boolean(rule.prevent_self_review) : false;
         for (const entry of rule.reviewers ?? []) {
           const reviewer = entry.reviewer as { slug?: string; login?: string } | undefined;
-          if (entry.type === 'Team' && reviewer?.slug) teams.push(reviewer.slug);
-          if (entry.type === 'User' && reviewer?.login) users.push(reviewer.login);
+          if (entry.type === 'Team' && reviewer?.slug) {
+            teams.push(reviewer.slug);
+          }
+          if (entry.type === 'User' && reviewer?.login) {
+            users.push(reviewer.login);
+          }
         }
       }
     }
@@ -2355,23 +1959,22 @@ ${batch
         page,
       });
       for (const policy of data.branch_policies) {
-        if (policy.id === undefined || policy.name === undefined) continue;
+        if (policy.id === undefined || policy.name === undefined) {
+          continue;
+        }
         policies.push({
           id: policy.id,
           name: policy.name,
           type: policy.type === 'tag' ? 'tag' : 'branch',
         });
       }
-      if (data.branch_policies.length < 100) return policies;
+      if (data.branch_policies.length < 100) {
+        return policies;
+      }
     }
   }
 
-  async putEnvironment(
-    owner: string,
-    repo: string,
-    name: string,
-    settings: EnvironmentSettings,
-  ): Promise<void> {
+  async putEnvironment(owner: string, repo: string, name: string, settings: EnvironmentSettings): Promise<void> {
     await this.octokit.rest.repos.createOrUpdateEnvironment({
       owner,
       repo,
@@ -2405,12 +2008,7 @@ ${batch
     });
   }
 
-  async deleteEnvironmentBranchPolicy(
-    owner: string,
-    repo: string,
-    environment: string,
-    id: number,
-  ): Promise<void> {
+  async deleteEnvironmentBranchPolicy(owner: string, repo: string, environment: string, id: number): Promise<void> {
     await this.octokit.rest.repos.deleteDeploymentBranchPolicy({
       owner,
       repo,
@@ -2429,15 +2027,13 @@ ${batch
     return data.id;
   }
 
-  async listEnvironmentSecrets(
-    owner: string,
-    repo: string,
-    environment: string,
-  ): Promise<Array<{ name: string }>> {
-    const secrets = await this.octokit.paginate(
-      this.octokit.rest.actions.listEnvironmentSecrets,
-      { owner, repo, environment_name: environment, per_page: 100 },
-    );
+  async listEnvironmentSecrets(owner: string, repo: string, environment: string): Promise<Array<{ name: string }>> {
+    const secrets = await this.octokit.paginate(this.octokit.rest.actions.listEnvironmentSecrets, {
+      owner,
+      repo,
+      environment_name: environment,
+      per_page: 100,
+    });
     return secrets.map((s) => ({ name: s.name }));
   }
 
@@ -2463,12 +2059,7 @@ ${batch
     });
   }
 
-  async deleteEnvironmentSecret(
-    owner: string,
-    repo: string,
-    environment: string,
-    name: string,
-  ): Promise<void> {
+  async deleteEnvironmentSecret(owner: string, repo: string, environment: string, name: string): Promise<void> {
     await this.octokit.rest.actions.deleteEnvironmentSecret({
       owner,
       repo,
@@ -2482,10 +2073,12 @@ ${batch
     repo: string,
     environment: string,
   ): Promise<Array<{ name: string; value: string }>> {
-    const variables = await this.octokit.paginate(
-      this.octokit.rest.actions.listEnvironmentVariables,
-      { owner, repo, environment_name: environment, per_page: 30 },
-    );
+    const variables = await this.octokit.paginate(this.octokit.rest.actions.listEnvironmentVariables, {
+      owner,
+      repo,
+      environment_name: environment,
+      per_page: 30,
+    });
     return variables.map((v) => ({ name: v.name, value: v.value }));
   }
 
@@ -2521,12 +2114,7 @@ ${batch
     });
   }
 
-  async deleteEnvironmentVariable(
-    owner: string,
-    repo: string,
-    environment: string,
-    name: string,
-  ): Promise<void> {
+  async deleteEnvironmentVariable(owner: string, repo: string, environment: string, name: string): Promise<void> {
     await this.octokit.rest.actions.deleteEnvironmentVariable({
       owner,
       repo,
@@ -2538,30 +2126,23 @@ ${batch
   // ---- Actions secrets ---------------------------------------------------------
 
   async listOrgSecrets(org: string): Promise<LiveOrgSecret[]> {
-    const secrets = await this.octokit.paginate(
-      this.octokit.rest.actions.listOrgSecrets,
-      { org, per_page: 100 },
-    );
+    const secrets = await this.octokit.paginate(this.octokit.rest.actions.listOrgSecrets, { org, per_page: 100 });
     return Promise.all(
       secrets.map(async (s) => ({
         name: s.name,
         visibility: s.visibility as OrgConfigVisibility,
         selectedRepositories:
-          s.visibility === 'selected'
-            ? await this.listOrgSecretRepositories(org, s.name)
-            : undefined,
+          s.visibility === 'selected' ? await this.listOrgSecretRepositories(org, s.name) : undefined,
       })),
     );
   }
 
-  private async listOrgSecretRepositories(
-    org: string,
-    name: string,
-  ): Promise<string[]> {
-    const repos = await this.octokit.paginate(
-      this.octokit.rest.actions.listSelectedReposForOrgSecret,
-      { org, secret_name: name, per_page: 100 },
-    );
+  private async listOrgSecretRepositories(org: string, name: string): Promise<string[]> {
+    const repos = await this.octokit.paginate(this.octokit.rest.actions.listSelectedReposForOrgSecret, {
+      org,
+      secret_name: name,
+      per_page: 100,
+    });
     return repos.map((r) => r.name);
   }
 
@@ -2592,10 +2173,7 @@ ${batch
     });
   }
 
-  async listRepositoryCollaborators(
-    owner: string,
-    repo: string,
-  ): Promise<Array<Omit<LiveCollaborator, 'repository'>>> {
+  async listRepositoryCollaborators(owner: string, repo: string): Promise<Array<Omit<LiveCollaborator, 'repository'>>> {
     const [direct, invited] = await Promise.all([
       this.directCollaborators(owner, repo),
       this.invitedCollaborators(owner, repo),
@@ -2611,11 +2189,7 @@ ${batch
     for (let i = 0; i < repositories.length; i += COLLABORATOR_BATCH) {
       batches.push(repositories.slice(i, i + COLLABORATOR_BATCH));
     }
-    return new Map(
-      (
-        await Promise.all(batches.map((batch) => this.collaboratorBatch(owner, batch)))
-      ).flat(),
-    );
+    return new Map((await Promise.all(batches.map((batch) => this.collaboratorBatch(owner, batch)))).flat());
   }
 
   /**
@@ -2648,7 +2222,9 @@ fragment grant on RepositoryCollaboratorEdge {
     return Promise.all(
       batch.flatMap((repository, i) => {
         const collaborators = data[`r${i}`]?.collaborators;
-        if (!collaborators) return [];
+        if (!collaborators) {
+          return [];
+        }
         return [
           (async (): Promise<[string, Array<Omit<LiveCollaborator, 'repository'>>]> => [
             repository,
@@ -2702,10 +2278,11 @@ fragment grant on RepositoryCollaboratorEdge {
     owner: string,
     repo: string,
   ): Promise<Array<Omit<LiveCollaborator, 'repository'>>> {
-    const invitations = await this.octokit.paginate(
-      this.octokit.rest.repos.listInvitations,
-      { owner, repo, per_page: 100 },
-    );
+    const invitations = await this.octokit.paginate(this.octokit.rest.repos.listInvitations, {
+      owner,
+      repo,
+      per_page: 100,
+    });
     return invitations.flatMap((i) =>
       i.invitee
         ? [
@@ -2719,12 +2296,7 @@ fragment grant on RepositoryCollaboratorEdge {
     );
   }
 
-  async putRepositoryCollaborator(
-    owner: string,
-    repo: string,
-    login: string,
-    permission: string,
-  ): Promise<void> {
+  async putRepositoryCollaborator(owner: string, repo: string, login: string, permission: string): Promise<void> {
     await this.octokit.rest.repos.addCollaborator({
       owner,
       repo,
@@ -2748,19 +2320,11 @@ fragment grant on RepositoryCollaboratorEdge {
     });
   }
 
-  async deleteRepositoryCollaborator(
-    owner: string,
-    repo: string,
-    login: string,
-  ): Promise<void> {
+  async deleteRepositoryCollaborator(owner: string, repo: string, login: string): Promise<void> {
     await this.octokit.rest.repos.removeCollaborator({ owner, repo, username: login });
   }
 
-  async deleteRepositoryInvitation(
-    owner: string,
-    repo: string,
-    invitationId: number,
-  ): Promise<void> {
+  async deleteRepositoryInvitation(owner: string, repo: string, invitationId: number): Promise<void> {
     await this.octokit.rest.repos.deleteInvitation({
       owner,
       repo,
@@ -2768,23 +2332,16 @@ fragment grant on RepositoryCollaboratorEdge {
     });
   }
 
-  async listRepositorySecrets(
-    owner: string,
-    repo: string,
-  ): Promise<Array<{ name: string }>> {
-    const secrets = await this.octokit.paginate(
-      this.octokit.rest.actions.listRepoSecrets,
-      { owner, repo, per_page: 100 },
-    );
+  async listRepositorySecrets(owner: string, repo: string): Promise<Array<{ name: string }>> {
+    const secrets = await this.octokit.paginate(this.octokit.rest.actions.listRepoSecrets, {
+      owner,
+      repo,
+      per_page: 100,
+    });
     return secrets.map((s) => ({ name: s.name }));
   }
 
-  async putRepositorySecret(
-    owner: string,
-    repo: string,
-    name: string,
-    value: string,
-  ): Promise<void> {
+  async putRepositorySecret(owner: string, repo: string, name: string, value: string): Promise<void> {
     const { data: key } = await this.octokit.rest.actions.getRepoPublicKey({
       owner,
       repo,
@@ -2798,11 +2355,7 @@ fragment grant on RepositoryCollaboratorEdge {
     });
   }
 
-  async deleteRepositorySecret(
-    owner: string,
-    repo: string,
-    name: string,
-  ): Promise<void> {
+  async deleteRepositorySecret(owner: string, repo: string, name: string): Promise<void> {
     await this.octokit.rest.actions.deleteRepoSecret({
       owner,
       repo,
@@ -2816,22 +2369,19 @@ fragment grant on RepositoryCollaboratorEdge {
     org: string,
     id: number,
   ): Promise<Array<{ name: string; status: string }>> {
-    const repositories = await this.octokit.paginate(
-      this.octokit.rest.codeSecurity.getRepositoriesForConfiguration,
-      { org, configuration_id: id, per_page: 100 },
-    );
-    return repositories.flatMap((r) =>
-      r.repository ? [{ name: r.repository.name, status: r.status ?? '' }] : [],
-    );
+    const repositories = await this.octokit.paginate(this.octokit.rest.codeSecurity.getRepositoriesForConfiguration, {
+      org,
+      configuration_id: id,
+      per_page: 100,
+    });
+    return repositories.flatMap((r) => (r.repository ? [{ name: r.repository.name, status: r.status ?? '' }] : []));
   }
 
-  async listSecurityConfigurations(
-    org: string,
-  ): Promise<LiveCodeSecurityConfiguration[]> {
-    const configs = await this.octokit.paginate(
-      this.octokit.rest.codeSecurity.getConfigurationsForOrg,
-      { org, per_page: 100 },
-    );
+  async listSecurityConfigurations(org: string): Promise<LiveCodeSecurityConfiguration[]> {
+    const configs = await this.octokit.paginate(this.octokit.rest.codeSecurity.getConfigurationsForOrg, {
+      org,
+      per_page: 100,
+    });
     return configs.map((c) => ({
       ...toCamelCaseKeys<Partial<CodeSecurityConfigurationManifest>>(c),
       id: c.id ?? 0,
@@ -2840,11 +2390,8 @@ fragment grant on RepositoryCollaboratorEdge {
     }));
   }
 
-  async listDefaultSecurityConfigurations(
-    org: string,
-  ): Promise<LiveDefaultSecurityConfiguration[]> {
-    const { data } =
-      await this.octokit.rest.codeSecurity.getDefaultConfigurations({ org });
+  async listDefaultSecurityConfigurations(org: string): Promise<LiveDefaultSecurityConfiguration[]> {
+    const { data } = await this.octokit.rest.codeSecurity.getDefaultConfigurations({ org });
     return data
       .filter((d) => d.default_for_new_repos !== undefined)
       .map((d) => ({
@@ -2854,10 +2401,7 @@ fragment grant on RepositoryCollaboratorEdge {
       }));
   }
 
-  async createSecurityConfiguration(
-    org: string,
-    config: CodeSecurityConfigurationManifest,
-  ): Promise<number> {
+  async createSecurityConfiguration(org: string, config: CodeSecurityConfigurationManifest): Promise<number> {
     const { data } = await this.octokit.rest.codeSecurity.createConfiguration({
       org,
       ...securityConfigPayload(config),
@@ -2865,11 +2409,7 @@ fragment grant on RepositoryCollaboratorEdge {
     return data.id ?? 0;
   }
 
-  async updateSecurityConfiguration(
-    org: string,
-    id: number,
-    config: CodeSecurityConfigurationManifest,
-  ): Promise<void> {
+  async updateSecurityConfiguration(org: string, id: number, config: CodeSecurityConfigurationManifest): Promise<void> {
     await this.octokit.rest.codeSecurity.updateConfiguration({
       org,
       configuration_id: id,
@@ -2884,11 +2424,7 @@ fragment grant on RepositoryCollaboratorEdge {
     });
   }
 
-  async setSecurityConfigurationAsDefault(
-    org: string,
-    id: number,
-    scope: SecurityDefaultScope,
-  ): Promise<void> {
+  async setSecurityConfigurationAsDefault(org: string, id: number, scope: SecurityDefaultScope): Promise<void> {
     await this.octokit.rest.codeSecurity.setConfigurationAsDefault({
       org,
       configuration_id: id,
@@ -2927,25 +2463,18 @@ fragment grant on RepositoryCollaboratorEdge {
     }));
   }
 
-  async listRepositoryProperties(
-    org: string,
-  ): Promise<LiveRepositoryProperties[]> {
-    const repos = await this.octokit.paginate(
-      this.octokit.rest.orgs.customPropertiesForReposGetOrganizationValues,
-      { org, per_page: 100 },
-    );
+  async listRepositoryProperties(org: string): Promise<LiveRepositoryProperties[]> {
+    const repos = await this.octokit.paginate(this.octokit.rest.orgs.customPropertiesForReposGetOrganizationValues, {
+      org,
+      per_page: 100,
+    });
     return repos.map((r) => ({
       repository: r.repository_name,
-      properties: Object.fromEntries(
-        r.properties.map((p) => [p.property_name, p.value]),
-      ),
+      properties: Object.fromEntries(r.properties.map((p) => [p.property_name, p.value])),
     }));
   }
 
-  async putCustomProperty(
-    org: string,
-    property: CustomPropertyManifest,
-  ): Promise<void> {
+  async putCustomProperty(org: string, property: CustomPropertyManifest): Promise<void> {
     await this.octokit.rest.orgs.customPropertiesForReposCreateOrUpdateOrganizationDefinition({
       org,
       custom_property_name: property.name,
@@ -2988,11 +2517,7 @@ fragment grant on RepositoryCollaboratorEdge {
     const { data } = await this.octokit.request('GET /orgs/{org}/issue-fields', {
       org,
     });
-    const fields = expectArray(
-      data as IssueFieldResponse[],
-      'GET /orgs/{org}/issue-fields',
-      '(root)',
-    );
+    const fields = expectArray(data as IssueFieldResponse[], 'GET /orgs/{org}/issue-fields', '(root)');
     return fields.map((f) => ({
       id: f.id,
       name: f.name,
@@ -3012,10 +2537,7 @@ fragment grant on RepositoryCollaboratorEdge {
     }));
   }
 
-  async createIssueField(
-    org: string,
-    field: IssueFieldManifest,
-  ): Promise<void> {
+  async createIssueField(org: string, field: IssueFieldManifest): Promise<void> {
     await this.octokit.request('POST /orgs/{org}/issue-fields', {
       org,
       name: field.name,
@@ -3026,11 +2548,7 @@ fragment grant on RepositoryCollaboratorEdge {
     });
   }
 
-  async updateIssueField(
-    org: string,
-    live: LiveIssueField,
-    field: IssueFieldManifest,
-  ): Promise<void> {
+  async updateIssueField(org: string, live: LiveIssueField, field: IssueFieldManifest): Promise<void> {
     await this.octokit.request('PATCH /orgs/{org}/issue-fields/{issue_field_id}', {
       org,
       issue_field_id: live.id,
@@ -3050,14 +2568,8 @@ fragment grant on RepositoryCollaboratorEdge {
 
   // ---- Legacy branch protection -------------------------------------------
 
-  async getBranchProtection(
-    owner: string,
-    repo: string,
-    branch: string,
-  ): Promise<LiveBranchProtection> {
-    let data: Awaited<
-      ReturnType<Octokit['rest']['repos']['getBranchProtection']>
-    >['data'];
+  async getBranchProtection(owner: string, repo: string, branch: string): Promise<LiveBranchProtection> {
+    let data: Awaited<ReturnType<Octokit['rest']['repos']['getBranchProtection']>>['data'];
     try {
       ({ data } = await this.octokit.rest.repos.getBranchProtection({
         owner,
@@ -3104,15 +2616,12 @@ fragment grant on RepositoryCollaboratorEdge {
         : null,
       requiredPullRequestReviews: reviews
         ? {
-            requiredApprovingReviewCount:
-              reviews.required_approving_review_count,
+            requiredApprovingReviewCount: reviews.required_approving_review_count,
             dismissStaleReviews: reviews.dismiss_stale_reviews,
             requireCodeOwnerReviews: reviews.require_code_owner_reviews,
             requireLastPushApproval: reviews.require_last_push_approval,
             dismissalRestrictions: toActors(reviews.dismissal_restrictions),
-            bypassPullRequestAllowances: toActors(
-              reviews.bypass_pull_request_allowances,
-            ),
+            bypassPullRequestAllowances: toActors(reviews.bypass_pull_request_allowances),
           }
         : null,
       enforceAdmins: data.enforce_admins?.enabled,
@@ -3121,19 +2630,14 @@ fragment grant on RepositoryCollaboratorEdge {
       allowForcePushes: data.allow_force_pushes?.enabled,
       allowDeletions: data.allow_deletions?.enabled,
       blockCreations: data.block_creations?.enabled,
-      requiredConversationResolution:
-        data.required_conversation_resolution?.enabled,
+      requiredConversationResolution: data.required_conversation_resolution?.enabled,
       lockBranch: data.lock_branch?.enabled,
       allowForkSyncing: data.allow_fork_syncing?.enabled,
       requiredSignatures: data.required_signatures?.enabled,
     };
   }
 
-  async putBranchProtection(
-    owner: string,
-    repo: string,
-    protection: BranchProtectionManifest,
-  ): Promise<void> {
+  async putBranchProtection(owner: string, repo: string, protection: BranchProtectionManifest): Promise<void> {
     const reviews = protection.requiredPullRequestReviews;
     const checks = protection.requiredStatusChecks;
 
@@ -3157,8 +2661,7 @@ fragment grant on RepositoryCollaboratorEdge {
       enforce_admins: protection.enforceAdmins ?? null,
       required_pull_request_reviews: reviews
         ? {
-            required_approving_review_count:
-              reviews.requiredApprovingReviewCount,
+            required_approving_review_count: reviews.requiredApprovingReviewCount,
             dismiss_stale_reviews: reviews.dismissStaleReviews,
             require_code_owner_reviews: reviews.requireCodeOwnerReviews,
             require_last_push_approval: reviews.requireLastPushApproval,
@@ -3177,18 +2680,13 @@ fragment grant on RepositoryCollaboratorEdge {
       allow_force_pushes: protection.allowForcePushes,
       allow_deletions: protection.allowDeletions,
       block_creations: protection.blockCreations,
-      required_conversation_resolution:
-        protection.requiredConversationResolution,
+      required_conversation_resolution: protection.requiredConversationResolution,
       lock_branch: protection.lockBranch,
       allow_fork_syncing: protection.allowForkSyncing,
     });
   }
 
-  async deleteBranchProtection(
-    owner: string,
-    repo: string,
-    branch: string,
-  ): Promise<void> {
+  async deleteBranchProtection(owner: string, repo: string, branch: string): Promise<void> {
     await this.octokit.rest.repos.deleteBranchProtection({
       owner,
       repo,
@@ -3196,12 +2694,7 @@ fragment grant on RepositoryCollaboratorEdge {
     });
   }
 
-  async setSignatureProtection(
-    owner: string,
-    repo: string,
-    branch: string,
-    required: boolean,
-  ): Promise<void> {
+  async setSignatureProtection(owner: string, repo: string, branch: string, required: boolean): Promise<void> {
     // Signed commits sit outside the protection payload, on their own endpoint.
     if (required) {
       await this.octokit.rest.repos.createCommitSignatureProtection({
@@ -3238,15 +2731,12 @@ function toActors(
       }
     | undefined,
 ): ActorRestriction | undefined {
-  if (!restriction) return undefined;
+  if (!restriction) {
+    return undefined;
+  }
 
-  const names = (
-    actors: ReadonlyArray<NamedActor | null> | null | undefined,
-    key: 'login' | 'slug',
-  ): string[] =>
-    (actors ?? [])
-      .map((a) => a?.[key])
-      .filter((name): name is string => typeof name === 'string');
+  const names = (actors: ReadonlyArray<NamedActor | null> | null | undefined, key: 'login' | 'slug'): string[] =>
+    (actors ?? []).map((a) => a?.[key]).filter((name): name is string => typeof name === 'string');
 
   return {
     users: names(restriction.users, 'login'),
@@ -3267,10 +2757,7 @@ function toActors(
  * every issue. So each option already live under the same name carries its id.
  * Priority is the option's 1-based position in the declared list.
  */
-function issueFieldOptions(
-  options: IssueFieldOptionManifest[],
-  live: LiveIssueFieldOption[],
-) {
+function issueFieldOptions(options: IssueFieldOptionManifest[], live: LiveIssueFieldOption[]) {
   const idByName = new Map(live.map((o) => [o.name, o.id]));
   return options.map((o, index) => ({
     id: idByName.get(o.name),
@@ -3281,25 +2768,16 @@ function issueFieldOptions(
   }));
 }
 
-function expectArray<T>(
-  value: T[] | undefined,
-  endpoint: string,
-  key: string,
-): T[] {
+function expectArray<T>(value: T[] | undefined, endpoint: string, key: string): T[] {
   if (!Array.isArray(value)) {
-    throw new Error(
-      `Unexpected response from ${endpoint}: expected an array under "${key}".`,
-    );
+    throw new Error(`Unexpected response from ${endpoint}: expected an array under "${key}".`);
   }
   return value;
 }
 
 function isNotFound(error: unknown): boolean {
   return (
-    typeof error === 'object' &&
-    error !== null &&
-    'status' in error &&
-    (error as { status?: number }).status === 404
+    typeof error === 'object' && error !== null && 'status' in error && (error as { status?: number }).status === 404
   );
 }
 
@@ -3319,9 +2797,7 @@ function runnerGroupPayload(group: RunnerGroupManifest): {
     visibility: group.visibility,
     allows_public_repositories: group.allowsPublicRepositories,
     restricted_to_workflows: group.restrictedToWorkflows,
-    selected_workflows: group.selectedWorkflows
-      ? [...group.selectedWorkflows]
-      : undefined,
+    selected_workflows: group.selectedWorkflows ? [...group.selectedWorkflows] : undefined,
   };
 }
 
@@ -3330,9 +2806,7 @@ function runnerGroupPayload(group: RunnerGroupManifest): {
  * GitHub rejects a condition that omits `include` or `exclude` with a 422, so
  * an omitted list is sent as an empty one.
  */
-function rulesetConditionsPayload(
-  conditions: RulesetConditions | undefined,
-): RulesetConditions {
+function rulesetConditionsPayload(conditions: RulesetConditions | undefined): RulesetConditions {
   const { refName, repositoryName, repositoryProperty } = conditions ?? {};
   return {
     ...(refName && {
@@ -3371,9 +2845,7 @@ function rulesetPayload(ruleset: ResolvedRuleset): Record<string, unknown> {
  * leaves undefined are omitted, so GitHub keeps whatever the configuration
  * already had.
  */
-function securityConfigPayload(
-  config: CodeSecurityConfigurationManifest,
-): Record<string, unknown> {
+function securityConfigPayload(config: CodeSecurityConfigurationManifest): Record<string, unknown> {
   return {
     name: config.name,
     description: config.description,
@@ -3386,8 +2858,7 @@ function securityConfigPayload(
     secret_scanning: config.secretScanning,
     secret_scanning_push_protection: config.secretScanningPushProtection,
     secret_scanning_validity_checks: config.secretScanningValidityChecks,
-    secret_scanning_non_provider_patterns:
-      config.secretScanningNonProviderPatterns,
+    secret_scanning_non_provider_patterns: config.secretScanningNonProviderPatterns,
     private_vulnerability_reporting: config.privateVulnerabilityReporting,
     enforcement: config.enforcement,
   };

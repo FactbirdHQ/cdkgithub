@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+
 import {
   ActionsPolicy,
   App,
@@ -138,9 +139,7 @@ describe('synthesize governance', () => {
       attach: 'all',
       attachRepositories: ['app'],
     });
-    expect(() => synthesize(app)).toThrow(
-      /Choose a scope or a repository list/,
-    );
+    expect(() => synthesize(app)).toThrow(/Choose a scope or a repository list/);
   });
 
   test('rejects duplicate ruleset names', () => {

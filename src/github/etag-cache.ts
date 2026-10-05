@@ -50,13 +50,17 @@ export class EtagCache {
   static open(dir: string, token: string): EtagCache {
     const fingerprint = createHash('sha256').update(token).digest('hex').slice(0, 16);
     const path = join(dir, 'cache', `etags-${fingerprint}.json`);
-    if (!existsSync(path)) return new EtagCache(path);
+    if (!existsSync(path)) {
+      return new EtagCache(path);
+    }
     try {
       const stored = JSON.parse(readFileSync(path, 'utf8')) as {
         version?: number;
         entries?: Record<string, CachedResponse>;
       };
-      if (stored.version !== CACHE_VERSION || !stored.entries) return new EtagCache(path);
+      if (stored.version !== CACHE_VERSION || !stored.entries) {
+        return new EtagCache(path);
+      }
       return new EtagCache(path, Object.entries(stored.entries));
     } catch {
       return new EtagCache(path);
@@ -78,20 +82,21 @@ export class EtagCache {
    * outlives a write only at the risk of a plan built on the old state.
    */
   clear(): void {
-    if (this.entries.size === 0) return;
+    if (this.entries.size === 0) {
+      return;
+    }
     this.entries.clear();
     this.dirty = true;
   }
 
   /** Write the cache if anything changed, replacing the file in one rename. */
   save(): void {
-    if (!this.path || !this.dirty) return;
+    if (!this.path || !this.dirty) {
+      return;
+    }
     mkdirSync(join(this.path, '..'), { recursive: true });
     const partial = `${this.path}.partial`;
-    writeFileSync(
-      partial,
-      JSON.stringify({ version: CACHE_VERSION, entries: Object.fromEntries(this.entries) }),
-    );
+    writeFileSync(partial, JSON.stringify({ version: CACHE_VERSION, entries: Object.fromEntries(this.entries) }));
     renameSync(partial, this.path);
     this.dirty = false;
   }

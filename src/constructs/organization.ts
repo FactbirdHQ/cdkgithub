@@ -1,36 +1,22 @@
 import { Construct } from 'constructs';
+
 import type { OrgSettingsManifest } from '../synth/governance.ts';
 import { ActionsSecret, type ActionsSecretProps } from './actions-secret.ts';
 import { ActionsVariable, type ActionsVariableProps } from './actions-variable.ts';
-import {
-  CodeSecurityConfiguration,
-  type CodeSecurityConfigurationProps,
-} from './code-security.ts';
+import { CodeSecurityConfiguration, type CodeSecurityConfigurationProps } from './code-security.ts';
 import { CustomProperty, type CustomPropertyProps } from './custom-property.ts';
-import {
-  CustomRepositoryRole,
-  type CustomRepositoryRoleProps,
-} from './custom-repository-role.ts';
+import { CustomRepositoryRole, type CustomRepositoryRoleProps } from './custom-repository-role.ts';
 import { IssueField, type IssueFieldProps } from './issue-field.ts';
-import {
-  OrganizationRole,
-  type OrganizationRoleProps,
-} from './organization-role.ts';
+import { OrganizationRole, type OrganizationRoleProps } from './organization-role.ts';
 import { Ruleset, type RulesetProps } from './ruleset.ts';
 import { RunnerGroup, type RunnerGroupProps } from './runner-group.ts';
 import { Team, type TeamProps } from './team.ts';
 
 /** An organization variable, as `Organization.addVariable` takes it. */
-export type OrganizationVariableOptions = Omit<
-  ActionsVariableProps,
-  'name' | 'repository' | 'environment'
->;
+export type OrganizationVariableOptions = Omit<ActionsVariableProps, 'name' | 'repository' | 'environment'>;
 
 /** An organization secret, as `Organization.addSecret` takes it. */
-export type OrganizationSecretOptions = Omit<
-  ActionsSecretProps,
-  'name' | 'repository' | 'environment'
->;
+export type OrganizationSecretOptions = Omit<ActionsSecretProps, 'name' | 'repository' | 'environment'>;
 
 /**
  * Member privileges and org-wide defaults, as authored. Every field is optional
@@ -73,25 +59,19 @@ export interface OrganizationProps {
   readonly runnerGroup?: Readonly<Record<string, Omit<RunnerGroupProps, 'name'>>>;
 
   /** Repository custom properties, by name. */
-  readonly customProperty?: Readonly<
-    Record<string, Omit<CustomPropertyProps, 'name'>>
-  >;
+  readonly customProperty?: Readonly<Record<string, Omit<CustomPropertyProps, 'name'>>>;
 
   /** Issue fields, by name. */
   readonly issueField?: Readonly<Record<string, Omit<IssueFieldProps, 'name'>>>;
 
   /** Code security configurations, by name. */
-  readonly codeSecurityConfiguration?: Readonly<
-    Record<string, Omit<CodeSecurityConfigurationProps, 'name'>>
-  >;
+  readonly codeSecurityConfiguration?: Readonly<Record<string, Omit<CodeSecurityConfigurationProps, 'name'>>>;
 
   /** Who holds each organization role, by role name. */
   readonly organizationRole?: Readonly<Record<string, OrganizationRoleProps>>;
 
   /** Custom repository roles, by role name. */
-  readonly customRepositoryRole?: Readonly<
-    Record<string, CustomRepositoryRoleProps>
-  >;
+  readonly customRepositoryRole?: Readonly<Record<string, CustomRepositoryRoleProps>>;
 }
 
 /**
@@ -129,17 +109,13 @@ export class Organization extends Construct {
     for (const [name, options] of Object.entries(props.issueField ?? {})) {
       this.addIssueField(name, options);
     }
-    for (const [name, options] of Object.entries(
-      props.codeSecurityConfiguration ?? {},
-    )) {
+    for (const [name, options] of Object.entries(props.codeSecurityConfiguration ?? {})) {
       this.addCodeSecurityConfiguration(name, options);
     }
     for (const [name, options] of Object.entries(props.organizationRole ?? {})) {
       this.addOrganizationRole(name, options);
     }
-    for (const [name, options] of Object.entries(
-      props.customRepositoryRole ?? {},
-    )) {
+    for (const [name, options] of Object.entries(props.customRepositoryRole ?? {})) {
       this.addCustomRepositoryRole(name, options);
     }
   }
@@ -170,26 +146,17 @@ export class Organization extends Construct {
   }
 
   /** Declare a self-hosted runner group. */
-  addRunnerGroup(
-    name: string,
-    options: Omit<RunnerGroupProps, 'name'> = {},
-  ): RunnerGroup {
+  addRunnerGroup(name: string, options: Omit<RunnerGroupProps, 'name'> = {}): RunnerGroup {
     return new RunnerGroup(this, name, options);
   }
 
   /** Declare a repository custom property. */
-  addCustomProperty(
-    name: string,
-    options: Omit<CustomPropertyProps, 'name'>,
-  ): CustomProperty {
+  addCustomProperty(name: string, options: Omit<CustomPropertyProps, 'name'>): CustomProperty {
     return new CustomProperty(this, name, options);
   }
 
   /** Declare an issue field. */
-  addIssueField(
-    name: string,
-    options: Omit<IssueFieldProps, 'name'>,
-  ): IssueField {
+  addIssueField(name: string, options: Omit<IssueFieldProps, 'name'>): IssueField {
     return new IssueField(this, name, options);
   }
 
@@ -202,18 +169,12 @@ export class Organization extends Construct {
   }
 
   /** Declare who holds an organization role. */
-  addOrganizationRole(
-    name: string,
-    options: OrganizationRoleProps = {},
-  ): OrganizationRole {
+  addOrganizationRole(name: string, options: OrganizationRoleProps = {}): OrganizationRole {
     return new OrganizationRole(this, name, options);
   }
 
   /** Declare a custom repository role. */
-  addCustomRepositoryRole(
-    name: string,
-    options: CustomRepositoryRoleProps,
-  ): CustomRepositoryRole {
+  addCustomRepositoryRole(name: string, options: CustomRepositoryRoleProps): CustomRepositoryRole {
     return new CustomRepositoryRole(this, name, options);
   }
 }

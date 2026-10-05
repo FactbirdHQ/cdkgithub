@@ -17,15 +17,7 @@
  *     add a manual (workflow_dispatch) job that mints a short-lived token with
  *     `createGithubAppTokenV3` and runs `plan`/`apply` against the sandbox only.
  */
-import {
-  App,
-  checkoutV4,
-  Job,
-  RunnerLabel,
-  setupNodeV6,
-  Stack,
-  Workflow,
-} from '@factbird/cdkactions';
+import { App, checkoutV4, Job, RunnerLabel, Stack, setupNodeV6, Workflow } from '@factbird/cdkactions';
 
 /**
  * A third-party action runs by commit, not by tag: whoever controls the tag

@@ -3,25 +3,25 @@ import type {
   LiveActionsPolicy,
   LiveAppInstallation,
   LiveBranchProtection,
-  LiveCollaborator,
   LiveCodeSecurityConfiguration,
+  LiveCollaborator,
   LiveCustomProperty,
+  LiveCustomRepositoryRole,
   LiveDefaultSecurityConfiguration,
+  LiveEnvironment,
   LiveIssueField,
   LiveOrganizationRole,
   LiveOrgSecret,
   LiveOrgSettings,
   LiveOrgVariable,
-  LiveCustomRepositoryRole,
-  LiveRepoSecret,
-  LiveEnvironment,
   LiveRepoEnvironment,
-  LiveRepoVariable,
+  LiveRepoSecret,
   LiveRepository,
   LiveRepositoryProperties,
   LiveRepositoryRuleset,
-  LiveRunnerGroup,
+  LiveRepoVariable,
   LiveRuleset,
+  LiveRunnerGroup,
   LiveTeam,
   LiveTeamMember,
   LiveTeamRepository,
@@ -65,9 +65,7 @@ export interface LiveState {
    * one. Roles are org-wide, so this is read whole rather than per declaration:
    * the point of showing it is what is assigned that nobody wrote down.
    */
-  readonly organizationRoles?: Array<
-    LiveOrganizationRole & { teams: string[]; users: string[] }
-  >;
+  readonly organizationRoles?: Array<LiveOrganizationRole & { teams: string[]; users: string[] }>;
   /** Only read when a declared permission is not one of the five built-ins. */
   readonly customRepositoryRoles?: LiveCustomRepositoryRole[];
   readonly settings?: LiveOrgSettings;
@@ -108,32 +106,21 @@ export interface LiveState {
 }
 
 /** Read the live state for the surfaces `desired` declares, and nothing more. */
-export async function readLiveState(
-  client: GitHubClient,
-  desired: DesiredState,
-): Promise<LiveState> {
+export async function readLiveState(client: GitHubClient, desired: DesiredState): Promise<LiveState> {
   const owner = desired.owner;
-  const declaresPropertyValues = (desired.customProperties ?? []).some(
-    (p) => p.values !== undefined,
-  );
+  const declaresPropertyValues = (desired.customProperties ?? []).some((p) => p.values !== undefined);
   // The org's installations resolve an app slug to its id, and tell whether an
   // app can see the repository a repository ruleset lives on. Nothing else
   // needs them, so the call is skipped unless a ruleset asks either question.
   const namesAnApp =
     (desired.rulesets ?? []).some((r) =>
-      (r.bypassActors ?? []).some(
-        (a) => a.actorType === 'Integration' && typeof a.app === 'string',
-      ),
+      (r.bypassActors ?? []).some((a) => a.actorType === 'Integration' && typeof a.app === 'string'),
     ) ||
-    (desired.repositoryRulesets ?? []).some((r) =>
-      (r.bypassActors ?? []).some((a) => a.actorType === 'Integration'),
-    );
+    (desired.repositoryRulesets ?? []).some((r) => (r.bypassActors ?? []).some((a) => a.actorType === 'Integration'));
 
   // A declaration on a repository this same run creates has nothing to read
   // yet, so a 404 on one of these is an empty surface rather than a failure.
-  const beingCreated = new Set(
-    (desired.repositories ?? []).map((r) => r.name),
-  );
+  const beingCreated = new Set((desired.repositories ?? []).map((r) => r.name));
   const variableScopes = scopesOf(desired.actionsVariables, desired);
   const secretScopes = scopesOf(desired.actionsSecrets, desired);
 
@@ -147,16 +134,12 @@ export async function readLiveState(
     beingCreated,
   );
   const environmentsOf = (repository: string) =>
-    (repositoryEnvironments ?? [])
-      .filter((e) => e.repository === repository)
-      .map((e) => e.name);
+    (repositoryEnvironments ?? []).filter((e) => e.repository === repository).map((e) => e.name);
 
   // A team is read back only for the surface it declares, so a definition that
   // names teams without rosters or access maps still costs one call in total.
   const namesCustomRole = desired.teams.some((t) =>
-    Object.values(t.repositories ?? {}).some(
-      (p) => !isBuiltInRepoPermission(p),
-    ),
+    Object.values(t.repositories ?? {}).some((p) => !isBuiltInRepoPermission(p)),
   );
 
   const [
@@ -188,64 +171,35 @@ export async function readLiveState(
     desired.settings ? client.getOrgSettings(owner) : undefined,
     desired.actions ? client.getActionsPolicy(owner) : undefined,
     desired.rulesets ? client.listRulesets(owner) : undefined,
-    desired.codeSecurityConfigurations
-      ? client.listSecurityConfigurations(owner)
-      : undefined,
-    desired.codeSecurityConfigurations
-      ? client.listDefaultSecurityConfigurations(owner)
-      : undefined,
+    desired.codeSecurityConfigurations ? client.listSecurityConfigurations(owner) : undefined,
+    desired.codeSecurityConfigurations ? client.listDefaultSecurityConfigurations(owner) : undefined,
     desired.customProperties ? client.listCustomProperties(owner) : undefined,
     declaresPropertyValues ? client.listRepositoryProperties(owner) : undefined,
     desired.issueFields ? client.listIssueFields(owner) : undefined,
     readBranchProtection(client, owner, desired),
     namesAnApp ? client.listAppInstallations(owner) : undefined,
     desired.repositories ? client.listRepositories(owner) : undefined,
-    namesCustomRole || desired.customRepositoryRoles
-      ? client.listCustomRepositoryRoles(owner)
-      : undefined,
-    desired.organizationRoles
-      ? readOrganizationRoles(client, owner)
-      : undefined,
-    readPerRepository(
-      namedRepositories(desired.repositoryRulesets),
-      beingCreated,
-      async (repository) =>
-        (await client.listRepositoryRulesets(owner, repository)).map((r) => ({
-          ...r,
-          repository,
-        })),
+    namesCustomRole || desired.customRepositoryRoles ? client.listCustomRepositoryRoles(owner) : undefined,
+    desired.organizationRoles ? readOrganizationRoles(client, owner) : undefined,
+    readPerRepository(namedRepositories(desired.repositoryRulesets), beingCreated, async (repository) =>
+      (await client.listRepositoryRulesets(owner, repository)).map((r) => ({
+        ...r,
+        repository,
+      })),
     ),
     desired.runnerGroups ? client.listRunnerGroups(owner) : undefined,
     variableScopes.organization ? client.listOrgVariables(owner) : undefined,
     secretScopes.organization ? client.listOrgSecrets(owner) : undefined,
-    readPerRepository(
-      variableScopes.repositories,
-      beingCreated,
-      (repository) =>
-        readRepositoryVariables(
-          client,
-          owner,
-          repository,
-          environmentsOf(repository),
-        ),
+    readPerRepository(variableScopes.repositories, beingCreated, (repository) =>
+      readRepositoryVariables(client, owner, repository, environmentsOf(repository)),
     ),
-    readPerRepository(
-      secretScopes.repositories,
-      beingCreated,
-      (repository) =>
-        readRepositorySecrets(
-          client,
-          owner,
-          repository,
-          environmentsOf(repository),
-        ),
+    readPerRepository(secretScopes.repositories, beingCreated, (repository) =>
+      readRepositorySecrets(client, owner, repository, environmentsOf(repository)),
     ),
     desired.environments
-      ? Promise.all(
-          desired.environments.map((e) =>
-            client.getEnvironment(owner, e.repository, e.name),
-          ),
-        ).then((found) => found.filter((e) => e !== undefined))
+      ? Promise.all(desired.environments.map((e) => client.getEnvironment(owner, e.repository, e.name))).then((found) =>
+          found.filter((e) => e !== undefined),
+        )
       : undefined,
     desired.collaborators
       ? readCollaborators(
@@ -294,19 +248,14 @@ export async function readLiveState(
     }
   }
 
-  const [
-    teamRepositories,
-    teamMembers,
-    organizationOwners,
-    appInstallations,
-    securityConfigurations,
-  ] = await Promise.all([
-    readSlugs(accessSlugs, (slug) => client.listTeamRepositories(owner, slug)),
-    readSlugs(rosterSlugs, (slug) => client.listTeamMembers(owner, slug)),
-    rosterSlugs.size > 0 ? client.listOrganizationOwners(owner) : undefined,
-    readInstallationRepositories(client, installations, desired),
-    readAttachedRepositories(client, owner, configurations, desired),
-  ]);
+  const [teamRepositories, teamMembers, organizationOwners, appInstallations, securityConfigurations] =
+    await Promise.all([
+      readSlugs(accessSlugs, (slug) => client.listTeamRepositories(owner, slug)),
+      readSlugs(rosterSlugs, (slug) => client.listTeamMembers(owner, slug)),
+      rosterSlugs.size > 0 ? client.listOrganizationOwners(owner) : undefined,
+      readInstallationRepositories(client, installations, desired),
+      readAttachedRepositories(client, owner, configurations, desired),
+    ]);
 
   return {
     teams,
@@ -359,7 +308,9 @@ async function readEnvironments(
   repositories: readonly string[],
   beingCreated: ReadonlySet<string>,
 ): Promise<Array<{ repository: string; name: string }> | undefined> {
-  if (repositories.length === 0) return undefined;
+  if (repositories.length === 0) {
+    return undefined;
+  }
   const found = await client.listEnvironmentsOfRepositories(owner, repositories);
   return repositories.flatMap((repository) =>
     foundOrCreated(found, repository, beingCreated).map((name) => ({ repository, name })),
@@ -376,7 +327,9 @@ async function readCollaborators(
   repositories: readonly string[],
   beingCreated: ReadonlySet<string>,
 ): Promise<LiveCollaborator[] | undefined> {
-  if (repositories.length === 0) return undefined;
+  if (repositories.length === 0) {
+    return undefined;
+  }
   const found = await client.listCollaboratorsOfRepositories(owner, repositories);
   return repositories.flatMap((repository) =>
     foundOrCreated(found, repository, beingCreated).map((c) => ({ ...c, repository })),
@@ -393,11 +346,13 @@ function foundOrCreated<T>(
   beingCreated: ReadonlySet<string>,
 ): T[] {
   const entries = found.get(repository);
-  if (entries) return entries;
-  if (beingCreated.has(repository)) return [];
-  throw new Error(
-    `Repository "${repository}" was not found: it does not exist, or the token cannot see it.`,
-  );
+  if (entries) {
+    return entries;
+  }
+  if (beingCreated.has(repository)) {
+    return [];
+  }
+  throw new Error(`Repository "${repository}" was not found: it does not exist, or the token cannot see it.`);
 }
 
 async function readPerRepository<T>(
@@ -405,18 +360,20 @@ async function readPerRepository<T>(
   beingCreated: ReadonlySet<string>,
   read: (repository: string) => Promise<T[]>,
 ): Promise<T[] | undefined> {
-  if (repositories.length === 0) return undefined;
+  if (repositories.length === 0) {
+    return undefined;
+  }
 
   const results = await Promise.all(
     repositories.map(async (repository) => {
       try {
         return await read(repository);
       } catch (error) {
-        if (isNotFound(error) && beingCreated.has(repository)) return [];
+        if (isNotFound(error) && beingCreated.has(repository)) {
+          return [];
+        }
         if (isNotFound(error)) {
-          throw new Error(
-            `Repository "${repository}" was not found: it does not exist, or the token cannot see it.`,
-          );
+          throw new Error(`Repository "${repository}" was not found: it does not exist, or the token cannot see it.`);
         }
         throw error;
       }
@@ -439,9 +396,11 @@ async function readRepositoryVariables(
     client.listRepositoryVariables(owner, repository),
     Promise.all(
       environments.map(async (environment) =>
-        (
-          await client.listEnvironmentVariables(owner, repository, environment)
-        ).map((v) => ({ ...v, repository, environment })),
+        (await client.listEnvironmentVariables(owner, repository, environment)).map((v) => ({
+          ...v,
+          repository,
+          environment,
+        })),
       ),
     ),
   ]);
@@ -459,9 +418,11 @@ async function readRepositorySecrets(
     client.listRepositorySecrets(owner, repository),
     Promise.all(
       environments.map(async (environment) =>
-        (
-          await client.listEnvironmentSecrets(owner, repository, environment)
-        ).map((s) => ({ ...s, repository, environment })),
+        (await client.listEnvironmentSecrets(owner, repository, environment)).map((s) => ({
+          ...s,
+          repository,
+          environment,
+        })),
       ),
     ),
   ]);
@@ -469,14 +430,8 @@ async function readRepositorySecrets(
 }
 
 /** The distinct repositories a list of repository-scoped declarations names. */
-function namedRepositories(
-  declared: ReadonlyArray<{ repository?: string }> | undefined,
-): string[] {
-  return [
-    ...new Set(
-      (declared ?? []).flatMap((d) => (d.repository ? [d.repository] : [])),
-    ),
-  ];
+function namedRepositories(declared: ReadonlyArray<{ repository?: string }> | undefined): string[] {
+  return [...new Set((declared ?? []).flatMap((d) => (d.repository ? [d.repository] : [])))];
 }
 
 /**
@@ -489,12 +444,12 @@ async function readInstallationRepositories(
   installations: LiveAppInstallation[] | undefined,
   desired: DesiredState,
 ): Promise<LiveAppInstallation[] | undefined> {
-  if (!installations) return undefined;
+  if (!installations) {
+    return undefined;
+  }
   const named = new Set<string | number>(
     (desired.repositoryRulesets ?? []).flatMap((r) =>
-      (r.bypassActors ?? []).flatMap((a) =>
-        a.actorType === 'Integration' ? [a.app] : [],
-      ),
+      (r.bypassActors ?? []).flatMap((a) => (a.actorType === 'Integration' ? [a.app] : [])),
     ),
   );
   return Promise.all(
@@ -506,12 +461,12 @@ async function readInstallationRepositories(
         return installation;
       }
       try {
-        const repositories = await client.listInstallationRepositories(
-          installation.id,
-        );
+        const repositories = await client.listInstallationRepositories(installation.id);
         return { ...installation, repositories };
       } catch (error) {
-        if (isAccessDenied(error)) return installation;
+        if (isAccessDenied(error)) {
+          return installation;
+        }
         throw error;
       }
     }),
@@ -535,24 +490,21 @@ async function readAttachedRepositories(
   configurations: LiveCodeSecurityConfiguration[] | undefined,
   desired: DesiredState,
 ): Promise<LiveCodeSecurityConfiguration[] | undefined> {
-  if (!configurations) return undefined;
+  if (!configurations) {
+    return undefined;
+  }
   const byRepository = new Set(
-    (desired.codeSecurityConfigurations ?? [])
-      .filter((c) => c.attachRepositories?.length)
-      .map((c) => c.name),
+    (desired.codeSecurityConfigurations ?? []).filter((c) => c.attachRepositories?.length).map((c) => c.name),
   );
   return Promise.all(
     configurations.map(async (configuration) => {
-      if (!byRepository.has(configuration.name)) return configuration;
-      const repositories = await client.listSecurityConfigurationRepositories(
-        owner,
-        configuration.id,
-      );
+      if (!byRepository.has(configuration.name)) {
+        return configuration;
+      }
+      const repositories = await client.listSecurityConfigurationRepositories(owner, configuration.id);
       return {
         ...configuration,
-        attachedRepositories: repositories
-          .filter((r) => ATTACHED_STATUSES.has(r.status))
-          .map((r) => r.name),
+        attachedRepositories: repositories.filter((r) => ATTACHED_STATUSES.has(r.status)).map((r) => r.name),
       };
     }),
   );
@@ -566,10 +518,7 @@ function isAccessDenied(error: unknown): boolean {
 
 function isNotFound(error: unknown): boolean {
   return (
-    typeof error === 'object' &&
-    error !== null &&
-    'status' in error &&
-    (error as { status?: number }).status === 404
+    typeof error === 'object' && error !== null && 'status' in error && (error as { status?: number }).status === 404
   );
 }
 
@@ -577,9 +526,7 @@ function isNotFound(error: unknown): boolean {
 async function readOrganizationRoles(
   client: GitHubClient,
   owner: string,
-): Promise<
-  Array<LiveOrganizationRole & { teams: string[]; users: string[] }> | undefined
-> {
+): Promise<Array<LiveOrganizationRole & { teams: string[]; users: string[] }> | undefined> {
   const roles = await client.listOrganizationRoles(owner);
   return Promise.all(
     roles.map(async (role) => ({
@@ -597,14 +544,8 @@ async function readOrganizationRoles(
  * rename landed still resolves to the team it always did rather than to whatever
  * someone has since created under the freed-up name.
  */
-export function resolveLive(
-  team: TeamManifest,
-  liveBySlug: Map<string, LiveTeam>,
-): LiveTeam | undefined {
-  return (
-    liveBySlug.get(team.slug) ??
-    (team.previousSlug ? liveBySlug.get(team.previousSlug) : undefined)
-  );
+export function resolveLive(team: TeamManifest, liveBySlug: Map<string, LiveTeam>): LiveTeam | undefined {
+  return liveBySlug.get(team.slug) ?? (team.previousSlug ? liveBySlug.get(team.previousSlug) : undefined);
 }
 
 /** A team declares its repository access when it carries a map, `{}` included. */
@@ -618,7 +559,9 @@ export function declaresAccess(team: TeamManifest): boolean {
  * here would fight the next SCIM push.
  */
 export function declaresRoster(team: TeamManifest): boolean {
-  if (team.externalGroup) return false;
+  if (team.externalGroup) {
+    return false;
+  }
   return team.members !== undefined || team.maintainers !== undefined;
 }
 
@@ -631,19 +574,16 @@ async function readSlugs<T>(
   slugs: ReadonlySet<string>,
   read: (slug: string) => Promise<T[]>,
 ): Promise<Map<string, T[]> | undefined> {
-  if (slugs.size === 0) return undefined;
+  if (slugs.size === 0) {
+    return undefined;
+  }
 
-  const entries = await Promise.all(
-    [...slugs].map(async (slug) => [slug, await read(slug)] as const),
-  );
+  const entries = await Promise.all([...slugs].map(async (slug) => [slug, await read(slug)] as const));
   return new Map(entries);
 }
 
 /** The live parent chain of `slug`, nearest first, with a cycle guard. */
-function ancestorSlugs(
-  slug: string,
-  liveBySlug: Map<string, LiveTeam>,
-): string[] {
+function ancestorSlugs(slug: string, liveBySlug: Map<string, LiveTeam>): string[] {
   const chain: string[] = [];
   const seen = new Set<string>([slug]);
   let parent = liveBySlug.get(slug)?.parentSlug ?? null;
@@ -659,7 +599,9 @@ function ancestorSlugs(
 function descendantSlugs(slug: string, teams: LiveTeam[]): string[] {
   const children = new Map<string, string[]>();
   for (const team of teams) {
-    if (!team.parentSlug) continue;
+    if (!team.parentSlug) {
+      continue;
+    }
     const siblings = children.get(team.parentSlug) ?? [];
     siblings.push(team.slug);
     children.set(team.parentSlug, siblings);
@@ -670,7 +612,9 @@ function descendantSlugs(slug: string, teams: LiveTeam[]): string[] {
   const queue = [...(children.get(slug) ?? [])];
   while (queue.length > 0) {
     const next = queue.shift();
-    if (next === undefined || seen.has(next)) continue;
+    if (next === undefined || seen.has(next)) {
+      continue;
+    }
     seen.add(next);
     found.push(next);
     queue.push(...(children.get(next) ?? []));
@@ -690,11 +634,9 @@ async function readBranchProtection(
   desired: DesiredState,
 ): Promise<LiveBranchProtection[] | undefined> {
   const declared = desired.branchProtection;
-  if (!declared) return undefined;
+  if (!declared) {
+    return undefined;
+  }
 
-  return Promise.all(
-    declared.map((p) =>
-      client.getBranchProtection(owner, p.repository, p.branch),
-    ),
-  );
+  return Promise.all(declared.map((p) => client.getBranchProtection(owner, p.repository, p.branch)));
 }

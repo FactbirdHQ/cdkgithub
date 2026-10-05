@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+
 import { importOrganization } from '../src/import/import-org.ts';
 import type { DesiredState } from '../src/synth/manifest.ts';
 import { FakeClient } from './fake-client.ts';
@@ -99,9 +100,7 @@ function orgClient(): FakeClient {
       },
       { id: 21, name: 'GitHub recommended', targetType: 'global' },
     ],
-    defaultSecurityConfigurations: [
-      { defaultForNewRepos: 'all', configurationId: 20, configurationName: 'baseline' },
-    ],
+    defaultSecurityConfigurations: [{ defaultForNewRepos: 'all', configurationId: 20, configurationName: 'baseline' }],
     customProperties: [
       {
         name: 'tier',
@@ -139,9 +138,7 @@ function orgClient(): FakeClient {
         selectedRepositories: ['flow-portal'],
       },
     ],
-    orgVariables: [
-      { name: 'REGION', value: 'eu-west-1', visibility: 'all' },
-    ],
+    orgVariables: [{ name: 'REGION', value: 'eu-west-1', visibility: 'all' }],
     orgSecrets: [{ name: 'NPM_TOKEN', visibility: 'private' }],
   });
 }
@@ -153,9 +150,7 @@ describe('importOrganization', () => {
     // The generated file targets examples/; retarget its import and outdir so
     // it synthesizes here, into a scratch directory.
     const dir = mkdtempSync(join(tmpdir(), 'cdkgithub-import-'));
-    const indexUrl = pathToFileURL(
-      join(import.meta.dir, '../src/index.ts'),
-    ).href;
+    const indexUrl = pathToFileURL(join(import.meta.dir, '../src/index.ts')).href;
     const definition = code
       .replace('"../src/index.ts"', JSON.stringify(indexUrl))
       .replace('new App()', `new App({ outdir: ${JSON.stringify(dir)} })`);
@@ -163,9 +158,7 @@ describe('importOrganization', () => {
     writeFileSync(file, definition);
     await import(pathToFileURL(file).href);
 
-    const state = JSON.parse(
-      readFileSync(join(dir, 'manifest.json'), 'utf8'),
-    ) as DesiredState;
+    const state = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as DesiredState;
 
     expect(state.owner).toBe('acme');
     expect(state.settings).toEqual({ defaultRepositoryPermission: 'read' });
@@ -186,15 +179,11 @@ describe('importOrganization', () => {
       }),
     ]);
 
-    expect(state.actions).toEqual(
-      expect.objectContaining({ allowedActions: 'local_only' }),
-    );
+    expect(state.actions).toEqual(expect.objectContaining({ allowedActions: 'local_only' }));
     expect(state.customRepositoryRoles).toEqual([
       expect.objectContaining({ name: 'Merge Queue Jumper', baseRole: 'push' }),
     ]);
-    expect(state.organizationRoles).toEqual([
-      { name: 'security_manager', teams: ['platform'], users: ['casey'] },
-    ]);
+    expect(state.organizationRoles).toEqual([{ name: 'security_manager', teams: ['platform'], users: ['casey'] }]);
 
     // One ruleset: the enterprise one is inherited, not declared, and the
     // bypass actors come back as names.
@@ -226,10 +215,7 @@ describe('importOrganization', () => {
         name: 'Priority',
         dataType: 'single_select',
         visibility: 'organization_members_only',
-        options: [
-          { name: 'P0', description: 'Drop everything', color: 'red' },
-          { name: 'P1' },
-        ],
+        options: [{ name: 'P0', description: 'Drop everything', color: 'red' }, { name: 'P1' }],
       },
     ]);
     expect(state.runnerGroups).toEqual([
@@ -239,9 +225,7 @@ describe('importOrganization', () => {
         selectedRepositories: ['flow-portal'],
       }),
     ]);
-    expect(state.actionsVariables).toEqual([
-      expect.objectContaining({ name: 'REGION', value: 'eu-west-1' }),
-    ]);
+    expect(state.actionsVariables).toEqual([expect.objectContaining({ name: 'REGION', value: 'eu-west-1' })]);
     expect(state.actionsSecrets).toEqual([
       expect.objectContaining({
         name: 'NPM_TOKEN',
@@ -299,9 +283,7 @@ describe('importOrganization', () => {
     expect(code).not.toContain('empty-repo');
 
     const dir = mkdtempSync(join(tmpdir(), 'cdkgithub-import-'));
-    const indexUrl = pathToFileURL(
-      join(import.meta.dir, '../src/index.ts'),
-    ).href;
+    const indexUrl = pathToFileURL(join(import.meta.dir, '../src/index.ts')).href;
     const file = join(dir, 'acme.ts');
     writeFileSync(
       file,
@@ -310,21 +292,14 @@ describe('importOrganization', () => {
         .replace('new App()', `new App({ outdir: ${JSON.stringify(dir)} })`),
     );
     await import(pathToFileURL(file).href);
-    const state = JSON.parse(
-      readFileSync(join(dir, 'manifest.json'), 'utf8'),
-    ) as DesiredState;
+    const state = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as DesiredState;
 
-    expect(state.repositories).toEqual([
-      { name: 'flow-portal' },
-      { name: 'netcore' },
-    ]);
+    expect(state.repositories).toEqual([{ name: 'flow-portal' }, { name: 'netcore' }]);
     expect(state.repositoryRulesets).toEqual([
       expect.objectContaining({
         repository: 'flow-portal',
         name: 'merge-queue',
-        bypassActors: [
-          { actorType: 'Team', team: 'platform', bypassMode: 'always' },
-        ],
+        bypassActors: [{ actorType: 'Team', team: 'platform', bypassMode: 'always' }],
       }),
     ]);
     expect(state.actionsVariables).toEqual([
@@ -377,9 +352,7 @@ describe('importOrganization', () => {
     const code = await importOrganization(client, 'acme', {
       repositories: true,
     });
-    expect(code).toContain(
-      'repository secrets on flow-portal, netcore (needs the secrets scope)',
-    );
+    expect(code).toContain('repository secrets on flow-portal, netcore (needs the secrets scope)');
     // The other surfaces still land.
     expect(code).toContain('new ActionsVariable(flowPortal, "A"');
   });

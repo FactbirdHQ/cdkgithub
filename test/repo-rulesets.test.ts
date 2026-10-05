@@ -1,19 +1,11 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  App,
-  Organization,
-  Repository,
-  RepositoryRuleset,
-  UserAccount,
-} from '../src/index.ts';
+
+import { App, Organization, Repository, RepositoryRuleset, UserAccount } from '../src/index.ts';
 import { apply } from '../src/reconcile/applier.ts';
 import type { LiveState } from '../src/reconcile/live.ts';
 import { readLiveState } from '../src/reconcile/live.ts';
 import { plan } from '../src/reconcile/planner.ts';
-import type {
-  DesiredState,
-  RepositoryRulesetManifest,
-} from '../src/synth/manifest.ts';
+import type { DesiredState, RepositoryRulesetManifest } from '../src/synth/manifest.ts';
 import { synthesize } from '../src/synth/synthesizer.ts';
 import { FakeClient } from './fake-client.ts';
 
@@ -142,9 +134,7 @@ describe('planning', () => {
         repositoryRulesets: [
           {
             ...mergeQueue,
-            bypassActors: [
-              { actorType: 'OrganizationAdmin', bypassMode: 'always' },
-            ],
+            bypassActors: [{ actorType: 'OrganizationAdmin', bypassMode: 'always' }],
           },
         ],
       }),
@@ -202,10 +192,10 @@ describe('planning', () => {
     // The undeclared live team also plans as a delete; the ruleset is what
     // this test is about.
     const change = changes.find((c) => c.kind === 'create-repo-ruleset');
-    if (!change) throw new Error('no create-repo-ruleset planned');
-    expect(change.ruleset.bypassActors).toEqual([
-      { actorType: 'Team', actorId: 42, bypassMode: undefined },
-    ]);
+    if (!change) {
+      throw new Error('no create-repo-ruleset planned');
+    }
+    expect(change.ruleset.bypassActors).toEqual([{ actorType: 'Team', actorId: 42, bypassMode: undefined }]);
   });
 
   test('reads only the declared repositories, tolerating one being created', async () => {
@@ -214,10 +204,7 @@ describe('planning', () => {
     });
     const state = desired({
       repositories: [{ name: 'brand-new' }],
-      repositoryRulesets: [
-        mergeQueue,
-        { ...mergeQueue, repository: 'brand-new' },
-      ],
+      repositoryRulesets: [mergeQueue, { ...mergeQueue, repository: 'brand-new' }],
     });
     // The fake returns [] for unknown repositories rather than a 404, so this
     // asserts the shape of the read, not the 404 path: one entry per repo.
@@ -283,18 +270,14 @@ describe('applying', () => {
 
     const ungated = new FakeClient();
     const skipped = await apply(ungated, 'acme', changes, live());
-    expect(skipped.skipped).toEqual([
-      'delete ruleset "stray" from flow-portal (use --allow-delete)',
-    ]);
+    expect(skipped.skipped).toEqual(['delete ruleset "stray" from flow-portal (use --allow-delete)']);
     expect(ungated.callsTo('deleteRepositoryRuleset')).toEqual([]);
 
     const gated = new FakeClient();
     await apply(gated, 'acme', changes, live(), {
       allowDelete: new Set(['delete-repo-ruleset'] as const),
     });
-    expect(gated.callsTo('deleteRepositoryRuleset')).toEqual([
-      { repo: 'flow-portal', id: 9 },
-    ]);
+    expect(gated.callsTo('deleteRepositoryRuleset')).toEqual([{ repo: 'flow-portal', id: 9 }]);
   });
 });
 
@@ -315,13 +298,8 @@ describe('app bypass actors', () => {
       appInstallations: [releaseBot],
       installationRepositories: { 42: ['launch-pad'] },
     });
-    const state = await readLiveState(
-      client,
-      desired({ repositoryRulesets: [withBot] }),
-    );
-    expect(state.appInstallations).toEqual([
-      { ...releaseBot, repositories: ['launch-pad'] },
-    ]);
+    const state = await readLiveState(client, desired({ repositoryRulesets: [withBot] }));
+    expect(state.appInstallations).toEqual([{ ...releaseBot, repositories: ['launch-pad'] }]);
   });
 
   test('an app whose installation leaves the repository out fails the plan', () => {
@@ -370,10 +348,7 @@ describe('app bypass actors', () => {
 
   test('an installation the token cannot list is left for GitHub to judge', async () => {
     const client = new FakeClient({ appInstallations: [releaseBot] });
-    const state = await readLiveState(
-      client,
-      desired({ repositoryRulesets: [withBot] }),
-    );
+    const state = await readLiveState(client, desired({ repositoryRulesets: [withBot] }));
     expect(state.appInstallations).toEqual([releaseBot]);
     const changes = plan(desired({ repositoryRulesets: [withBot] }), state);
     expect(changes.map((c) => c.kind)).toContain('create-repo-ruleset');

@@ -1,6 +1,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+
 import { Construct } from 'constructs';
+
 import type { DesiredState } from '../synth/manifest.ts';
 import { synthesize } from '../synth/synthesizer.ts';
 import { collectWarnings } from '../synth/warnings.ts';

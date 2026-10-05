@@ -6,10 +6,7 @@ import type { DesiredState, RulesetManifest } from './manifest.ts';
  * would make reading the definition.
  */
 export function collectWarnings(state: DesiredState): string[] {
-  return [
-    ...warnAboutLegacyBranchProtection(state),
-    ...warnAboutOverlappingRulesets(state),
-  ];
+  return [...warnAboutLegacyBranchProtection(state), ...warnAboutOverlappingRulesets(state)];
 }
 
 /**
@@ -18,16 +15,16 @@ export function collectWarnings(state: DesiredState): string[] {
  * organization usually means someone has not noticed the newer one.
  */
 function warnAboutLegacyBranchProtection(state: DesiredState): string[] {
-  if (state.ownerType !== 'organization') return [];
+  if (state.ownerType !== 'organization') {
+    return [];
+  }
 
-  const protections = (state.branchProtection ?? []).filter(
-    (p) => p.enabled !== false,
-  );
-  if (protections.length === 0) return [];
+  const protections = (state.branchProtection ?? []).filter((p) => p.enabled !== false);
+  if (protections.length === 0) {
+    return [];
+  }
 
-  const branches = protections
-    .map((p) => `${p.repository}#${p.branch}`)
-    .join(', ');
+  const branches = protections.map((p) => `${p.repository}#${p.branch}`).join(', ');
 
   return [
     `${protections.length} legacy branch protection${protections.length === 1 ? '' : 's'} declared on an organization: ${branches}. ` +
@@ -44,19 +41,21 @@ function warnAboutLegacyBranchProtection(state: DesiredState): string[] {
  * declaration.
  */
 function warnAboutOverlappingRulesets(state: DesiredState): string[] {
-  const branchRulesets = (state.rulesets ?? []).filter(
-    (r) => r.target === 'branch' && r.enforcement !== 'disabled',
-  );
-  if (branchRulesets.length === 0) return [];
+  const branchRulesets = (state.rulesets ?? []).filter((r) => r.target === 'branch' && r.enforcement !== 'disabled');
+  if (branchRulesets.length === 0) {
+    return [];
+  }
 
   const warnings: string[] = [];
   for (const protection of state.branchProtection ?? []) {
-    if (protection.enabled === false) continue;
+    if (protection.enabled === false) {
+      continue;
+    }
 
-    const overlapping = branchRulesets.filter((r) =>
-      targetsRepository(r, protection.repository),
-    );
-    if (overlapping.length === 0) continue;
+    const overlapping = branchRulesets.filter((r) => targetsRepository(r, protection.repository));
+    if (overlapping.length === 0) {
+      continue;
+    }
 
     warnings.push(
       `${protection.repository}#${protection.branch} has legacy branch protection and is also targeted by ruleset${overlapping.length === 1 ? '' : 's'} ` +
@@ -75,19 +74,21 @@ function warnAboutOverlappingRulesets(state: DesiredState): string[] {
  * match rather than guessed at: a warning that fires on a guess is worse than
  * one that stays quiet.
  */
-function targetsRepository(
-  ruleset: RulesetManifest,
-  repository: string,
-): boolean {
+function targetsRepository(ruleset: RulesetManifest, repository: string): boolean {
   const condition = ruleset.conditions?.repositoryName;
-  if (ruleset.conditions?.repositoryProperty) return false;
+  if (ruleset.conditions?.repositoryProperty) {
+    return false;
+  }
   // No repository condition at all means every repository in the org.
-  if (!condition) return true;
+  if (!condition) {
+    return true;
+  }
 
-  const matches = (pattern: string) =>
-    pattern === '~ALL' || globMatches(pattern, repository);
+  const matches = (pattern: string) => pattern === '~ALL' || globMatches(pattern, repository);
 
-  if ((condition.exclude ?? []).some(matches)) return false;
+  if ((condition.exclude ?? []).some(matches)) {
+    return false;
+  }
   return (condition.include ?? []).some(matches);
 }
 

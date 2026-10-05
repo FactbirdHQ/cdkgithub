@@ -1,8 +1,4 @@
-import type {
-  LiveOrgSecret,
-  LiveOrgVariable,
-  LiveRunnerGroup,
-} from '../github/client.ts';
+import type { LiveOrgSecret, LiveOrgVariable, LiveRunnerGroup } from '../github/client.ts';
 import type {
   ActionsSecretManifest,
   ActionsVariableManifest,
@@ -27,10 +23,7 @@ import { matchesSubset } from './subset.ts';
  * the matching here does the same rather than proposing to recreate `token`
  * because the live listing says `TOKEN`.
  */
-export function planActionsAdmin(
-  desired: DesiredState,
-  live: LiveState,
-): Change[] {
+export function planActionsAdmin(desired: DesiredState, live: LiveState): Change[] {
   return [
     ...planRunnerGroups(desired.runnerGroups, live),
     ...planVariables(desired.actionsVariables, desired, live),
@@ -42,11 +35,10 @@ export function planActionsAdmin(
 // Runner groups
 // ---------------------------------------------------------------------------
 
-function planRunnerGroups(
-  groups: RunnerGroupManifest[] | undefined,
-  live: LiveState,
-): Change[] {
-  if (!groups) return [];
+function planRunnerGroups(groups: RunnerGroupManifest[] | undefined, live: LiveState): Change[] {
+  if (!groups) {
+    return [];
+  }
 
   const liveGroups = live.runnerGroups ?? [];
   const liveByName = new Map(liveGroups.map((g) => [g.name, g]));
@@ -76,10 +68,7 @@ function planRunnerGroups(
   return changes;
 }
 
-function diffRunnerGroup(
-  desired: RunnerGroupManifest,
-  live: LiveRunnerGroup,
-): FieldChange[] {
+function diffRunnerGroup(desired: RunnerGroupManifest, live: LiveRunnerGroup): FieldChange[] {
   const { name: _name, selectedRepositories, ...rest } = desired;
   const fields = diffDeclared(rest, live);
 
@@ -140,9 +129,7 @@ function planVariables(
   const wantedVariables = byRepository(variables);
   for (const repository of scopes.repositories) {
     for (const environment of environmentsOf(repository, variables, desired, live, 'variables')) {
-      const wanted = (wantedVariables.get(repository) ?? []).filter(
-        (v) => v.environment === environment,
-      );
+      const wanted = (wantedVariables.get(repository) ?? []).filter((v) => v.environment === environment);
       const liveVariables = (live.repositoryVariables ?? []).filter(
         (v) => v.repository === repository && v.environment === environment,
       );
@@ -156,9 +143,7 @@ function planVariables(
           changes.push({
             kind: 'update-variable',
             variable,
-            fields: [
-              { field: 'value', from: current.value, to: variable.value },
-            ],
+            fields: [{ field: 'value', from: current.value, to: variable.value }],
           });
         }
       }
@@ -194,17 +179,11 @@ function environmentsOf(
   live: LiveState,
   what: 'variables' | 'secrets',
 ): Array<string | undefined> {
-  const named = entries.flatMap((e) =>
-    e.repository === repository && e.environment ? [e.environment] : [],
-  );
+  const named = entries.flatMap((e) => (e.repository === repository && e.environment ? [e.environment] : []));
   // One the definition declares counts as existing: this run creates it
   // before it writes anything into it.
-  const declared = (desired.environments ?? [])
-    .filter((e) => e.repository === repository)
-    .map((e) => e.name);
-  const existing = live.repositoryEnvironments
-    ?.filter((e) => e.repository === repository)
-    .map((e) => e.name);
+  const declared = (desired.environments ?? []).filter((e) => e.repository === repository).map((e) => e.name);
+  const existing = live.repositoryEnvironments?.filter((e) => e.repository === repository).map((e) => e.name);
   if (existing) {
     for (const environment of named) {
       if (!existing.includes(environment) && !declared.includes(environment)) {
@@ -217,10 +196,7 @@ function environmentsOf(
   return [undefined, ...new Set([...(existing ?? []), ...declared, ...named])];
 }
 
-function diffOrgVariable(
-  desired: ActionsVariableManifest,
-  live: LiveOrgVariable,
-): FieldChange[] {
+function diffOrgVariable(desired: ActionsVariableManifest, live: LiveOrgVariable): FieldChange[] {
   const fields: FieldChange[] = [];
   if (desired.value !== live.value) {
     fields.push({ field: 'value', from: live.value, to: desired.value });
@@ -255,11 +231,7 @@ function diffOrgVariable(
  * that exists with matching visibility is a match. Rotating a value in place
  * is done by changing any declared field, or by deleting and redeclaring it.
  */
-function planSecrets(
-  declared: ActionsSecretManifest[] | undefined,
-  desired: DesiredState,
-  live: LiveState,
-): Change[] {
+function planSecrets(declared: ActionsSecretManifest[] | undefined, desired: DesiredState, live: LiveState): Change[] {
   const secrets = declared ?? [];
   const scopes = scopesOf(secrets, desired);
   const changes: Change[] = [];
@@ -292,41 +264,36 @@ function planSecrets(
   const wantedSecrets = byRepository(secrets);
   for (const repository of scopes.repositories) {
     for (const environment of environmentsOf(repository, secrets, desired, live, 'secrets')) {
-    const wanted = (wantedSecrets.get(repository) ?? []).filter(
-      (s) => s.environment === environment,
-    );
-    const liveSecrets = (live.repositorySecrets ?? []).filter(
-      (s) => s.repository === repository && s.environment === environment,
-    );
-    const liveNames = upperNames(liveSecrets);
+      const wanted = (wantedSecrets.get(repository) ?? []).filter((s) => s.environment === environment);
+      const liveSecrets = (live.repositorySecrets ?? []).filter(
+        (s) => s.repository === repository && s.environment === environment,
+      );
+      const liveNames = upperNames(liveSecrets);
 
-    for (const secret of wanted) {
-      if (!liveNames.has(secret.name.toUpperCase())) {
-        changes.push({ kind: 'put-secret', secret, fields: [], exists: false });
+      for (const secret of wanted) {
+        if (!liveNames.has(secret.name.toUpperCase())) {
+          changes.push({ kind: 'put-secret', secret, fields: [], exists: false });
+        }
       }
-    }
 
-    const declared = upperNames(wanted);
-    for (const current of liveSecrets) {
-      if (!declared.has(current.name.toUpperCase())) {
-        changes.push({
-          kind: 'delete-secret',
-          name: current.name,
-          repository,
-          ...(environment === undefined ? {} : { environment }),
-        });
+      const declared = upperNames(wanted);
+      for (const current of liveSecrets) {
+        if (!declared.has(current.name.toUpperCase())) {
+          changes.push({
+            kind: 'delete-secret',
+            name: current.name,
+            repository,
+            ...(environment === undefined ? {} : { environment }),
+          });
+        }
       }
-    }
     }
   }
 
   return changes;
 }
 
-function diffOrgSecret(
-  desired: ActionsSecretManifest,
-  live: LiveOrgSecret,
-): FieldChange[] {
+function diffOrgSecret(desired: ActionsSecretManifest, live: LiveOrgSecret): FieldChange[] {
   const fields: FieldChange[] = [];
   if (desired.visibility !== live.visibility) {
     fields.push({
@@ -352,12 +319,12 @@ function diffOrgSecret(
 // Shared scoping helpers
 // ---------------------------------------------------------------------------
 
-function byRepository<T extends { repository?: string }>(
-  items: T[],
-): Map<string, T[]> {
+function byRepository<T extends { repository?: string }>(items: T[]): Map<string, T[]> {
   const groups = new Map<string, T[]>();
   for (const item of items) {
-    if (!item.repository) continue;
+    if (!item.repository) {
+      continue;
+    }
     const group = groups.get(item.repository) ?? [];
     group.push(item);
     groups.set(item.repository, group);

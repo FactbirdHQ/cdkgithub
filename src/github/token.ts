@@ -9,7 +9,9 @@ import { spawnSync } from 'node:child_process';
  */
 export function resolveToken(): string {
   const fromEnv = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
-  if (fromEnv && fromEnv.trim()) return fromEnv.trim();
+  if (fromEnv && fromEnv.trim()) {
+    return fromEnv.trim();
+  }
 
   // Bounded so a credential helper waiting for input hangs the CLI for ten
   // seconds, not forever.

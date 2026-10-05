@@ -1,10 +1,8 @@
 import { Construct } from 'constructs';
+
+import type { DeploymentBranchPolicy, EnvironmentReviewers } from '../synth/actions-admin.ts';
 import { ActionsSecret, type ActionsSecretProps } from './actions-secret.ts';
 import { ActionsVariable } from './actions-variable.ts';
-import type {
-  DeploymentBranchPolicy,
-  EnvironmentReviewers,
-} from '../synth/actions-admin.ts';
 
 /** Where a secret declared by name takes its value from. */
 export type SecretOptions = Pick<ActionsSecretProps, 'valueFrom'>;

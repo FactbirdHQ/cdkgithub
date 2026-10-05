@@ -47,11 +47,10 @@ export function validateManifest(value: unknown, path: string): DesiredState {
       fail(`${where} ("${t.slug}") needs "privacy" of "closed" or "secret".`);
     }
     for (const list of ['members', 'maintainers'] as const) {
-      if (t[list] === undefined) continue;
-      if (
-        !Array.isArray(t[list]) ||
-        (t[list] as unknown[]).some((m) => typeof m !== 'string')
-      ) {
+      if (t[list] === undefined) {
+        continue;
+      }
+      if (!Array.isArray(t[list]) || (t[list] as unknown[]).some((m) => typeof m !== 'string')) {
         fail(`${where} ("${t.slug}") "${list}" must be an array of usernames.`);
       }
     }
@@ -62,9 +61,7 @@ export function validateManifest(value: unknown, path: string): DesiredState {
         Array.isArray(t.repositories) ||
         Object.values(t.repositories).some((p) => typeof p !== 'string')
       ) {
-        fail(
-          `${where} ("${t.slug}") "repositories" must map repository names to permissions.`,
-        );
+        fail(`${where} ("${t.slug}") "repositories" must map repository names to permissions.`);
       }
     }
   }
@@ -72,28 +69,16 @@ export function validateManifest(value: unknown, path: string): DesiredState {
   // `scim` is what the scim command dereferences, so its fields are pinned
   // here the way the team fields are.
   if (state.scim !== undefined) {
-    if (
-      typeof state.scim !== 'object' ||
-      state.scim === null ||
-      Array.isArray(state.scim)
-    ) {
+    if (typeof state.scim !== 'object' || state.scim === null || Array.isArray(state.scim)) {
       fail('"scim" must be an object when present.');
     }
     const scim = state.scim as Record<string, unknown>;
-    for (const field of [
-      'tenantId',
-      'applicationDisplayName',
-      'tokenFrom',
-    ] as const) {
+    for (const field of ['tenantId', 'applicationDisplayName', 'tokenFrom'] as const) {
       if (typeof scim[field] !== 'string' || scim[field] === '') {
         fail(`"scim" needs a non-empty "${field}".`);
       }
     }
-    if (
-      !Array.isArray(scim.groups) ||
-      scim.groups.length === 0 ||
-      scim.groups.some((g) => typeof g !== 'string')
-    ) {
+    if (!Array.isArray(scim.groups) || scim.groups.length === 0 || scim.groups.some((g) => typeof g !== 'string')) {
       fail('"scim" needs "groups": a non-empty array of group names.');
     }
   }

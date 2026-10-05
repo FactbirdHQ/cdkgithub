@@ -7,11 +7,7 @@
  * reader to trace it back up the tree.
  */
 
-import type {
-  PersonDiff,
-  ReachChange,
-  RepositoryReach,
-} from './access-by-person.ts';
+import type { PersonDiff, ReachChange, RepositoryReach } from './access-by-person.ts';
 import type { Palette } from './color.ts';
 import { PLAIN } from './color.ts';
 
@@ -27,14 +23,9 @@ export interface RenderPersonOptions {
 const SAMPLE = 12;
 
 /** Render every person's access, with what changes marked up. */
-export function renderAccessByPerson(
-  people: PersonDiff[],
-  options: RenderPersonOptions = {},
-): string {
+export function renderAccessByPerson(people: PersonDiff[], options: RenderPersonOptions = {}): string {
   const paint = options.palette ?? PLAIN;
-  const shown = options.changedOnly
-    ? people.filter((p) => !p.unchanged)
-    : people;
+  const shown = options.changedOnly ? people.filter((p) => !p.unchanged) : people;
 
   if (shown.length === 0) {
     return paint.muted('No one’s repository access changes.');
@@ -49,26 +40,17 @@ export function renderAccessByPerson(
   const touched = people.filter((p) => !p.unchanged).length;
   lines.push(
     touched === 0
-      ? paint.muted(
-          `${people.length} ${people.length === 1 ? 'person' : 'people'}, none of whose access changes.`,
-        )
+      ? paint.muted(`${people.length} ${people.length === 1 ? 'person' : 'people'}, none of whose access changes.`)
       : `${touched} of ${people.length} ${people.length === 1 ? 'person' : 'people'} ` +
           `${touched === 1 ? 'sees' : 'see'} their repository access change.`,
   );
   return lines.join('\n');
 }
 
-function renderPerson(
-  person: PersonDiff,
-  options: RenderPersonOptions,
-  paint: Palette,
-): string[] {
+function renderPerson(person: PersonDiff, options: RenderPersonOptions, paint: Palette): string[] {
   const before = person.before.repositories.size;
   const after = person.after.repositories.size;
-  const delta =
-    before === after
-      ? `${after} ${after === 1 ? 'repo' : 'repos'}`
-      : `${before} -> ${after} repos`;
+  const delta = before === after ? `${after} ${after === 1 ? 'repo' : 'repos'}` : `${before} -> ${after} repos`;
 
   const heading = `${person.login}   (${delta})`;
   const lines = [person.unchanged ? paint.muted(heading) : heading];
@@ -82,9 +64,7 @@ function renderPerson(
   }
 
   if (options.full) {
-    lines.push(
-      paint.muted(`${indent}teams: ${person.after.teams.join(', ') || 'none'}`),
-    );
+    lines.push(paint.muted(`${indent}teams: ${person.after.teams.join(', ') || 'none'}`));
     lines.push(...listAll(person, indent, paint));
     return lines;
   }
@@ -106,9 +86,7 @@ function renderPerson(
  * A single repository is left where it is: a summary of one says less than the
  * line it replaces.
  */
-function collapseBlanket<
-  T extends { readonly repository: string; readonly to?: RepositoryReach },
->(
+function collapseBlanket<T extends { readonly repository: string; readonly to?: RepositoryReach }>(
   entries: T[],
 ): {
   summaries: Array<{ role: string; permission: string; count: number }>;
@@ -125,11 +103,8 @@ function collapseBlanket<
     grouped.set(role, [...(grouped.get(role) ?? []), entry]);
   }
 
-  const summaries: Array<{ role: string; permission: string; count: number }> =
-    [];
-  for (const [role, group] of [...grouped].sort(([a], [b]) =>
-    a.localeCompare(b),
-  )) {
+  const summaries: Array<{ role: string; permission: string; count: number }> = [];
+  for (const [role, group] of [...grouped].sort(([a], [b]) => a.localeCompare(b))) {
     if (group.length === 1) {
       rest.push(...group);
       continue;
@@ -143,10 +118,7 @@ function collapseBlanket<
   return { summaries, rest: rest.sort(byRepository) };
 }
 
-function byRepository(
-  a: { readonly repository?: string },
-  b: { readonly repository?: string },
-): number {
+function byRepository(a: { readonly repository?: string }, b: { readonly repository?: string }): number {
   return (a.repository ?? '').localeCompare(b.repository ?? '');
 }
 
@@ -160,10 +132,7 @@ function changeLines(
 ): string[] {
   // Only a gain or a change can come from a role; losing one is losing the
   // assignment, which the role's own summary already says.
-  const { summaries, rest } =
-    marker === '-'
-      ? { summaries: [], rest: changes }
-      : collapseBlanket(changes);
+  const { summaries, rest } = marker === '-' ? { summaries: [], rest: changes } : collapseBlanket(changes);
 
   const summaryLines = summaries.map((s) =>
     paint[tone](
@@ -203,9 +172,7 @@ function changeLines(
  */
 function listAll(person: PersonDiff, indent: string, paint: Palette): string[] {
   const { before, after } = person;
-  const repositories = [
-    ...new Set([...before.repositories.keys(), ...after.repositories.keys()]),
-  ].sort();
+  const repositories = [...new Set([...before.repositories.keys(), ...after.repositories.keys()])].sort();
 
   if (repositories.length === 0) {
     return [paint.muted(`${indent}(no repositories)`)];
@@ -233,14 +200,10 @@ function listAll(person: PersonDiff, indent: string, paint: Palette): string[] {
     ...summaryLines,
     ...rest.map(({ repository, from, to }) => {
       if (!from && to) {
-        return paint.added(
-          `${indent}+ ${repository} = "${to.permission}"   via ${to.through.join(', ')}`,
-        );
+        return paint.added(`${indent}+ ${repository} = "${to.permission}"   via ${to.through.join(', ')}`);
       }
       if (from && !to) {
-        return paint.removed(
-          `${indent}- ${repository}   (had "${from.permission}" via ${from.through.join(', ')})`,
-        );
+        return paint.removed(`${indent}- ${repository}   (had "${from.permission}" via ${from.through.join(', ')})`);
       }
       if (from && to && from.permission !== to.permission) {
         return paint.changed(
@@ -248,9 +211,7 @@ function listAll(person: PersonDiff, indent: string, paint: Palette): string[] {
         );
       }
       const held = (to ?? from) as RepositoryReach;
-      return paint.muted(
-        `${indent}  ${repository} = "${held.permission}"   via ${held.through.join(', ')}`,
-      );
+      return paint.muted(`${indent}  ${repository} = "${held.permission}"   via ${held.through.join(', ')}`);
     }),
   ];
 }
@@ -260,10 +221,7 @@ export function renderAccessCsv(people: PersonDiff[]): string {
   const rows = ['login,repository,before,after,via'];
   for (const person of people) {
     const repositories = [
-      ...new Set([
-        ...person.before.repositories.keys(),
-        ...person.after.repositories.keys(),
-      ]),
+      ...new Set([...person.before.repositories.keys(), ...person.after.repositories.keys()]),
     ].sort();
 
     for (const repository of repositories) {

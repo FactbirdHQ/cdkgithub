@@ -69,10 +69,20 @@ export interface ColorEnvironment {
 export function choosePalette(environment: ColorEnvironment = {}): Palette {
   const { flag, isTTY = false, env = {} } = environment;
 
-  if (flag === 'never') return PLAIN;
-  if (flag === 'always') return ANSI;
-  if (env.NO_COLOR !== undefined && env.NO_COLOR !== '') return PLAIN;
-  if (env.TERM === 'dumb') return PLAIN;
-  if (env.FORCE_COLOR !== undefined && env.FORCE_COLOR !== '0') return ANSI;
+  if (flag === 'never') {
+    return PLAIN;
+  }
+  if (flag === 'always') {
+    return ANSI;
+  }
+  if (env.NO_COLOR !== undefined && env.NO_COLOR !== '') {
+    return PLAIN;
+  }
+  if (env.TERM === 'dumb') {
+    return PLAIN;
+  }
+  if (env.FORCE_COLOR !== undefined && env.FORCE_COLOR !== '0') {
+    return ANSI;
+  }
   return isTTY ? ANSI : PLAIN;
 }

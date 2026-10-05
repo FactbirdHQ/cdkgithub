@@ -48,9 +48,13 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 /** `github`, answering each call after a delay with the headers GitHub sends. */
 const client = new Proxy(github, {
   get(target, property, receiver) {
-    if (property === 'meter') return meter;
+    if (property === 'meter') {
+      return meter;
+    }
     const value = Reflect.get(target, property, receiver);
-    if (typeof value !== 'function') return value;
+    if (typeof value !== 'function') {
+      return value;
+    }
     const name = String(property);
     const writes = !/^(list|get|find|read)/.test(name);
     return async (...args: unknown[]) => {

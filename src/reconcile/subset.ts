@@ -21,10 +21,10 @@ export function matchesSubset(desired: unknown, live: unknown): boolean {
     return Array.isArray(live) && matchesArray(desired, live);
   }
   if (isPlainObject(desired)) {
-    if (!isPlainObject(live)) return false;
-    return Object.entries(desired).every(
-      ([key, value]) => value === undefined || matchesSubset(value, live[key]),
-    );
+    if (!isPlainObject(live)) {
+      return false;
+    }
+    return Object.entries(desired).every(([key, value]) => value === undefined || matchesSubset(value, live[key]));
   }
   // Treat an absent value and an explicit null as the same thing: GitHub returns
   // null for "no description", and definitions tend to just omit the field.
@@ -41,13 +41,15 @@ export function matchesSubset(desired: unknown, live: unknown): boolean {
  * partners that a later one needs.
  */
 function matchesArray(desired: unknown[], live: unknown[]): boolean {
-  if (desired.length !== live.length) return false;
+  if (desired.length !== live.length) {
+    return false;
+  }
   const taken = new Set<number>();
   for (const item of desired) {
-    const index = live.findIndex(
-      (candidate, i) => !taken.has(i) && matchesSubset(item, candidate),
-    );
-    if (index === -1) return false;
+    const index = live.findIndex((candidate, i) => !taken.has(i) && matchesSubset(item, candidate));
+    if (index === -1) {
+      return false;
+    }
     taken.add(index);
   }
   return true;

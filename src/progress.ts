@@ -37,7 +37,7 @@ export async function reportProgress<T>(
       // A line wider than the terminal wraps, and returning to the start of
       // the row then redraws below the rows it wrapped onto instead of over
       // them. Cut to one column short of the width, so the cursor never wraps.
-      stream.write(`\r\x1b[2K${fit(line(), (stream.columns ?? 80) - 1)}`);
+      stream.write(`\r\x1b[2K${fitToWidth(line(), (stream.columns ?? 80) - 1)}`);
       return;
     }
     const waiting = meter.snapshot().waiting?.until.getTime();
@@ -63,33 +63,30 @@ export async function reportProgress<T>(
   }
 
   function finish() {
-    for (const timer of timers) clearInterval(timer);
-    if (stream.isTTY) stream.write('\r\x1b[2K');
+    for (const timer of timers) {
+      clearInterval(timer);
+    }
+    if (stream.isTTY) {
+      stream.write('\r\x1b[2K');
+    }
   }
 }
 
 /** `text` cut to `width` characters, marking the cut with an ellipsis. */
-export function fit(text: string, width: number): string {
-  if (text.length <= width) return text;
+export function fitToWidth(text: string, width: number): string {
+  if (text.length <= width) {
+    return text;
+  }
   return width <= 1 ? text.slice(0, Math.max(width, 0)) : `${text.slice(0, width - 1)}…`;
 }
 
 /** The status line shown while a read is under way. */
-export function progressLine(
-  label: string,
-  snapshot: MeterSnapshot,
-  elapsedMs: number,
-  nowMs: number,
-): string {
-  const parts = [
-    `${label}: ${requestCounts(snapshot)}, ${duration(elapsedMs)}`,
-  ];
+export function progressLine(label: string, snapshot: MeterSnapshot, elapsedMs: number, nowMs: number): string {
+  const parts = [`${label}: ${requestCounts(snapshot)}, ${duration(elapsedMs)}`];
   const core = snapshot.budgets.core;
   if (snapshot.waiting) {
     const kind = snapshot.waiting.secondary ? 'secondary rate limit' : 'rate limit';
-    parts.push(
-      `waiting out GitHub's ${kind} until ${clock(snapshot.waiting.until)}`,
-    );
+    parts.push(`waiting out GitHub's ${kind} until ${clock(snapshot.waiting.until)}`);
   } else if (core && core.remaining === 0 && core.resetsAt.getTime() > nowMs) {
     parts.push(`API budget spent until ${clock(core.resetsAt)}`);
   } else if (core) {
@@ -102,12 +99,7 @@ export function progressLine(
  * The line a finished read leaves behind: how long it took and the budget
  * left. `verbose` adds what it asked GitHub for and the routes it asked most.
  */
-export function summaryLine(
-  label: string,
-  meter: RequestMeter,
-  elapsedMs: number,
-  verbose = false,
-): string {
+export function summaryLine(label: string, meter: RequestMeter, elapsedMs: number, verbose = false): string {
   const snapshot = meter.snapshot();
   const core = snapshot.budgets.core;
   const budget = core
@@ -132,12 +124,11 @@ export function summaryLine(
  * undefined when they do. Each change is at least one request, so the count
  * is a floor.
  */
-export function budgetNote(
-  changes: number,
-  snapshot: MeterSnapshot,
-): string | undefined {
+export function budgetNote(changes: number, snapshot: MeterSnapshot): string | undefined {
   const core = snapshot.budgets.core;
-  if (!core || core.remaining >= changes) return undefined;
+  if (!core || core.remaining >= changes) {
+    return undefined;
+  }
   return (
     `GitHub's API budget has ${core.remaining.toLocaleString('en-US')} requests left until ` +
     `${clock(core.resetsAt)}, and these ${changes} changes need at least ${changes}. ` +
@@ -169,12 +160,20 @@ export function waitLine(wait: RateWait): string {
  */
 export function since(timestamp: string, nowMs: number = Date.now()): string {
   const at = new Date(timestamp);
-  if (Number.isNaN(at.getTime())) return timestamp;
+  if (Number.isNaN(at.getTime())) {
+    return timestamp;
+  }
   const minutes = Math.floor((nowMs - at.getTime()) / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  if (minutes < 1) {
+    return 'just now';
+  }
+  if (minutes < 60) {
+    return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  }
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  if (hours < 24) {
+    return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  }
   const date = at.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   return `on ${date}, ${clock(at)}`;
 }

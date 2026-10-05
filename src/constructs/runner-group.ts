@@ -1,4 +1,5 @@
 import { Construct } from 'constructs';
+
 import type { RunnerGroupVisibility } from '../synth/actions-admin.ts';
 
 export interface RunnerGroupProps {

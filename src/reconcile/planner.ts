@@ -5,13 +5,13 @@ import { isDestructive } from './changes.ts';
 import type { LiveState } from './live.ts';
 import { resolveLive } from './live.ts';
 import { planActionsAdmin } from './plan-actions-admin.ts';
-import { planCustomRepositoryRoles } from './plan-custom-roles.ts';
-import { planRepositories } from './plan-repositories.ts';
 import { planCollaborators } from './plan-collaborators.ts';
+import { planCustomRepositoryRoles } from './plan-custom-roles.ts';
 import { planEnvironments } from './plan-environments.ts';
 import { planGovernance } from './plan-governance.ts';
 import { planOrganizationRoles } from './plan-org-roles.ts';
 import { planRepositoryRulesets } from './plan-repo-rulesets.ts';
+import { planRepositories } from './plan-repositories.ts';
 import { planTeamAccess } from './plan-team-access.ts';
 
 /**
@@ -45,9 +45,7 @@ export function plan(desired: DesiredState, live: LiveState): Change[] {
   const liveBySlug = new Map(liveTeams.map((t) => [t.slug, t] as const));
   // A live team claimed through a rename marker is not an orphan, so it must not
   // fall into the deletes below.
-  const claimed = new Set(
-    desired.teams.map((t) => resolveLive(t, liveBySlug)?.slug ?? t.slug),
-  );
+  const claimed = new Set(desired.teams.map((t) => resolveLive(t, liveBySlug)?.slug ?? t.slug));
 
   const creates: Change[] = [];
   const updates: Change[] = [];
@@ -55,15 +53,15 @@ export function plan(desired: DesiredState, live: LiveState): Change[] {
 
   for (const team of desired.teams) {
     const current = resolveLive(team, liveBySlug);
-    if (!current) {
-      creates.push({ kind: 'create', team });
-    } else {
+    if (current) {
       const fields = diffTeam(team, current);
       if (fields.length > 0) {
         // Addressed by the slug GitHub answers to now. A rename is a PATCH on
         // the old slug that leaves the new one in place.
         updates.push({ kind: 'update', slug: current.slug, team, fields });
       }
+    } else {
+      creates.push({ kind: 'create', team });
     }
 
     // Linking is idempotent, so we always ensure it for IdP-bound teams.
@@ -85,10 +83,7 @@ export function plan(desired: DesiredState, live: LiveState): Change[] {
   // Custom-role creates and updates run before the grants that name them; the
   // deletes run after the grants have been removed, since a role still granted
   // through is not deletable.
-  const roleChanges = planCustomRepositoryRoles(
-    desired.customRepositoryRoles,
-    live,
-  );
+  const roleChanges = planCustomRepositoryRoles(desired.customRepositoryRoles, live);
   const roleUpserts = roleChanges.filter((c) => c.kind !== 'delete-repo-role');
   const roleDeletes = roleChanges.filter((c) => c.kind === 'delete-repo-role');
 
@@ -115,10 +110,7 @@ export function plan(desired: DesiredState, live: LiveState): Change[] {
     ...roleDeletes,
     ...planOrganizationRoles(desired.organizationRoles, live),
   ];
-  return [
-    ...ordered.filter((change) => !isDestructive(change)),
-    ...ordered.filter(isDestructive),
-  ];
+  return [...ordered.filter((change) => !isDestructive(change)), ...ordered.filter(isDestructive)];
 }
 
 function diffTeam(desired: TeamManifest, live: LiveTeam): FieldChange[] {
@@ -146,10 +138,7 @@ function diffTeam(desired: TeamManifest, live: LiveTeam): FieldChange[] {
 
   // Compared only when declared, so a definition that never mentions the
   // setting leaves every live team's as it is.
-  if (
-    desired.notificationSetting !== undefined &&
-    desired.notificationSetting !== live.notificationSetting
-  ) {
+  if (desired.notificationSetting !== undefined && desired.notificationSetting !== live.notificationSetting) {
     fields.push({
       field: 'notificationSetting',
       from: live.notificationSetting ?? null,
@@ -174,7 +163,9 @@ function deleteDepth(team: LiveTeam, all: LiveTeam[]): number {
   while (current?.parentSlug) {
     depth++;
     current = bySlug.get(current.parentSlug);
-    if (depth > all.length) break; // cycle guard
+    if (depth > all.length) {
+      break; // cycle guard
+    }
   }
   return depth;
 }

@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'bun:test';
+
 import { ANSI, choosePalette, PLAIN } from '../src/reconcile/color.ts';
 import { renderTreeDiff } from '../src/reconcile/render-tree.ts';
-import { diffTrees } from '../src/reconcile/tree-diff.ts';
 import { desiredTree, readLiveTree } from '../src/reconcile/tree.ts';
+import { diffTrees } from '../src/reconcile/tree-diff.ts';
 import type { DesiredState, TeamManifest } from '../src/synth/manifest.ts';
 import { FakeClient } from './fake-client.ts';
 
@@ -30,9 +31,7 @@ describe('choosing a palette', () => {
 
   test('an explicit flag beats everything else', () => {
     expect(choosePalette({ flag: 'never', isTTY: true })).toBe(PLAIN);
-    expect(
-      choosePalette({ flag: 'always', isTTY: false, env: { NO_COLOR: '1' } }),
-    ).toBe(ANSI);
+    expect(choosePalette({ flag: 'always', isTTY: false, env: { NO_COLOR: '1' } })).toBe(ANSI);
   });
 
   test('NO_COLOR silences a terminal, and an empty one does not', () => {
@@ -46,12 +45,8 @@ describe('choosing a palette', () => {
   });
 
   test('FORCE_COLOR colors a pipe, and FORCE_COLOR=0 does not', () => {
-    expect(choosePalette({ isTTY: false, env: { FORCE_COLOR: '1' } })).toBe(
-      ANSI,
-    );
-    expect(choosePalette({ isTTY: false, env: { FORCE_COLOR: '0' } })).toBe(
-      PLAIN,
-    );
+    expect(choosePalette({ isTTY: false, env: { FORCE_COLOR: '1' } })).toBe(ANSI);
+    expect(choosePalette({ isTTY: false, env: { FORCE_COLOR: '0' } })).toBe(PLAIN);
   });
 
   test('a dumb terminal is not a terminal', () => {
@@ -114,11 +109,8 @@ describe('coloring the diff', () => {
   });
 
   test('each mark takes its own color', async () => {
-    const lines = renderTreeDiff(await sampleDiff(), { palette: ANSI }).split(
-      '\n',
-    );
-    const find = (needle: string) =>
-      lines.find((l) => l.includes(needle)) ?? '';
+    const lines = renderTreeDiff(await sampleDiff(), { palette: ANSI }).split('\n');
+    const find = (needle: string) => lines.find((l) => l.includes(needle)) ?? '';
 
     expect(find('team added')).toStartWith('\x1b[32m'); // green
     expect(find('team gone')).toStartWith('\x1b[31m'); // red
@@ -127,11 +119,8 @@ describe('coloring the diff', () => {
   });
 
   test('a changed team holds both green and red beneath it', async () => {
-    const lines = renderTreeDiff(await sampleDiff(), { palette: ANSI }).split(
-      '\n',
-    );
-    const find = (needle: string) =>
-      lines.find((l) => l.includes(needle)) ?? '';
+    const lines = renderTreeDiff(await sampleDiff(), { palette: ANSI }).split('\n');
+    const find = (needle: string) => lines.find((l) => l.includes(needle)) ?? '';
 
     expect(find('repo fresh')).toStartWith('\x1b[32m');
     expect(find('repo old')).toStartWith('\x1b[31m');

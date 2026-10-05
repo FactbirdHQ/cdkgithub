@@ -1,11 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  App,
-  Organization,
-  ScimProvisioning,
-  Team,
-  UserAccount,
-} from '../src/index.ts';
+
 import type {
   EntraClient,
   EntraGroupAssignment,
@@ -13,6 +7,7 @@ import type {
   EntraSynchronizationJob,
 } from '../src/entra/graph.ts';
 import { setUpScimProvisioning } from '../src/entra/scim-setup.ts';
+import { App, Organization, ScimProvisioning, Team, UserAccount } from '../src/index.ts';
 import type { ScimProvisioningManifest } from '../src/synth/scim.ts';
 import { synthesize } from '../src/synth/synthesizer.ts';
 
@@ -156,11 +151,7 @@ class FakeEntra implements EntraClient {
     return { id: 'job-1' };
   }
 
-  async setSynchronizationSecrets(
-    servicePrincipalId: string,
-    tenantUrl: string,
-    secretToken: string,
-  ) {
+  async setSynchronizationSecrets(servicePrincipalId: string, tenantUrl: string, secretToken: string) {
     this.record('setSynchronizationSecrets', {
       servicePrincipalId,
       tenantUrl,
@@ -182,10 +173,7 @@ class FakeEntra implements EntraClient {
     return this.assignments[servicePrincipalId] ?? [];
   }
 
-  async assignGroup(
-    servicePrincipal: EntraServicePrincipal,
-    groupId: string,
-  ) {
+  async assignGroup(servicePrincipal: EntraServicePrincipal, groupId: string) {
     this.record('assignGroup', {
       servicePrincipalId: servicePrincipal.id,
       appRoleId: servicePrincipal.appRoles[0]?.id,
@@ -201,10 +189,7 @@ const manifest: ScimProvisioningManifest = {
   groups: ['GH-Engineering', 'GH-Platform'],
 };
 
-function options(overrides: {
-  yes?: boolean;
-  env?: Record<string, string | undefined>;
-}) {
+function options(overrides: { yes?: boolean; env?: Record<string, string | undefined> }) {
   return {
     yes: overrides.yes ?? false,
     env: overrides.env ?? {},
@@ -215,9 +200,7 @@ function options(overrides: {
 /** An Entra that already matches the declaration end to end. */
 function configuredEntra(): FakeEntra {
   const entra = new FakeEntra();
-  entra.servicePrincipals = [
-    { id: 'sp-1', appId: 'app-1', appRoles: [] },
-  ];
+  entra.servicePrincipals = [{ id: 'sp-1', appId: 'app-1', appRoles: [] }];
   entra.jobs = { 'sp-1': [{ id: 'job-1', state: 'Active' }] };
   entra.groups = { 'GH-Engineering': 'g-eng', 'GH-Platform': 'g-plat' };
   entra.assignments = {
@@ -234,12 +217,7 @@ describe('setUpScimProvisioning', () => {
     const entra = new FakeEntra();
     entra.groups = { 'GH-Engineering': 'g-eng', 'GH-Platform': 'g-plat' };
 
-    const result = await setUpScimProvisioning(
-      entra,
-      'acme',
-      manifest,
-      options({}),
-    );
+    const result = await setUpScimProvisioning(entra, 'acme', manifest, options({}));
 
     expect(result.actions).toEqual([
       'create enterprise application "GitHub SCIM (acme)" from GitHub\'s gallery template',
@@ -292,23 +270,16 @@ describe('setUpScimProvisioning', () => {
   test('--yes without the token refuses before writing anything', async () => {
     const entra = new FakeEntra();
     entra.groups = { 'GH-Engineering': 'g-eng', 'GH-Platform': 'g-plat' };
-    await expect(
-      setUpScimProvisioning(entra, 'acme', manifest, options({ yes: true })),
-    ).rejects.toThrow('$SCIM_TEST_TOKEN');
+    await expect(setUpScimProvisioning(entra, 'acme', manifest, options({ yes: true }))).rejects.toThrow(
+      '$SCIM_TEST_TOKEN',
+    );
     expect(entra.mutations()).toEqual([]);
   });
 
   test('a configured tenant is zero actions, with the rotation note', async () => {
-    const result = await setUpScimProvisioning(
-      configuredEntra(),
-      'acme',
-      manifest,
-      options({}),
-    );
+    const result = await setUpScimProvisioning(configuredEntra(), 'acme', manifest, options({}));
     expect(result.actions).toEqual([]);
-    expect(result.notes).toEqual([
-      'credentials kept as stored; export $SCIM_TEST_TOKEN to rotate them',
-    ]);
+    expect(result.notes).toEqual(['credentials kept as stored; export $SCIM_TEST_TOKEN to rotate them']);
   });
 
   test('an exported token on a configured tenant means rotation', async () => {
@@ -319,24 +290,15 @@ describe('setUpScimProvisioning', () => {
       manifest,
       options({ yes: true, env: { SCIM_TEST_TOKEN: 'ghp_rotated' } }),
     );
-    expect(result.actions).toEqual([
-      'refresh the provisioning credentials from $SCIM_TEST_TOKEN',
-    ]);
+    expect(result.actions).toEqual(['refresh the provisioning credentials from $SCIM_TEST_TOKEN']);
     expect(entra.mutations()).toEqual(['setSynchronizationSecrets']);
   });
 
   test('a paused job is started', async () => {
     const entra = configuredEntra();
     entra.jobs = { 'sp-1': [{ id: 'job-1', state: 'Paused' }] };
-    const result = await setUpScimProvisioning(
-      entra,
-      'acme',
-      manifest,
-      options({ yes: true }),
-    );
-    expect(result.actions).toEqual([
-      'start provisioning (job state is Paused)',
-    ]);
+    const result = await setUpScimProvisioning(entra, 'acme', manifest, options({ yes: true }));
+    expect(result.actions).toEqual(['start provisioning (job state is Paused)']);
     expect(entra.mutations()).toEqual(['startSynchronizationJob']);
   });
 
@@ -344,12 +306,7 @@ describe('setUpScimProvisioning', () => {
     const entra = new FakeEntra();
     entra.groups = { 'GH-Engineering': 'g-eng' };
     await expect(
-      setUpScimProvisioning(
-        entra,
-        'acme',
-        manifest,
-        options({ yes: true, env: { SCIM_TEST_TOKEN: 'x' } }),
-      ),
+      setUpScimProvisioning(entra, 'acme', manifest, options({ yes: true, env: { SCIM_TEST_TOKEN: 'x' } })),
     ).rejects.toThrow('"GH-Platform"');
     expect(entra.mutations()).toEqual([]);
   });
@@ -360,24 +317,17 @@ describe('setUpScimProvisioning', () => {
       groupId: 'g-extra',
       displayName: 'GH-Contractors',
     });
-    const result = await setUpScimProvisioning(
-      entra,
-      'acme',
-      manifest,
-      options({ yes: true }),
-    );
-    expect(result.notes).toContain(
-      'assigned outside this definition, left alone: "GH-Contractors"',
-    );
+    const result = await setUpScimProvisioning(entra, 'acme', manifest, options({ yes: true }));
+    expect(result.notes).toContain('assigned outside this definition, left alone: "GH-Contractors"');
     expect(entra.mutations()).toEqual([]);
   });
 
   test('the wrong tenant is a refusal, not a surprise', async () => {
     const entra = configuredEntra();
     entra.tenant = { id: 'other-tenant', domains: ['fabrikam.com'] };
-    await expect(
-      setUpScimProvisioning(entra, 'acme', manifest, options({ yes: true })),
-    ).rejects.toThrow('fabrikam.com');
+    await expect(setUpScimProvisioning(entra, 'acme', manifest, options({ yes: true }))).rejects.toThrow(
+      'fabrikam.com',
+    );
     expect(entra.mutations()).toEqual([]);
   });
 });
