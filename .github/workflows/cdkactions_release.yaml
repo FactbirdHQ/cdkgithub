@@ -47,7 +47,7 @@ jobs:
           fi
       - name: Compile
         run: bun run compile
-      - name: Point package.json at dist
+      - name: Prepare the npm package
         run: bun cicd/dist-manifest.ts
       - name: Publish
         run: npm publish

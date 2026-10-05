@@ -853,7 +853,7 @@ docs/                  how-to guides, this reference, and the design notes
 examples/factbird.ts   example org definition
 examples/personal.ts   example personal-account definition
 cicd/main.ts           CI and release workflows, defined with @factbird/cdkactions
-cicd/dist-manifest.ts  points package.json at dist/ before the release job publishes
+cicd/dist-manifest.ts  points package.json at dist/ and the README's relative paths at GitHub before the release job publishes
 tsconfig.build.json    compiles src/ to dist/ for the npm package
 .github/workflows/     generated, do not edit by hand
 test/                  bun tests against an in-memory GitHub fake
@@ -870,7 +870,10 @@ the live organization.
 Release (`cdkactions_release.yaml`) runs when a GitHub release is
 published. It typechecks and tests, fails unless the release tag is
 `v` followed by the `version` in `package.json`, compiles `dist/`, points
-the `package.json` exports and `bin` at it, then runs `npm publish`.
+the `package.json` exports and `bin` at it, points the README's relative
+images and links at the repository on GitHub at the release tag, then runs
+`npm publish`. npmjs.com renders the README on its own domain, where a
+relative path resolves to nothing; the README in the repository keeps them.
 The committed `package.json` points at the TypeScript sources, so a
 dependency on the git repository installs them untranspiled, while the npm
 package holds JavaScript only. Either package exports every module as
