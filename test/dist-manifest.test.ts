@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { pointAtRepository } from '../cicd/npm-readme.ts';
+import { pointAtRepository } from '../cicd/dist-manifest.ts';
 
 const repository = { owner: 'FactbirdHQ', name: 'cdkgithub', ref: 'v1.0.0' };
 const raw = 'https://raw.githubusercontent.com/FactbirdHQ/cdkgithub/v1.0.0';

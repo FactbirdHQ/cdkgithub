@@ -853,8 +853,7 @@ docs/                  how-to guides, this reference, and the design notes
 examples/factbird.ts   example org definition
 examples/personal.ts   example personal-account definition
 cicd/main.ts           CI and release workflows, defined with @factbird/cdkactions
-cicd/dist-manifest.ts  points package.json at dist/ before the release job publishes
-cicd/npm-readme.ts     points the README's relative images and links at GitHub for npm
+cicd/dist-manifest.ts  points package.json at dist/ and the README's relative paths at GitHub before the release job publishes
 tsconfig.build.json    compiles src/ to dist/ for the npm package
 .github/workflows/     generated, do not edit by hand
 test/                  bun tests against an in-memory GitHub fake
