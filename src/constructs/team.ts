@@ -102,12 +102,15 @@ export class Team<Member extends string = VocabularyMember> extends Construct {
   /**
    * Approximate GitHub's team-slug derivation: lowercase, non-alphanumeric runs
    * become single hyphens, trimmed of leading/trailing hyphens.
+   *
+   * The first replace leaves at most one hyphen at each end, so the trim
+   * matches a single one, which keeps the pattern linear on any input.
    */
   static slugify(name: string): string {
     return name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
+      .replace(/^-|-$/g, '');
   }
 }
 
