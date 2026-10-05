@@ -49,5 +49,7 @@ jobs:
         run: bun run compile
       - name: Point package.json at dist
         run: bun cicd/dist-manifest.ts
+      - name: Point the README at GitHub
+        run: bun cicd/npm-readme.ts
       - name: Publish
         run: npm publish

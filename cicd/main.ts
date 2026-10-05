@@ -112,6 +112,7 @@ new Job(release, 'publish', {
     },
     { name: 'Compile', run: 'bun run compile' },
     { name: 'Point package.json at dist', run: 'bun cicd/dist-manifest.ts' },
+    { name: 'Point the README at GitHub', run: 'bun cicd/npm-readme.ts' },
     // npm attaches provenance on its own.
     { name: 'Publish', run: 'npm publish' },
   ],
