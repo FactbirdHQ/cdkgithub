@@ -125,12 +125,19 @@ export async function readLiveState(client: GitHubClient, desired: DesiredState)
   const secretScopes = scopesOf(desired.actionsSecrets, desired);
 
   // Every repository whose variables or secrets are owned owns its
-  // environments' too, so the environments are listed once for both, in
-  // batched GraphQL queries rather than one REST request per repository.
+  // environments' too, and a repository with a declared environment owns all
+  // its environments, so the environments are listed once for every such
+  // repository, in batched GraphQL queries rather than one REST request each.
   const repositoryEnvironments = await readEnvironments(
     client,
     owner,
-    [...new Set([...variableScopes.repositories, ...secretScopes.repositories])],
+    [
+      ...new Set([
+        ...variableScopes.repositories,
+        ...secretScopes.repositories,
+        ...(desired.environments ?? []).map((e) => e.repository),
+      ]),
+    ],
     beingCreated,
   );
   const environmentsOf = (repository: string) =>

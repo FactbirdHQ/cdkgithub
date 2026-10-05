@@ -7,7 +7,7 @@ import { resolveLive } from './live.ts';
 import { planActionsAdmin } from './plan-actions-admin.ts';
 import { planCollaborators } from './plan-collaborators.ts';
 import { planCustomRepositoryRoles } from './plan-custom-roles.ts';
-import { planEnvironments } from './plan-environments.ts';
+import { planEnvironmentDeletes, planEnvironments } from './plan-environments.ts';
 import { planGovernance } from './plan-governance.ts';
 import { planOrganizationRoles } from './plan-org-roles.ts';
 import { planRepositoryRulesets } from './plan-repo-rulesets.ts';
@@ -107,6 +107,9 @@ export function plan(desired: DesiredState, live: LiveState): Change[] {
     // run creates lands in it.
     ...planEnvironments(desired, live),
     ...planActionsAdmin(desired, live),
+    // After the variables and secrets, which address an environment and fail
+    // once it is gone.
+    ...planEnvironmentDeletes(desired, live),
     ...roleDeletes,
     ...planOrganizationRoles(desired.organizationRoles, live),
   ];

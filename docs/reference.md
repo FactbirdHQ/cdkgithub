@@ -59,6 +59,7 @@ Each scope names one destructive change kind for `--allow-delete=<scopes>`:
 | `branch-protection` | A branch's legacy protection, from `enabled: false`. |
 | `collaborators` | A direct collaborator or pending invitation on a declared repository the definition does not declare. |
 | `branch-policies` | A branch or tag pattern a declared environment admits and its declaration no longer lists. |
+| `environments` | An environment the definition does not declare, on a repository that declares one, with every secret and variable in it and its deployment history. |
 
 Every change of these kinds is planned after every change that adds or updates something, in one run as in the plan. `apply` stops at its first failure, so an addition that fails leaves what it was replacing in place: a team's successor is created and granted before the team goes, and a ruleset is in force before the legacy protection it replaces is removed.
 
@@ -179,6 +180,10 @@ on:
 - Repository rulesets own one repository at a time: an entry naming
   `flow-portal` owns `flow-portal`'s, and a repository nothing names is never
   read or pruned.
+- Environments are owned the same way: declaring one environment on
+  `flow-portal` owns all of `flow-portal`'s, and each one the definition does
+  not declare becomes a gated delete (`environments`). A repository that
+  declares none keeps its environments.
 - Actions secrets and variables are owned per scope, whether or not an entry
   is left in it. An `Organization` owns the organization's; a declared
   `Repository`, or a repository an entry names, owns that repository's.
@@ -615,8 +620,15 @@ lives in it; naming a different `environment` of its own fails synthesis.
 A declared environment is created when the repository lacks it, and every
 field written is held to what it says. A field left out is sent back as it
 stands, because GitHub's write replaces the environment's protection rules
-whole. An environment nothing declares is never deleted: that would take its
-secrets, variables and deployment history with it.
+whole.
+
+Declaring an environment on a repository owns all of that repository's
+environments, and `plan` lists each one the definition does not declare as a
+delete, gated by `--allow-delete=environments`. Deleting an environment
+deletes its secrets, its variables and its deployment history, so the plan
+line counts the secrets and variables that go with it, or names them without
+a count where the definition does not own the repository's secrets or
+variables. Names match without regard to case, as GitHub matches them.
 
 `deploymentBranchPolicy` decides which refs may deploy. `{ branches, tags }`
 becomes GitHub's custom policy plus one name pattern each; a pattern the

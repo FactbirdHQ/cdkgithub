@@ -608,6 +608,8 @@ export interface GitHubClient {
     type: 'branch' | 'tag',
   ): Promise<void>;
   deleteEnvironmentBranchPolicy(owner: string, repo: string, environment: string, id: number): Promise<void>;
+  /** Delete an environment, with its secrets, variables and deployment history. */
+  deleteEnvironment(owner: string, repo: string, environment: string): Promise<void>;
   /** Numeric ids, for naming reviewers. */
   getTeamId(org: string, slug: string): Promise<number>;
   getUserId(login: string): Promise<number>;
@@ -2015,6 +2017,10 @@ ${batch
       environment_name: environment,
       branch_policy_id: id,
     });
+  }
+
+  async deleteEnvironment(owner: string, repo: string, environment: string): Promise<void> {
+    await this.octokit.rest.repos.deleteAnEnvironment({ owner, repo, environment_name: environment });
   }
 
   async getTeamId(org: string, slug: string): Promise<number> {

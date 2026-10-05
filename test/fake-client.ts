@@ -600,6 +600,10 @@ export class FakeClient implements GitHubClient {
     this.record('deleteEnvironmentBranchPolicy', { repo, environment, id });
   }
 
+  async deleteEnvironment(_owner: string, repo: string, environment: string): Promise<void> {
+    this.record('deleteEnvironment', { repo, environment });
+  }
+
   async getTeamId(_org: string, slug: string): Promise<number> {
     const team = this.teams.find((t) => t.slug === slug);
     if (!team) {

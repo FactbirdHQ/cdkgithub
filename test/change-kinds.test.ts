@@ -211,6 +211,13 @@ const SAMPLES: Record<Change['kind'], Change> = {
     fields: [],
     addPolicies: [{ name: 'main', type: 'branch' }],
   },
+  'delete-environment': {
+    kind: 'delete-environment',
+    repository: 'flow-portal',
+    name: 'staging',
+    secrets: 2,
+    variables: 0,
+  },
   'delete-environment-branch-policy': {
     kind: 'delete-environment-branch-policy',
     repository: 'flow-portal',
