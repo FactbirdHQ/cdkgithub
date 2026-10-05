@@ -57,6 +57,12 @@ describe('synthesize', () => {
     expect(() => synthesize(app)).toThrow(/No Organization/);
   });
 
+  test('slugifies separator runs to one hyphen and trims the ends', () => {
+    expect(Team.slugify('  Platform & Ops --')).toBe('platform-ops');
+    expect(Team.slugify('---')).toBe('');
+    expect(Team.slugify('a--_--b')).toBe('a-b');
+  });
+
   test('throws on duplicate slugs', () => {
     const app = new App();
     const org = new Organization(app, 'acme', { login: 'acme' });
