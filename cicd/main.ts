@@ -17,7 +17,7 @@
  *     add a manual (workflow_dispatch) job that mints a short-lived token with
  *     `createGithubAppTokenV3` and runs `plan`/`apply` against the sandbox only.
  */
-import { App, checkoutV4, Job, RunnerLabel, Stack, setupNodeV6, Workflow } from '@factbird/cdkactions';
+import { App, Job, RunnerLabel, Stack, setupNodeV6, Workflow } from '@factbird/cdkactions';
 
 /**
  * A third-party action runs by commit, not by tag: whoever controls the tag
@@ -28,6 +28,20 @@ const setupBun = {
   uses: 'oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6', // v2.2.0
   with: { 'bun-version': 'latest' },
 };
+
+/**
+ * Checkout by commit too. cdkactions' `checkoutV4()` runs on Node 20, which
+ * GitHub has deprecated, and it has no helper for a later major.
+ */
+const checkout = {
+  uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1', // v7.0.1
+};
+
+/**
+ * A named image rather than `ubuntu-latest`, so the image a job runs on changes
+ * only through a change here.
+ */
+const runner = RunnerLabel.custom('ubuntu-26.04');
 
 const app = new App({
   outdir: '.github/workflows',
@@ -47,9 +61,9 @@ const ci = new Workflow(stack, 'ci', {
 });
 
 new Job(ci, 'verify', {
-  runsOn: RunnerLabel.UBUNTU_LATEST,
+  runsOn: runner,
   steps: [
-    checkoutV4(),
+    checkout,
     setupBun,
     { name: 'Install', run: 'bun install --frozen-lockfile' },
     { name: 'Typecheck', run: 'bun run build' },
@@ -82,13 +96,13 @@ const release = new Workflow(stack, 'release', {
 });
 
 new Job(release, 'publish', {
-  runsOn: RunnerLabel.UBUNTU_LATEST,
+  runsOn: runner,
   environment: 'npm',
   // Two releases published together still publish one after the other.
   concurrency: { group: 'npm-publish', cancelInProgress: false },
   permissions: { contents: 'read', idToken: 'write' },
   steps: [
-    checkoutV4(),
+    checkout,
     setupBun,
     { name: 'Install', run: 'bun install --frozen-lockfile' },
     { name: 'Typecheck', run: 'bun run build' },
