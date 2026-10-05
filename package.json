@@ -1,5 +1,5 @@
 {
-  "name": "cdkgithub",
+  "name": "@factbird/cdkgithub",
   "version": "1.0.0",
   "description": "Define GitHub organization structure (teams, hierarchy, Entra ID/SCIM links) as Infrastructure-as-Code, built on the constructs programming model (inspired by AWS CDK).",
   "license": "Apache-2.0",
@@ -20,6 +20,9 @@
   ],
   "engines": {
     "node": ">=22.18"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc --noEmit && tsc --noEmit -p test/vocabulary/tsconfig.json",
