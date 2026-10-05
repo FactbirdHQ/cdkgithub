@@ -1,8 +1,7 @@
 {
-  "extends": "./tsconfig.json",
+  "extends": ["./tsconfig.json", "@tsconfig/node22", "@tsconfig/node-ts"],
   "compilerOptions": {
     "noEmit": false,
-    "rewriteRelativeImportExtensions": true,
     "declaration": true,
     "rootDir": "src",
     "outDir": "dist",

@@ -83,10 +83,13 @@ const GRAPH = 'https://graph.microsoft.com/v1.0';
 
 /** Default {@link EntraClient} against Microsoft Graph. */
 export class MsGraphEntraClient implements EntraClient {
-  constructor(
-    private readonly token: string,
-    private readonly baseUrl: string = GRAPH,
-  ) {}
+  private readonly token: string;
+  private readonly baseUrl: string;
+
+  constructor(token: string, baseUrl: string = GRAPH) {
+    this.token = token;
+    this.baseUrl = baseUrl;
+  }
 
   private async request<T>(
     method: string,
