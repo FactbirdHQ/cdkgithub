@@ -89,11 +89,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1791172816,
-        "narHash": "sha256-cdHAXYF6DFUH+One0lGgRXIDJY9Blui0k6KRh3FFK0Y=",
+        "lastModified": 1791181130,
+        "narHash": "sha256-GvjQc1dLVj4JgHps52ZCg0dwEE8CS3sXI6qv5FBMM9A=",
         "owner": "FactbirdHQ",
         "repo": "devkit",
-        "rev": "0111bc4a92d6b4499699026092928da5d5ef1764",
+        "rev": "103d5caf601f8968dae142b0c3f46f054b8785fb",
         "type": "github"
       },
       "original": {
