@@ -526,11 +526,13 @@ class Emitter {
   private readonly used = new Set<string>(['App', 'Organization']);
   private readonly names = new VariableNames();
   private secretNoteShown = false;
+  private readonly org: string;
+  private readonly skipped: string[];
 
-  constructor(
-    private readonly org: string,
-    private readonly skipped: string[],
-  ) {}
+  constructor(org: string, skipped: string[]) {
+    this.org = org;
+    this.skipped = skipped;
+  }
 
   organization(settings: object): void {
     const props: Record<string, unknown> = { login: this.org };

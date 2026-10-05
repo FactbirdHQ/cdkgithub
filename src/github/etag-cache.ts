@@ -33,13 +33,12 @@ export interface CachedResponse {
  * the same directory keep.
  */
 export class EtagCache {
+  private readonly path?: string;
   private readonly entries: Map<string, CachedResponse>;
   private dirty = false;
 
-  constructor(
-    private readonly path?: string,
-    entries: Iterable<[string, CachedResponse]> = [],
-  ) {
+  constructor(path?: string, entries: Iterable<[string, CachedResponse]> = []) {
+    this.path = path;
     this.entries = new Map(entries);
   }
 
