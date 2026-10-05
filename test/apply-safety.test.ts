@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
 import type { LiveTeam, UpdateTeamParams } from '../src/github/client.ts';
 import { apply } from '../src/reconcile/applier.ts';
 import { writeBackup } from '../src/reconcile/backup.ts';
@@ -63,11 +64,7 @@ describe('rename slug read-back', () => {
     });
     // GitHub disagrees with the locally derived slug, as it does when the
     // wanted slug is already taken and a suffix is appended.
-    client.updateTeam = async (
-      _org: string,
-      slug: string,
-      params: UpdateTeamParams,
-    ): Promise<LiveTeam> => {
+    client.updateTeam = async (_org: string, slug: string, params: UpdateTeamParams): Promise<LiveTeam> => {
       client.calls.push({ method: 'updateTeam', args: { slug, params } });
       return team({ slug: 'infra-1', id: 7, name: params.name ?? slug });
     };
@@ -92,12 +89,8 @@ describe('rename slug read-back', () => {
       teams: [team({ slug: 'platform', id: 7 })],
     });
 
-    expect(client.callsTo('setRepoPermission')).toEqual([
-      { slug: 'infra-1', repo: 'app', permission: 'push' },
-    ]);
-    expect(client.memberships).toEqual([
-      { slug: 'infra-1', username: 'octocat', role: 'member' },
-    ]);
+    expect(client.callsTo('setRepoPermission')).toEqual([{ slug: 'infra-1', repo: 'app', permission: 'push' }]);
+    expect(client.memberships).toEqual([{ slug: 'infra-1', username: 'octocat', role: 'member' }]);
   });
 });
 
@@ -120,9 +113,7 @@ describe('repository created this run', () => {
     const attached = client.callsTo('attachSecurityConfiguration');
     expect(attached).toHaveLength(1);
     expect(attached[0]).toMatchObject({ id: 9 });
-    expect(
-      (attached[0] as { repositoryIds: number[] }).repositoryIds,
-    ).toHaveLength(1);
+    expect((attached[0] as { repositoryIds: number[] }).repositoryIds).toHaveLength(1);
   });
 });
 
@@ -134,12 +125,8 @@ describe('backup', () => {
   };
   const live: LiveState = {
     teams: [team({ slug: 'platform' }), team({ slug: 'web', parentSlug: 'platform' })],
-    teamMembers: new Map([
-      ['platform', [{ login: 'octocat', role: 'maintainer' as const, inherited: false }]],
-    ]),
-    teamRepositories: new Map([
-      ['platform', [{ name: 'app', roleName: 'write' }]],
-    ]),
+    teamMembers: new Map([['platform', [{ login: 'octocat', role: 'maintainer' as const, inherited: false }]]]),
+    teamRepositories: new Map([['platform', [{ name: 'app', roleName: 'write' }]]]),
   };
 
   test('writes the snapshot, the rollback manifest, the plan, and a journal', () => {
@@ -149,16 +136,11 @@ describe('backup', () => {
     backup.journal({ kind: 'update', description: 'update team platform', status: 'failed', error: 'boom' });
 
     const files = readdirSync(backup.dir).sort();
-    expect(files).toEqual([
-      'journal.jsonl',
-      'live-state.json',
-      'plan.json',
-      'rollback-manifest.json',
-    ]);
+    expect(files).toEqual(['journal.jsonl', 'live-state.json', 'plan.json', 'rollback-manifest.json']);
 
-    const snapshot = JSON.parse(
-      readFileSync(join(backup.dir, 'live-state.json'), 'utf8'),
-    ) as { teamMembers: Record<string, unknown[]> };
+    const snapshot = JSON.parse(readFileSync(join(backup.dir, 'live-state.json'), 'utf8')) as {
+      teamMembers: Record<string, unknown[]>;
+    };
     expect(snapshot.teamMembers.platform).toHaveLength(1);
 
     const journal = readFileSync(join(backup.dir, 'journal.jsonl'), 'utf8')

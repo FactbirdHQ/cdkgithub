@@ -16,24 +16,17 @@ type Pattern = { name: string; type: 'branch' | 'tag' };
  * custom policy admits nothing until they exist; a pattern the declaration no
  * longer lists is a gated removal of its own.
  */
-export function planEnvironments(
-  desired: DesiredState,
-  live: LiveState,
-): Change[] {
+export function planEnvironments(desired: DesiredState, live: LiveState): Change[] {
   const changes: Change[] = [];
   for (const environment of desired.environments ?? []) {
     const current = live.environments?.find(
-      (e) =>
-        e.repository === environment.repository && e.name === environment.name,
+      (e) => e.repository === environment.repository && e.name === environment.name,
     );
     const fields = diffEnvironment(environment, current);
 
     const wanted = patternsOf(environment);
-    const existing =
-      current?.deploymentBranchPolicy === 'custom' ? current.branchPolicies : [];
-    const addPolicies = (wanted ?? []).filter(
-      (w) => !existing.some((e) => e.name === w.name && e.type === w.type),
-    );
+    const existing = current?.deploymentBranchPolicy === 'custom' ? current.branchPolicies : [];
+    const addPolicies = (wanted ?? []).filter((w) => !existing.some((e) => e.name === w.name && e.type === w.type));
     if (wanted && addPolicies.length > 0) {
       fields.push({
         field: 'patterns',
@@ -72,13 +65,17 @@ export function planEnvironments(
 export function policyMode(
   policy: EnvironmentManifest['deploymentBranchPolicy'],
 ): 'all' | 'protected' | 'custom' | undefined {
-  if (policy === undefined) return undefined;
+  if (policy === undefined) {
+    return undefined;
+  }
   return typeof policy === 'string' ? policy : 'custom';
 }
 
 function patternsOf(environment: EnvironmentManifest): Pattern[] | undefined {
   const policy = environment.deploymentBranchPolicy;
-  if (policy === undefined || typeof policy === 'string') return undefined;
+  if (policy === undefined || typeof policy === 'string') {
+    return undefined;
+  }
   return [
     ...(policy.branches ?? []).map((name) => ({ name, type: 'branch' as const })),
     ...(policy.tags ?? []).map((name) => ({ name, type: 'tag' as const })),
@@ -90,10 +87,7 @@ function describePattern(pattern: Pattern): string {
 }
 
 /** Fields the declaration writes that differ from GitHub, or from its defaults when absent. */
-function diffEnvironment(
-  desired: EnvironmentManifest,
-  live: LiveEnvironment | undefined,
-): FieldChange[] {
+function diffEnvironment(desired: EnvironmentManifest, live: LiveEnvironment | undefined): FieldChange[] {
   const fields: FieldChange[] = [];
   const mode = policyMode(desired.deploymentBranchPolicy);
   const liveMode = live?.deploymentBranchPolicy ?? 'all';
@@ -110,10 +104,7 @@ function diffEnvironment(
   }
 
   const preventSelfReview = live?.preventSelfReview ?? false;
-  if (
-    desired.preventSelfReview !== undefined &&
-    desired.preventSelfReview !== preventSelfReview
-  ) {
+  if (desired.preventSelfReview !== undefined && desired.preventSelfReview !== preventSelfReview) {
     fields.push({
       field: 'preventSelfReview',
       from: preventSelfReview,
@@ -129,8 +120,5 @@ function diffEnvironment(
 }
 
 function reviewerList(teams: string[] = [], users: string[] = []): string[] {
-  return [
-    ...teams.map((t) => `team ${t.toLowerCase()}`),
-    ...users.map((u) => `user ${u.toLowerCase()}`),
-  ].sort();
+  return [...teams.map((t) => `team ${t.toLowerCase()}`), ...users.map((u) => `user ${u.toLowerCase()}`)].sort();
 }

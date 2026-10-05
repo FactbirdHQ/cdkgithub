@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test';
+
+import { missingSecretValues } from '../src/cli.ts';
 import {
   ActionsSecret,
   ActionsVariable,
@@ -11,7 +13,6 @@ import {
 import { apply } from '../src/reconcile/applier.ts';
 import type { LiveState } from '../src/reconcile/live.ts';
 import { readLiveState } from '../src/reconcile/live.ts';
-import { missingSecretValues } from '../src/cli.ts';
 import { plan } from '../src/reconcile/planner.ts';
 import type { DesiredState } from '../src/synth/manifest.ts';
 import { synthesize } from '../src/synth/synthesizer.ts';
@@ -132,9 +133,7 @@ describe('synthesis', () => {
     new Repository(me2, 'dotfiles');
     new ActionsSecret(me2, 'NPM_TOKEN', { visibility: 'all' });
     new RunnerGroup(me2, 'runners');
-    expect(() => synthesize(orgScoped)).toThrow(
-      'RunnerGroup, organization ActionsSecret',
-    );
+    expect(() => synthesize(orgScoped)).toThrow('RunnerGroup, organization ActionsSecret');
   });
 });
 
@@ -193,10 +192,7 @@ describe('runner groups', () => {
       selectedWorkflows: [],
       selectedRepositories: ['netcore'],
     };
-    const changes = plan(
-      desired({ runnerGroups: [group] }),
-      live({ runnerGroups: [current] }),
-    );
+    const changes = plan(desired({ runnerGroups: [group] }), live({ runnerGroups: [current] }));
     expect(changes).toEqual([
       {
         kind: 'update-runner-group',
@@ -216,9 +212,7 @@ describe('runner groups', () => {
       repositories: [{ id: 77, name: 'flow-portal' }],
     });
     await apply(client, 'acme', changes, live());
-    expect(client.callsTo('setRunnerGroupRepositories')).toEqual([
-      { id: 5, repositoryIds: [77] },
-    ]);
+    expect(client.callsTo('setRunnerGroupRepositories')).toEqual([{ id: 5, repositoryIds: [77] }]);
     // The group itself was PATCHed too, since update covers the rest.
     expect(client.callsTo('updateRunnerGroup')).toHaveLength(1);
   });
@@ -279,9 +273,7 @@ describe('variables', () => {
   test('a repository scope owns only its own repository', () => {
     const changes = plan(
       desired({
-        actionsVariables: [
-          { name: 'SENTRY_PROJECT', value: 'deck', repository: 'flow-portal' },
-        ],
+        actionsVariables: [{ name: 'SENTRY_PROJECT', value: 'deck', repository: 'flow-portal' }],
       }),
       live({
         repositoryVariables: [
@@ -329,9 +321,7 @@ describe('variables', () => {
     // flow-portal is declared and names no secret; dotfiles is not declared.
     const state = desired({ repositories: [{ name: 'flow-portal' }] });
     const liveState = await readLiveState(client, state);
-    expect(liveState.repositorySecrets).toEqual([
-      { repository: 'flow-portal', name: 'SENTRY_DSN' },
-    ]);
+    expect(liveState.repositorySecrets).toEqual([{ repository: 'flow-portal', name: 'SENTRY_DSN' }]);
     expect(plan(state, liveState).filter((c) => c.kind === 'delete-secret')).toEqual([
       { kind: 'delete-secret', name: 'SENTRY_DSN', repository: 'flow-portal' },
     ]);
@@ -413,9 +403,7 @@ describe('secrets', () => {
         ],
       }),
       live({
-        repositorySecrets: [
-          { repository: 'flow-portal', name: 'SENTRY_DSN' },
-        ],
+        repositorySecrets: [{ repository: 'flow-portal', name: 'SENTRY_DSN' }],
       }),
     );
     expect(changes).toEqual([]);
@@ -483,9 +471,7 @@ describe('secrets', () => {
       }),
       live(),
     );
-    expect(
-      missingSecretValues(changes, { PRESENT_EXPORT: 'here' }),
-    ).toEqual(['SHARED_EXPORT']);
+    expect(missingSecretValues(changes, { PRESENT_EXPORT: 'here' })).toEqual(['SHARED_EXPORT']);
   });
 });
 
@@ -502,7 +488,13 @@ describe('environment variables', () => {
     });
     expect(synthesize(app).actionsVariables).toEqual([
       { name: 'ROLE_ARN', value: 'arn:repo', repository: 'flow-portal', visibility: undefined },
-      { name: 'ROLE_ARN', value: 'arn:prod', repository: 'flow-portal', environment: 'production', visibility: undefined },
+      {
+        name: 'ROLE_ARN',
+        value: 'arn:prod',
+        repository: 'flow-portal',
+        environment: 'production',
+        visibility: undefined,
+      },
     ]);
 
     const orgScoped = new App();
@@ -532,9 +524,7 @@ describe('environment variables', () => {
         { name: 'DEPLOY', value: 'yes', repository: 'flow-portal', environment: 'staging' },
       ],
     });
-    const changes = plan(state, await readLiveState(client, state)).filter((c) =>
-      c.kind.endsWith('-variable'),
-    );
+    const changes = plan(state, await readLiveState(client, state)).filter((c) => c.kind.endsWith('-variable'));
 
     expect(changes).toEqual([
       {
@@ -567,9 +557,7 @@ describe('environment variables', () => {
     const client = new FakeClient({ environmentVariables: { 'flow-portal': {} } });
     const state = desired({
       repositories: [{ name: 'flow-portal' }],
-      actionsVariables: [
-        { name: 'ROLE_ARN', value: 'arn', repository: 'flow-portal', environment: 'production' },
-      ],
+      actionsVariables: [{ name: 'ROLE_ARN', value: 'arn', repository: 'flow-portal', environment: 'production' }],
     });
     const liveState = await readLiveState(client, state);
     expect(() => plan(state, liveState)).toThrow('has no environment "production"');

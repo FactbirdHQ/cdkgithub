@@ -10,7 +10,9 @@ import { spawnSync } from 'node:child_process';
  */
 export function resolveGraphToken(): string {
   const fromEnv = process.env.AZURE_GRAPH_TOKEN;
-  if (fromEnv && fromEnv.trim()) return fromEnv.trim();
+  if (fromEnv && fromEnv.trim()) {
+    return fromEnv.trim();
+  }
 
   // Bounded so a credential prompt hangs the CLI for ten seconds, not forever.
   const result = spawnSync(

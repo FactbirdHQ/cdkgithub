@@ -1,10 +1,5 @@
 import type { LiveTeam } from '../github/client.ts';
-import type {
-  ResolvedBypassActor,
-  ResolvedRuleset,
-  RulesetBypassActor,
-  RulesetManifest,
-} from '../synth/manifest.ts';
+import type { ResolvedBypassActor, ResolvedRuleset, RulesetBypassActor, RulesetManifest } from '../synth/manifest.ts';
 import type { LiveState } from './live.ts';
 
 /**
@@ -24,13 +19,11 @@ import type { LiveState } from './live.ts';
  * `repository` is the repository a repository ruleset lives on, and is
  * absent for an organization ruleset.
  */
-export function resolveRuleset(
-  ruleset: RulesetManifest,
-  live: LiveState,
-  repository?: string,
-): ResolvedRuleset {
+export function resolveRuleset(ruleset: RulesetManifest, live: LiveState, repository?: string): ResolvedRuleset {
   const { bypassActors, ...rest } = ruleset;
-  if (!bypassActors) return rest;
+  if (!bypassActors) {
+    return rest;
+  }
 
   return {
     ...rest,
@@ -47,12 +40,7 @@ export function resolveRuleset(
  * Throw when the app's installation provably leaves `repository` out. An
  * installation this token cannot list is let through, and GitHub decides.
  */
-function assertAppCovers(
-  app: string | number,
-  rulesetName: string,
-  repository: string,
-  live: LiveState,
-): void {
+function assertAppCovers(app: string | number, rulesetName: string, repository: string, live: LiveState): void {
   const installation = (live.appInstallations ?? []).find((i) =>
     typeof app === 'number' ? i.appId === app : i.slug === app,
   );
@@ -69,11 +57,7 @@ function assertAppCovers(
   );
 }
 
-function resolveActor(
-  actor: RulesetBypassActor,
-  rulesetName: string,
-  live: LiveState,
-): ResolvedBypassActor {
+function resolveActor(actor: RulesetBypassActor, rulesetName: string, live: LiveState): ResolvedBypassActor {
   const bypassMode = actor.bypassMode;
 
   switch (actor.actorType) {
@@ -94,30 +78,20 @@ function resolveActor(
     case 'Team':
       return {
         actorType: 'Team',
-        actorId:
-          typeof actor.team === 'number'
-            ? actor.team
-            : resolveTeam(actor.team, rulesetName, live.teams),
+        actorId: typeof actor.team === 'number' ? actor.team : resolveTeam(actor.team, rulesetName, live.teams),
         bypassMode,
       };
 
     case 'Integration':
       return {
         actorType: 'Integration',
-        actorId:
-          typeof actor.app === 'number'
-            ? actor.app
-            : resolveApp(actor.app, rulesetName, live),
+        actorId: typeof actor.app === 'number' ? actor.app : resolveApp(actor.app, rulesetName, live),
         bypassMode,
       };
   }
 }
 
-function resolveTeam(
-  slug: string,
-  rulesetName: string,
-  teams: LiveTeam[],
-): number {
+function resolveTeam(slug: string, rulesetName: string, teams: LiveTeam[]): number {
   const team = teams.find((t) => t.slug === slug);
   if (!team) {
     throw new Error(
@@ -128,14 +102,8 @@ function resolveTeam(
   return team.id;
 }
 
-function resolveApp(
-  slug: string,
-  rulesetName: string,
-  live: LiveState,
-): number {
-  const installation = (live.appInstallations ?? []).find(
-    (i) => i.slug === slug,
-  );
+function resolveApp(slug: string, rulesetName: string, live: LiveState): number {
+  const installation = (live.appInstallations ?? []).find((i) => i.slug === slug);
   if (!installation) {
     throw new Error(
       `Ruleset "${rulesetName}" lets app "${slug}" bypass it, but no app with that slug is installed on the organization.`,

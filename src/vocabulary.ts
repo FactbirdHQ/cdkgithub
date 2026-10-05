@@ -29,7 +29,7 @@
  * hold two organizations with different vocabularies; {@link teamOf} binds a
  * vocabulary locally instead and is the answer where that matters.
  */
-export interface Vocabulary {}
+export type Vocabulary = {};
 
 /** A person, narrowed to {@link Vocabulary.member} when a definition names one. */
 export type VocabularyMember = Vocabulary extends {

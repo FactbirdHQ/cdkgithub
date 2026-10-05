@@ -47,9 +47,7 @@ const READS_EVERY_REPOSITORY = 'security_manager';
 export function assignmentFromLive(
   role: LiveOrganizationRole & { teams: string[]; users: string[] },
 ): OrgRoleAssignment {
-  const baseRole =
-    role.baseRole ??
-    (role.name === READS_EVERY_REPOSITORY ? 'read' : undefined);
+  const baseRole = role.baseRole ?? (role.name === READS_EVERY_REPOSITORY ? 'read' : undefined);
   return {
     name: role.name,
     teams: role.teams,
@@ -71,7 +69,9 @@ export function holdersOf(
 ): Set<string> {
   const out = new Set<string>(assignment.users);
   for (const slug of assignment.teams) {
-    for (const login of membersOfTeam(slug)) out.add(login);
+    for (const login of membersOfTeam(slug)) {
+      out.add(login);
+    }
   }
   return out;
 }

@@ -1,9 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+
 import { apply } from '../src/reconcile/applier.ts';
-import { planRepositories } from '../src/reconcile/plan-repositories.ts';
 import type { Change } from '../src/reconcile/changes.ts';
+import { planRepositories } from '../src/reconcile/plan-repositories.ts';
 import { FakeClient } from './fake-client.ts';
 
 /**
@@ -23,8 +24,11 @@ function sourceFiles(base: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(base)) {
     const full = join(base, entry);
-    if (statSync(full).isDirectory()) out.push(...sourceFiles(full));
-    else if (full.endsWith('.ts')) out.push(full);
+    if (statSync(full).isDirectory()) {
+      out.push(...sourceFiles(full));
+    } else if (full.endsWith('.ts')) {
+      out.push(full);
+    }
   }
   return out;
 }
@@ -46,9 +50,7 @@ describe('a repository is never deleted', () => {
 
   test('no change kind names repository deletion', () => {
     const changes = readFileSync('src/reconcile/changes.ts', 'utf8');
-    const kinds = [...changes.matchAll(/readonly kind: '([a-z-]+)'/g)].map(
-      (m) => m[1] as string,
-    );
+    const kinds = [...changes.matchAll(/readonly kind: '([a-z-]+)'/g)].map((m) => m[1] as string);
 
     // `remove-repo-access` takes a team off a repository. Nothing takes the
     // repository off GitHub.
@@ -56,9 +58,7 @@ describe('a repository is never deleted', () => {
     expect(kinds).toContain('create-repository');
     expect(kinds).not.toContain('delete-repository');
     expect(kinds).not.toContain('update-repository');
-    expect(
-      kinds.filter((k) => /^delete-repo$|^delete-repository/.test(k)),
-    ).toEqual([]);
+    expect(kinds.filter((k) => /^delete-repo$|^delete-repository/.test(k))).toEqual([]);
   });
 
   test('dropping every grant leaves the repository alone', async () => {
@@ -87,18 +87,14 @@ describe('a repository is never deleted', () => {
     await apply(client, 'acme', changes, { teams: [] }, { allowDelete: true });
 
     // The only call made is the one that unlinks the team.
-    expect(client.callsTo('removeRepoPermission')).toEqual([
-      { slug: 'cloud', repo: 'netcore' },
-    ]);
+    expect(client.callsTo('removeRepoPermission')).toEqual([{ slug: 'cloud', repo: 'netcore' }]);
     expect(client.calls.map((c) => c.method)).not.toContain('deleteRepository');
   });
 
   test('no source file references a repository-deleting endpoint', () => {
     const offenders = sourceFiles('src').filter((file) => {
       const text = readFileSync(file, 'utf8');
-      return /repos\.delete\(|repos\.transfer|DELETE \/repos\/\{owner\}\/\{repo\}'/.test(
-        text,
-      );
+      return /repos\.delete\(|repos\.transfer|DELETE \/repos\/\{owner\}\/\{repo\}'/.test(text);
     });
     expect(offenders).toEqual([]);
   });
@@ -131,9 +127,7 @@ describe('an existing repository is never reconfigured', () => {
   test('declaring public against a live private repository proposes nothing', () => {
     const live = { teams: [], repositories: [{ id: 1, name: 'secrets' }] };
 
-    expect(
-      planRepositories([{ name: 'secrets', visibility: 'public' }], live),
-    ).toEqual([]);
+    expect(planRepositories([{ name: 'secrets', visibility: 'public' }], live)).toEqual([]);
   });
 
   test('declaring nothing against a live public repository proposes nothing', () => {

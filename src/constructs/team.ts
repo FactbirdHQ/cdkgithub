@@ -1,12 +1,9 @@
 import { Construct } from 'constructs';
-import type {
-  RepositoryAccess,
-  TeamNotificationSetting,
-  TeamPrivacy,
-} from '../synth/manifest.ts';
+
+import type { RepositoryAccess, TeamNotificationSetting, TeamPrivacy } from '../synth/manifest.ts';
 import type { VocabularyMember } from '../vocabulary.ts';
-import type { RepositoryGrantList } from './grants.ts';
 import type { ExternalGroupProps } from './external-group.ts';
+import type { RepositoryGrantList } from './grants.ts';
 
 export interface TeamProps<Member extends string = VocabularyMember> {
   /**

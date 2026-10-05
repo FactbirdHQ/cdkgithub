@@ -1,9 +1,6 @@
 import { Construct } from 'constructs';
-import type {
-  SecurityAttachScope,
-  SecurityDefaultScope,
-  SecurityFeature,
-} from '../synth/governance.ts';
+
+import type { SecurityAttachScope, SecurityDefaultScope, SecurityFeature } from '../synth/governance.ts';
 
 export interface CodeSecurityConfigurationProps {
   /** Configuration name, unique in the org. Defaults to the construct id. */
@@ -16,11 +13,7 @@ export interface CodeSecurityConfigurationProps {
    * GitHub Advanced Security. `code_security` and `secret_protection` select the
    * individual products; `enabled` turns on both.
    */
-  readonly advancedSecurity?:
-    | 'enabled'
-    | 'disabled'
-    | 'code_security'
-    | 'secret_protection';
+  readonly advancedSecurity?: 'enabled' | 'disabled' | 'code_security' | 'secret_protection';
 
   readonly dependencyGraph?: SecurityFeature;
   readonly dependencyGraphAutosubmitAction?: SecurityFeature;
@@ -71,11 +64,7 @@ export class CodeSecurityConfiguration extends Construct {
   public readonly configurationName: string;
   public readonly props: CodeSecurityConfigurationProps;
 
-  constructor(
-    scope: Construct,
-    id: string,
-    props: CodeSecurityConfigurationProps,
-  ) {
+  constructor(scope: Construct, id: string, props: CodeSecurityConfigurationProps) {
     super(scope, id);
     this.props = props;
     this.configurationName = props.name ?? id;

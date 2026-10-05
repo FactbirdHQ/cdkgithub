@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+
 import type { LiveTeam } from '../src/github/client.ts';
 import { apply } from '../src/reconcile/applier.ts';
 import type { LiveState } from '../src/reconcile/live.ts';
@@ -18,10 +19,7 @@ function team(slug: string, overrides: Partial<LiveTeam> = {}): LiveTeam {
   };
 }
 
-function manifest(
-  slug: string,
-  overrides: Partial<TeamManifest> = {},
-): TeamManifest {
+function manifest(slug: string, overrides: Partial<TeamManifest> = {}): TeamManifest {
   return { slug, name: slug, privacy: 'closed', ...overrides };
 }
 
@@ -43,7 +41,9 @@ describe('renaming a team', () => {
     expect(changes).toHaveLength(1);
     const change = changes[0]!;
     expect(change.kind).toBe('update');
-    if (change.kind !== 'update') return;
+    if (change.kind !== 'update') {
+      return;
+    }
     // Addressed by the slug GitHub still answers to.
     expect(change.slug).toBe('tech-leads');
     expect(change.fields).toEqual([
@@ -66,10 +66,7 @@ describe('renaming a team', () => {
 
   test('claims the team under its own slug, not one since created under the old name', () => {
     const changes = plan(desired([renamed]), {
-      teams: [
-        team('tech-council', { id: 1, name: 'Tech Council' }),
-        team('tech-leads', { id: 2, name: 'tech-leads' }),
-      ],
+      teams: [team('tech-council', { id: 1, name: 'Tech Council' }), team('tech-leads', { id: 2, name: 'tech-leads' })],
     });
     // The revived old slug is unclaimed, so it reads as a delete rather than
     // being renamed a second time.
@@ -80,9 +77,7 @@ describe('renaming a team', () => {
   test('addresses grants to the new slug while reading them from the old', () => {
     const live: LiveState = {
       teams: [team('tech-leads')],
-      teamRepositories: new Map([
-        ['tech-leads', [{ name: 'netcore', roleName: 'read' }]],
-      ]),
+      teamRepositories: new Map([['tech-leads', [{ name: 'netcore', roleName: 'read' }]]]),
     };
     const changes = plan(
       desired([
@@ -107,10 +102,7 @@ describe('renaming a team', () => {
 
   test('keeps a child attached to the parent being renamed', async () => {
     const live: LiveState = {
-      teams: [
-        team('cloud', { id: 7, name: 'cloud' }),
-        team('app-1', { id: 8, name: 'app-1', parentSlug: 'cloud' }),
-      ],
+      teams: [team('cloud', { id: 7, name: 'cloud' }), team('app-1', { id: 8, name: 'app-1', parentSlug: 'cloud' })],
     };
     const changes = plan(
       desired([

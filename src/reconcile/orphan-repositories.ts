@@ -33,11 +33,12 @@ export function orphanRepositories(
   declared: Iterable<string> | undefined,
   granted: Iterable<string>,
 ): OrphanRepository[] {
-  if (!live) return [];
+  if (!live) {
+    return [];
+  }
 
   // GitHub treats `Netcore` and `netcore` as one repository, so the comparison does.
-  const lower = (names: Iterable<string>) =>
-    new Set([...names].map((n) => n.toLowerCase()));
+  const lower = (names: Iterable<string>) => new Set([...names].map((n) => n.toLowerCase()));
 
   const known = declared ? lower(declared) : new Set<string>();
   const reachable = lower(granted);
@@ -46,19 +47,16 @@ export function orphanRepositories(
     .filter((repository) => !reachable.has(repository.name.toLowerCase()))
     .map((repository) => ({
       name: repository.name,
-      reason: known.has(repository.name.toLowerCase())
-        ? ('unreachable' as const)
-        : ('undeclared' as const),
+      reason: known.has(repository.name.toLowerCase()) ? ('unreachable' as const) : ('undeclared' as const),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** The report `diff` prints beneath the tree. */
-export function renderOrphans(
-  orphans: OrphanRepository[],
-  paint: { muted(text: string): string },
-): string {
-  if (orphans.length === 0) return '';
+export function renderOrphans(orphans: OrphanRepository[], paint: { muted(text: string): string }): string {
+  if (orphans.length === 0) {
+    return '';
+  }
 
   const undeclared = orphans.filter((o) => o.reason === 'undeclared');
   const unreachable = orphans.filter((o) => o.reason === 'unreachable');
@@ -80,9 +78,7 @@ export function renderOrphans(
     lines.push(
       '',
       `${unreachable.length} declared repositor${plural(unreachable.length)} that no team reaches.`,
-      paint.muted(
-        '  Adopted and kept, but open to nobody except the organization owners.',
-      ),
+      paint.muted('  Adopted and kept, but open to nobody except the organization owners.'),
       '',
       ...unreachable.map((o) => `  ${o.name}`),
     );

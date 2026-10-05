@@ -22,8 +22,12 @@ export function toCamelCaseKeys<T>(value: unknown): T {
 }
 
 function convert(value: unknown, rename: (key: string) => string): unknown {
-  if (Array.isArray(value)) return value.map((v) => convert(v, rename));
-  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) {
+    return value.map((v) => convert(v, rename));
+  }
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
 
   const out: Record<string, unknown> = {};
   for (const [key, v] of Object.entries(value as Record<string, unknown>)) {

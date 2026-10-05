@@ -44,39 +44,19 @@ export interface EntraGroupAssignment {
 export interface EntraClient {
   /** The tenant the token reaches: its id and its verified domain names. */
   describeTenant(): Promise<{ id: string; domains: string[] }>;
-  findServicePrincipal(
-    displayName: string,
-  ): Promise<EntraServicePrincipal | undefined>;
+  findServicePrincipal(displayName: string): Promise<EntraServicePrincipal | undefined>;
   /** Instantiate the GitHub gallery template under the given display name. */
-  instantiateGalleryApplication(
-    displayName: string,
-  ): Promise<EntraServicePrincipal>;
-  listSynchronizationJobs(
-    servicePrincipalId: string,
-  ): Promise<EntraSynchronizationJob[]>;
+  instantiateGalleryApplication(displayName: string): Promise<EntraServicePrincipal>;
+  listSynchronizationJobs(servicePrincipalId: string): Promise<EntraSynchronizationJob[]>;
   /** Create the provisioning job from the application's own template. */
-  createSynchronizationJob(
-    servicePrincipalId: string,
-  ): Promise<EntraSynchronizationJob>;
+  createSynchronizationJob(servicePrincipalId: string): Promise<EntraSynchronizationJob>;
   /** Write the credential pair the job presents to GitHub. Never read back. */
-  setSynchronizationSecrets(
-    servicePrincipalId: string,
-    tenantUrl: string,
-    secretToken: string,
-  ): Promise<void>;
-  startSynchronizationJob(
-    servicePrincipalId: string,
-    jobId: string,
-  ): Promise<void>;
+  setSynchronizationSecrets(servicePrincipalId: string, tenantUrl: string, secretToken: string): Promise<void>;
+  startSynchronizationJob(servicePrincipalId: string, jobId: string): Promise<void>;
   /** The group's object id, or undefined when no group carries the name. */
   findGroupId(displayName: string): Promise<string | undefined>;
-  listAssignedGroups(
-    servicePrincipalId: string,
-  ): Promise<EntraGroupAssignment[]>;
-  assignGroup(
-    servicePrincipal: EntraServicePrincipal,
-    groupId: string,
-  ): Promise<void>;
+  listAssignedGroups(servicePrincipalId: string): Promise<EntraGroupAssignment[]>;
+  assignGroup(servicePrincipal: EntraServicePrincipal, groupId: string): Promise<void>;
 }
 
 const GRAPH = 'https://graph.microsoft.com/v1.0';
@@ -91,25 +71,23 @@ export class MsGraphEntraClient implements EntraClient {
     this.baseUrl = baseUrl;
   }
 
-  private async request<T>(
-    method: string,
-    path: string,
-    body?: unknown,
-  ): Promise<T> {
+  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const url = path.startsWith('https://') ? path : `${this.baseUrl}${path}`;
     const response = await fetch(url, {
       method,
       headers: {
         authorization: `Bearer ${this.token}`,
-        ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
       },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body === undefined ? undefined : JSON.stringify(body),
     });
     if (!response.ok) {
       const detail = await graphError(response);
       throw new Error(`${method} ${path} failed (${response.status}): ${detail}`);
     }
-    if (response.status === 204) return undefined as T;
+    if (response.status === 204) {
+      return undefined as T;
+    }
     const text = await response.text();
     return (text === '' ? undefined : JSON.parse(text)) as T;
   }
@@ -141,32 +119,24 @@ export class MsGraphEntraClient implements EntraClient {
     }
     return {
       id: tenant.id,
-      domains: (tenant.verifiedDomains ?? []).flatMap((d) =>
-        d.name ? [d.name] : [],
-      ),
+      domains: (tenant.verifiedDomains ?? []).flatMap((d) => (d.name ? [d.name] : [])),
     };
   }
 
-  async findServicePrincipal(
-    displayName: string,
-  ): Promise<EntraServicePrincipal | undefined> {
+  async findServicePrincipal(displayName: string): Promise<EntraServicePrincipal | undefined> {
     const matches = await this.list<EntraServicePrincipal>(
       `/servicePrincipals?$filter=displayName eq ${quote(displayName)}&$select=id,appId,appRoles`,
     );
     return matches[0];
   }
 
-  async instantiateGalleryApplication(
-    displayName: string,
-  ): Promise<EntraServicePrincipal> {
+  async instantiateGalleryApplication(displayName: string): Promise<EntraServicePrincipal> {
     const templates = await this.list<{ id: string }>(
       `/applicationTemplates?$filter=displayName eq ${quote(GITHUB_ORGANIZATION_TEMPLATE)}`,
     );
     const template = templates[0];
     if (!template) {
-      throw new Error(
-        `The Entra application gallery has no template named "${GITHUB_ORGANIZATION_TEMPLATE}".`,
-      );
+      throw new Error(`The Entra application gallery has no template named "${GITHUB_ORGANIZATION_TEMPLATE}".`);
     }
     const { servicePrincipal } = await this.request<{
       servicePrincipal?: { id: string; appId: string };
@@ -174,9 +144,7 @@ export class MsGraphEntraClient implements EntraClient {
       displayName,
     });
     if (!servicePrincipal) {
-      throw new Error(
-        `Instantiating "${displayName}" returned no service principal.`,
-      );
+      throw new Error(`Instantiating "${displayName}" returned no service principal.`);
     }
     // The instantiate response omits appRoles; read the principal back whole,
     // since the roles are what group assignment needs.
@@ -187,9 +155,7 @@ export class MsGraphEntraClient implements EntraClient {
     return full;
   }
 
-  async listSynchronizationJobs(
-    servicePrincipalId: string,
-  ): Promise<EntraSynchronizationJob[]> {
+  async listSynchronizationJobs(servicePrincipalId: string): Promise<EntraSynchronizationJob[]> {
     const jobs = await this.list<{
       id: string;
       status?: { code?: string };
@@ -197,9 +163,7 @@ export class MsGraphEntraClient implements EntraClient {
     return jobs.map((j) => ({ id: j.id, state: j.status?.code }));
   }
 
-  async createSynchronizationJob(
-    servicePrincipalId: string,
-  ): Promise<EntraSynchronizationJob> {
+  async createSynchronizationJob(servicePrincipalId: string): Promise<EntraSynchronizationJob> {
     const templates = await this.list<{ id: string }>(
       `/servicePrincipals/${servicePrincipalId}/synchronization/templates`,
     );
@@ -217,44 +181,25 @@ export class MsGraphEntraClient implements EntraClient {
     return { id: job.id };
   }
 
-  async setSynchronizationSecrets(
-    servicePrincipalId: string,
-    tenantUrl: string,
-    secretToken: string,
-  ): Promise<void> {
-    await this.request(
-      'PUT',
-      `/servicePrincipals/${servicePrincipalId}/synchronization/secrets`,
-      {
-        value: [
-          { key: 'BaseAddress', value: tenantUrl },
-          { key: 'SecretToken', value: secretToken },
-        ],
-      },
-    );
+  async setSynchronizationSecrets(servicePrincipalId: string, tenantUrl: string, secretToken: string): Promise<void> {
+    await this.request('PUT', `/servicePrincipals/${servicePrincipalId}/synchronization/secrets`, {
+      value: [
+        { key: 'BaseAddress', value: tenantUrl },
+        { key: 'SecretToken', value: secretToken },
+      ],
+    });
   }
 
-  async startSynchronizationJob(
-    servicePrincipalId: string,
-    jobId: string,
-  ): Promise<void> {
-    await this.request(
-      'POST',
-      `/servicePrincipals/${servicePrincipalId}/synchronization/jobs/${jobId}/start`,
-      {},
-    );
+  async startSynchronizationJob(servicePrincipalId: string, jobId: string): Promise<void> {
+    await this.request('POST', `/servicePrincipals/${servicePrincipalId}/synchronization/jobs/${jobId}/start`, {});
   }
 
   async findGroupId(displayName: string): Promise<string | undefined> {
-    const groups = await this.list<{ id: string }>(
-      `/groups?$filter=displayName eq ${quote(displayName)}&$select=id`,
-    );
+    const groups = await this.list<{ id: string }>(`/groups?$filter=displayName eq ${quote(displayName)}&$select=id`);
     return groups[0]?.id;
   }
 
-  async listAssignedGroups(
-    servicePrincipalId: string,
-  ): Promise<EntraGroupAssignment[]> {
+  async listAssignedGroups(servicePrincipalId: string): Promise<EntraGroupAssignment[]> {
     const assignments = await this.list<{
       principalId?: string;
       principalType?: string;
@@ -267,10 +212,7 @@ export class MsGraphEntraClient implements EntraClient {
     );
   }
 
-  async assignGroup(
-    servicePrincipal: EntraServicePrincipal,
-    groupId: string,
-  ): Promise<void> {
+  async assignGroup(servicePrincipal: EntraServicePrincipal, groupId: string): Promise<void> {
     await this.request('POST', `/groups/${groupId}/appRoleAssignments`, {
       principalId: groupId,
       resourceId: servicePrincipal.id,
@@ -285,11 +227,7 @@ export class MsGraphEntraClient implements EntraClient {
  */
 function pickAppRole(servicePrincipal: EntraServicePrincipal): string {
   const roles = servicePrincipal.appRoles.filter((r) => r.isEnabled !== false);
-  return (
-    roles.find((r) => r.displayName === 'User')?.id ??
-    roles[0]?.id ??
-    '00000000-0000-0000-0000-000000000000'
-  );
+  return roles.find((r) => r.displayName === 'User')?.id ?? roles[0]?.id ?? '00000000-0000-0000-0000-000000000000';
 }
 
 /** An OData string literal: single quotes, embedded ones doubled. */

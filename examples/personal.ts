@@ -10,12 +10,7 @@
  *
  *   bun src/bin/cdkgithub.ts synth examples/personal.ts
  */
-import {
-  App,
-  BranchProtection,
-  Repository,
-  UserAccount,
-} from '../src/index.ts';
+import { App, BranchProtection, Repository, UserAccount } from '../src/index.ts';
 
 const app = new App();
 

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+
 import { App, Organization, Team, teamOf } from '../src/index.ts';
 import { synthesize } from '../src/synth/synthesizer.ts';
 

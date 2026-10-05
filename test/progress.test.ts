@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
+
 import { RequestMeter } from '../src/github/meter.ts';
-import { budgetNote, clock, fit, progressLine, reportProgress, since } from '../src/progress.ts';
+import { budgetNote, clock, fitToWidth, progressLine, reportProgress, since } from '../src/progress.ts';
 
 const resetAt = 1_900_000_000;
 const headers = (remaining: number, resource = 'core', reset = resetAt) => ({
@@ -25,9 +26,7 @@ describe('RequestMeter', () => {
       limit: 5000,
       resetsAt: new Date(resetAt * 1000),
     });
-    expect(meter.busiest(1)).toEqual([
-      { route: 'GET /repos/{owner}/{repo}/environments', requests: 2 },
-    ]);
+    expect(meter.busiest(1)).toEqual([{ route: 'GET /repos/{owner}/{repo}/environments', requests: 2 }]);
   });
 
   test('keeps the lowest count when responses arrive out of order', () => {
@@ -89,9 +88,7 @@ describe('progress lines', () => {
       'Reading: 1 REST request, 0 GraphQL queries, 2s · 4,188 API requests left',
     );
     meter.record('GET /orgs/{org}/teams', headers(0));
-    expect(progressLine('Reading', meter.snapshot(), 2_000, 0)).toMatch(
-      /· API budget spent until \d\d:\d\d$/,
-    );
+    expect(progressLine('Reading', meter.snapshot(), 2_000, 0)).toMatch(/· API budget spent until \d\d:\d\d$/);
   });
 
   test('a log gets the summary: the time taken and the budget left', async () => {
@@ -176,9 +173,9 @@ describe('the redrawn line on a terminal', () => {
     }
   });
 
-  test('fit leaves a short line alone and marks a cut one', () => {
-    expect(fit('short', 10)).toBe('short');
-    expect(fit('a longer line', 8)).toBe('a longe…');
+  test('fitToWidth leaves a short line alone and marks a cut one', () => {
+    expect(fitToWidth('short', 10)).toBe('short');
+    expect(fitToWidth('a longer line', 8)).toBe('a longe…');
   });
 });
 

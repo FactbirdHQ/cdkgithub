@@ -1,8 +1,4 @@
-import type {
-  LiveBranchProtection,
-  LiveCodeSecurityConfiguration,
-  LiveRuleset,
-} from '../github/client.ts';
+import type { LiveBranchProtection, LiveCodeSecurityConfiguration, LiveRuleset } from '../github/client.ts';
 import type { ResolvedBypassActor } from '../synth/governance.ts';
 import type {
   ActionsPolicyManifest,
@@ -30,10 +26,7 @@ import { matchesSubset } from './subset.ts';
  * rulesets that target them, and code security configurations are created before
  * they can be made the default or attached to anything.
  */
-export function planGovernance(
-  desired: DesiredState,
-  live: LiveState,
-): Change[] {
+export function planGovernance(desired: DesiredState, live: LiveState): Change[] {
   return [
     ...planOrgSettings(desired, live),
     ...planActionsPolicy(desired, live),
@@ -55,24 +48,17 @@ export function planGovernance(
  * cdkgithub cannot see. Removing protection is declared with `enabled: false`
  * instead.
  */
-function planBranchProtection(
-  desired: DesiredState,
-  live: LiveState,
-): Change[] {
+function planBranchProtection(desired: DesiredState, live: LiveState): Change[] {
   const declared = desired.branchProtection;
-  if (!declared) return [];
+  if (!declared) {
+    return [];
+  }
 
-  const liveByBranch = new Map(
-    (live.branchProtection ?? []).map(
-      (p) => [`${p.repository}#${p.branch}`, p] as const,
-    ),
-  );
+  const liveByBranch = new Map((live.branchProtection ?? []).map((p) => [`${p.repository}#${p.branch}`, p] as const));
   const changes: Change[] = [];
 
   for (const protection of declared) {
-    const current = liveByBranch.get(
-      `${protection.repository}#${protection.branch}`,
-    );
+    const current = liveByBranch.get(`${protection.repository}#${protection.branch}`);
 
     if (protection.enabled === false) {
       if (current?.enabled) {
@@ -102,12 +88,7 @@ function diffBranchProtection(
     return [{ field: 'protection', from: 'none', to: 'declared' }];
   }
 
-  const {
-    repository: _repository,
-    branch: _branch,
-    enabled: _enabled,
-    ...settings
-  } = desired;
+  const { repository: _repository, branch: _branch, enabled: _enabled, ...settings } = desired;
   return diffDeclared(settings, live);
 }
 
@@ -116,9 +97,13 @@ function diffBranchProtection(
 // ---------------------------------------------------------------------------
 
 function planOrgSettings(desired: DesiredState, live: LiveState): Change[] {
-  if (!desired.settings) return [];
+  if (!desired.settings) {
+    return [];
+  }
   const fields = diffDeclared(desired.settings, live.settings ?? {});
-  if (fields.length === 0) return [];
+  if (fields.length === 0) {
+    return [];
+  }
   return [{ kind: 'org-settings', settings: desired.settings, fields }];
 }
 
@@ -128,12 +113,11 @@ function planOrgSettings(desired: DesiredState, live: LiveState): Change[] {
 
 function planActionsPolicy(desired: DesiredState, live: LiveState): Change[] {
   const policy = desired.actions;
-  if (!policy) return [];
+  if (!policy) {
+    return [];
+  }
 
-  const fields = diffDeclared(
-    withoutSelectedRepositories(policy),
-    live.actions ?? {},
-  );
+  const fields = diffDeclared(withoutSelectedRepositories(policy), live.actions ?? {});
 
   // The selected-repository list is a separate endpoint and a set, not a scalar.
   if (policy.selectedRepositories) {
@@ -147,7 +131,9 @@ function planActionsPolicy(desired: DesiredState, live: LiveState): Change[] {
     }
   }
 
-  if (fields.length === 0) return [];
+  if (fields.length === 0) {
+    return [];
+  }
   return [{ kind: 'actions-policy', policy, fields }];
 }
 
@@ -162,31 +148,30 @@ function withoutSelectedRepositories(
 // Custom properties
 // ---------------------------------------------------------------------------
 
-function planCustomProperties(
-  desired: DesiredState,
-  live: LiveState,
-): Change[] {
+function planCustomProperties(desired: DesiredState, live: LiveState): Change[] {
   const properties = desired.customProperties;
-  if (!properties) return [];
+  if (!properties) {
+    return [];
+  }
 
-  const liveByName = new Map(
-    (live.customProperties ?? []).map((p) => [p.name, p]),
-  );
+  const liveByName = new Map((live.customProperties ?? []).map((p) => [p.name, p]));
   const changes: Change[] = [];
 
   for (const property of properties) {
     const current = liveByName.get(property.name);
-    if (!current) {
-      changes.push({ kind: 'create-property', property });
-    } else {
+    if (current) {
       const fields = diffDeclared(schemaOf(property), current);
       if (fields.length > 0) {
         changes.push({ kind: 'update-property', property, fields });
       }
+    } else {
+      changes.push({ kind: 'create-property', property });
     }
 
     const values = planPropertyValues(property, live);
-    if (values) changes.push(values);
+    if (values) {
+      changes.push(values);
+    }
   }
 
   const declared = new Set(properties.map((p) => p.name));
@@ -200,30 +185,29 @@ function planCustomProperties(
 }
 
 /** The property's schema, without the per-repository values that live elsewhere. */
-function schemaOf(
-  property: CustomPropertyManifest,
-): Omit<CustomPropertyManifest, 'values'> {
+function schemaOf(property: CustomPropertyManifest): Omit<CustomPropertyManifest, 'values'> {
   const { values: _ignored, ...schema } = property;
   return schema;
 }
 
-function planPropertyValues(
-  property: CustomPropertyManifest,
-  live: LiveState,
-): Change | undefined {
-  if (!property.values) return undefined;
+function planPropertyValues(property: CustomPropertyManifest, live: LiveState): Change | undefined {
+  if (!property.values) {
+    return undefined;
+  }
 
-  const liveByRepo = new Map(
-    (live.repositoryProperties ?? []).map((r) => [r.repository, r.properties]),
-  );
+  const liveByRepo = new Map((live.repositoryProperties ?? []).map((r) => [r.repository, r.properties]));
 
   const differing: Record<string, string | string[] | null> = {};
   for (const [repository, value] of Object.entries(property.values)) {
     const current = liveByRepo.get(repository)?.[property.name];
-    if (!matchesSubset(value, current ?? null)) differing[repository] = value;
+    if (!matchesSubset(value, current ?? null)) {
+      differing[repository] = value;
+    }
   }
 
-  if (Object.keys(differing).length === 0) return undefined;
+  if (Object.keys(differing).length === 0) {
+    return undefined;
+  }
   return {
     kind: 'property-values',
     propertyName: property.name,
@@ -235,26 +219,21 @@ function planPropertyValues(
 // Code security configurations
 // ---------------------------------------------------------------------------
 
-function planSecurityConfigurations(
-  desired: DesiredState,
-  live: LiveState,
-): Change[] {
+function planSecurityConfigurations(desired: DesiredState, live: LiveState): Change[] {
   const configs = desired.codeSecurityConfigurations;
-  if (!configs) return [];
+  if (!configs) {
+    return [];
+  }
 
   // GitHub ships its own `global` presets ("GitHub recommended" and friends).
   // They cannot be edited or deleted, so they are not candidates for pruning.
-  const liveConfigs = (live.securityConfigurations ?? []).filter(
-    (c) => c.targetType !== 'global',
-  );
+  const liveConfigs = (live.securityConfigurations ?? []).filter((c) => c.targetType !== 'global');
   const liveByName = new Map(liveConfigs.map((c) => [c.name, c]));
   const changes: Change[] = [];
 
   for (const config of configs) {
     const current = liveByName.get(config.name);
-    if (!current) {
-      changes.push({ kind: 'create-security-config', config });
-    } else {
+    if (current) {
       const fields = diffDeclared(featuresOf(config), current);
       if (fields.length > 0) {
         changes.push({
@@ -264,10 +243,14 @@ function planSecurityConfigurations(
           fields,
         });
       }
+    } else {
+      changes.push({ kind: 'create-security-config', config });
     }
 
     const asDefault = planSecurityDefault(config, live);
-    if (asDefault) changes.push(asDefault);
+    if (asDefault) {
+      changes.push(asDefault);
+    }
 
     if (config.attach) {
       changes.push({
@@ -303,40 +286,27 @@ function planSecurityConfigurations(
  * GitHub compares repository names. A configuration with no attachments read,
  * such as one this run creates, has every repository still to attach.
  */
-function unattached(
-  repositories: string[],
-  live: LiveCodeSecurityConfiguration | undefined,
-): string[] {
-  const attached = new Set(
-    (live?.attachedRepositories ?? []).map((r) => r.toLowerCase()),
-  );
+function unattached(repositories: string[], live: LiveCodeSecurityConfiguration | undefined): string[] {
+  const attached = new Set((live?.attachedRepositories ?? []).map((r) => r.toLowerCase()));
   return repositories.filter((r) => !attached.has(r.toLowerCase()));
 }
 
 /** The feature settings, without the attachment fields that live on repositories. */
-function featuresOf(
-  config: CodeSecurityConfigurationManifest,
-): Partial<CodeSecurityConfigurationManifest> {
-  const {
-    defaultForNewRepos: _default,
-    attach: _attach,
-    attachRepositories: _repos,
-    ...features
-  } = config;
+function featuresOf(config: CodeSecurityConfigurationManifest): Partial<CodeSecurityConfigurationManifest> {
+  const { defaultForNewRepos: _default, attach: _attach, attachRepositories: _repos, ...features } = config;
   return features;
 }
 
-function planSecurityDefault(
-  config: CodeSecurityConfigurationManifest,
-  live: LiveState,
-): Change | undefined {
+function planSecurityDefault(config: CodeSecurityConfigurationManifest, live: LiveState): Change | undefined {
   const scope = config.defaultForNewRepos;
-  if (!scope) return undefined;
+  if (!scope) {
+    return undefined;
+  }
 
-  const current = (live.defaultSecurityConfigurations ?? []).find(
-    (d) => d.defaultForNewRepos === scope,
-  );
-  if (current?.configurationName === config.name) return undefined;
+  const current = (live.defaultSecurityConfigurations ?? []).find((d) => d.defaultForNewRepos === scope);
+  if (current?.configurationName === config.name) {
+    return undefined;
+  }
 
   return {
     kind: 'default-security-config',
@@ -352,13 +322,13 @@ function planSecurityDefault(
 
 function planRulesets(desired: DesiredState, live: LiveState): Change[] {
   const rulesets = desired.rulesets;
-  if (!rulesets) return [];
+  if (!rulesets) {
+    return [];
+  }
 
   // Enterprise rulesets are inherited, not owned by this org, so they are read
   // past rather than pruned.
-  const liveRulesets = (live.rulesets ?? []).filter(
-    (r) => r.sourceType !== 'Enterprise',
-  );
+  const liveRulesets = (live.rulesets ?? []).filter((r) => r.sourceType !== 'Enterprise');
   const liveByName = new Map(liveRulesets.map((r) => [r.name, r]));
   const changes: Change[] = [];
 
@@ -394,10 +364,7 @@ function planRulesets(desired: DesiredState, live: LiveState): Change[] {
 }
 
 /** Shared with the repository-ruleset planner, which diffs the same shape. */
-export function diffRuleset(
-  desired: ResolvedRuleset,
-  live: LiveRuleset,
-): FieldChange[] {
+export function diffRuleset(desired: ResolvedRuleset, live: LiveRuleset): FieldChange[] {
   const fields: FieldChange[] = [];
 
   if (desired.target !== live.target) {
@@ -441,9 +408,7 @@ export function diffRuleset(
  * bypass diffs as changed on every run.
  */
 function normalizeBypassActor(actor: ResolvedBypassActor): ResolvedBypassActor {
-  return actor.actorType === 'OrganizationAdmin' && actor.actorId == null
-    ? { ...actor, actorId: 1 }
-    : actor;
+  return actor.actorType === 'OrganizationAdmin' && actor.actorId == null ? { ...actor, actorId: 1 } : actor;
 }
 
 // ---------------------------------------------------------------------------
@@ -455,23 +420,19 @@ function normalizeBypassActor(actor: ResolvedBypassActor): ResolvedBypassActor {
  * at a time so the plan can name what changes. Nested objects are walked and
  * reported with dotted paths; arrays are compared whole, order-insensitively.
  */
-export function diffDeclared(
-  desired: object,
-  live: object,
-  prefix = '',
-): FieldChange[] {
+export function diffDeclared(desired: object, live: object, prefix = ''): FieldChange[] {
   const fields: FieldChange[] = [];
   const current = live as Record<string, unknown>;
 
   for (const [key, value] of Object.entries(desired)) {
-    if (value === undefined) continue;
+    if (value === undefined) {
+      continue;
+    }
     const path = prefix ? `${prefix}.${key}` : key;
     const liveValue = current[key];
 
     if (isPlainObject(value)) {
-      fields.push(
-        ...diffDeclared(value, isPlainObject(liveValue) ? liveValue : {}, path),
-      );
+      fields.push(...diffDeclared(value, isPlainObject(liveValue) ? liveValue : {}, path));
       continue;
     }
 

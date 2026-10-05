@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test';
+
 import type { Octokit } from '@octokit/rest';
-import { OctokitGitHubClient, type LiveIssueField } from '../src/github/client.ts';
+
+import { type LiveIssueField, OctokitGitHubClient } from '../src/github/client.ts';
 import { App, IssueField, Organization } from '../src/index.ts';
 import type { LiveState } from '../src/reconcile/live.ts';
 import { planIssueFields } from '../src/reconcile/plan-issue-fields.ts';
@@ -110,16 +112,13 @@ describe('planning issue fields', () => {
 
   test('a new name is a create, and the undeclared live field a delete', () => {
     const changes = planIssueFields([{ name: 'Effort', dataType: 'number' }], LIVE);
-    expect(changes.map((c) => c.kind)).toEqual([
-      'create-issue-field',
-      'delete-issue-field',
-    ]);
+    expect(changes.map((c) => c.kind)).toEqual(['create-issue-field', 'delete-issue-field']);
   });
 
   test('a different data type stops the plan', () => {
-    expect(() =>
-      planIssueFields([{ name: 'Priority', dataType: 'text' }], LIVE),
-    ).toThrow(/cannot change a field's type in place/);
+    expect(() => planIssueFields([{ name: 'Priority', dataType: 'text' }], LIVE)).toThrow(
+      /cannot change a field's type in place/,
+    );
   });
 });
 
@@ -163,9 +162,7 @@ describe('the issue-field client', () => {
       dataType: 'single_select',
       options: [{ name: 'P1' }, { name: 'P2', color: 'blue' }],
     });
-    expect(calls[0]?.route).toBe(
-      'PATCH /orgs/{org}/issue-fields/{issue_field_id}',
-    );
+    expect(calls[0]?.route).toBe('PATCH /orgs/{org}/issue-fields/{issue_field_id}');
     expect(calls[0]?.params).toMatchObject({
       issue_field_id: 4,
       options: [

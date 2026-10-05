@@ -1,14 +1,6 @@
 import type { GitHubClient } from '../github/client.ts';
-import {
-  applyGovernanceChange,
-  type GovernanceContext,
-} from './apply-governance.ts';
-import {
-  type Change,
-  type DestructiveKind,
-  isDestructive,
-  isGovernanceChange,
-} from './changes.ts';
+import { applyGovernanceChange, type GovernanceContext } from './apply-governance.ts';
+import { type Change, type DestructiveKind, isDestructive, isGovernanceChange } from './changes.ts';
 import type { LiveState } from './live.ts';
 
 export interface ApplyOptions {
@@ -53,13 +45,16 @@ export interface ApplyResult {
 }
 
 /** Whether the gate lets this change through. */
-export function deleteAllowed(
-  change: Change,
-  allowDelete: ApplyOptions['allowDelete'],
-): boolean {
-  if (!isDestructive(change)) return true;
-  if (allowDelete === true) return true;
-  if (!allowDelete) return false;
+export function deleteAllowed(change: Change, allowDelete: ApplyOptions['allowDelete']): boolean {
+  if (!isDestructive(change)) {
+    return true;
+  }
+  if (allowDelete === true) {
+    return true;
+  }
+  if (!allowDelete) {
+    return false;
+  }
   return allowDelete.has(change.kind as DestructiveKind);
 }
 
@@ -77,16 +72,18 @@ export async function apply(
 ): Promise<ApplyResult> {
   const log = options.onProgress ?? (() => {});
   const record = options.onRecord ?? (() => {});
-  const idBySlug = new Map<string, number>(
-    live.teams.map((t) => [t.slug, t.id]),
-  );
+  const idBySlug = new Map<string, number>(live.teams.map((t) => [t.slug, t.id]));
   // A rename keeps the team's id, so the new slug can be resolved before the
   // PATCH that creates it. Without this, a team nested under one being renamed
   // would look up a parent that does not exist yet and be created top-level.
   for (const change of changes) {
-    if (change.kind !== 'update' || change.team.slug === change.slug) continue;
+    if (change.kind !== 'update' || change.team.slug === change.slug) {
+      continue;
+    }
     const id = idBySlug.get(change.slug);
-    if (id !== undefined) idBySlug.set(change.team.slug, id);
+    if (id !== undefined) {
+      idBySlug.set(change.team.slug, id);
+    }
   }
   // Planned slug to the slug GitHub actually derived, filled in as renames
   // land. GitHub owns slug derivation; when it disagrees with the local guess,
@@ -130,9 +127,7 @@ export async function apply(
           case 'create': {
             const t = change.team;
             log(`Creating team ${t.slug}`);
-            const parentTeamId = t.parentSlug
-              ? idBySlug.get(t.parentSlug)
-              : undefined;
+            const parentTeamId = t.parentSlug ? idBySlug.get(t.parentSlug) : undefined;
             const team = await client.createTeam(org, {
               name: t.name,
               description: t.description,
@@ -141,7 +136,9 @@ export async function apply(
               parentTeamId,
             });
             idBySlug.set(team.slug, team.id);
-            if (team.slug !== t.slug) aliases.set(t.slug, team.slug);
+            if (team.slug !== t.slug) {
+              aliases.set(t.slug, team.slug);
+            }
 
             // Written in full here: a team that has just been created has no live
             // roster or grants to diff, so the planner has nothing to say about it.
@@ -151,9 +148,7 @@ export async function apply(
             for (const username of t.members ?? []) {
               await client.setMembership(org, team.slug, username, 'member');
             }
-            for (const [repo, permission] of Object.entries(
-              t.repositories ?? {},
-            )) {
+            for (const [repo, permission] of Object.entries(t.repositories ?? {})) {
               await client.setRepoPermission(org, team.slug, repo, permission);
             }
             created++;
@@ -162,11 +157,7 @@ export async function apply(
 
           case 'update': {
             const renamed = change.team.slug !== change.slug;
-            log(
-              renamed
-                ? `Renaming team ${change.slug} to ${change.team.slug}`
-                : `Updating team ${change.slug}`,
-            );
+            log(renamed ? `Renaming team ${change.slug} to ${change.team.slug}` : `Updating team ${change.slug}`);
             const parentSlug = change.team.parentSlug;
             // Addressed by the live slug. GitHub derives the new one from the
             // name and stops answering to the old one; the response says which
@@ -177,9 +168,7 @@ export async function apply(
               description: change.team.description ?? '',
               privacy: change.team.privacy,
               notificationSetting: change.team.notificationSetting,
-              parentTeamId: parentSlug
-                ? (idBySlug.get(parentSlug) ?? null)
-                : null,
+              parentTeamId: parentSlug ? (idBySlug.get(parentSlug) ?? null) : null,
             });
             idBySlug.set(team.slug, team.id);
             if (team.slug !== change.team.slug) {
@@ -194,49 +183,29 @@ export async function apply(
           }
 
           case 'set-repo-access': {
-            log(
-              `Granting ${change.slug} ${change.permission} on ${change.repository}`,
-            );
-            await client.setRepoPermission(
-              org,
-              slugOf(change.slug),
-              change.repository,
-              change.permission,
-            );
+            log(`Granting ${change.slug} ${change.permission} on ${change.repository}`);
+            await client.setRepoPermission(org, slugOf(change.slug), change.repository, change.permission);
             updated++;
             break;
           }
 
           case 'remove-repo-access': {
             log(`Removing ${change.slug} from ${change.repository}`);
-            await client.removeRepoPermission(
-              org,
-              slugOf(change.slug),
-              change.repository,
-            );
+            await client.removeRepoPermission(org, slugOf(change.slug), change.repository);
             deleted++;
             break;
           }
 
           case 'set-membership': {
             log(`Adding ${change.username} to ${change.slug} as ${change.role}`);
-            await client.setMembership(
-              org,
-              slugOf(change.slug),
-              change.username,
-              change.role,
-            );
+            await client.setMembership(org, slugOf(change.slug), change.username, change.role);
             updated++;
             break;
           }
 
           case 'remove-membership': {
             log(`Removing ${change.username} from ${change.slug}`);
-            await client.removeMembership(
-              org,
-              slugOf(change.slug),
-              change.username,
-            );
+            await client.removeMembership(org, slugOf(change.slug), change.username);
             deleted++;
             break;
           }
@@ -296,16 +265,12 @@ function createGovernanceContext(
     resolveTeamSlug,
 
     async resolveRepositoryIds(names) {
-      repositoryIds ??= client
-        .listRepositories(org)
-        .then((repos) => new Map(repos.map((r) => [r.name, r.id])));
+      repositoryIds ??= client.listRepositories(org).then((repos) => new Map(repos.map((r) => [r.name, r.id])));
       const byName = await repositoryIds;
       return names.map((name) => {
         const id = byName.get(name);
         if (id === undefined) {
-          throw new Error(
-            `Repository "${name}" was not found in the ${org} organization.`,
-          );
+          throw new Error(`Repository "${name}" was not found in the ${org} organization.`);
         }
         return id;
       });
@@ -314,8 +279,11 @@ function createGovernanceContext(
     async rememberRepositoryId(name, id) {
       // A repository created this run joins the cached map, so a grant or an
       // attachment later in the same run can name it.
-      if (repositoryIds) (await repositoryIds).set(name, id);
-      else repositoryIds = Promise.resolve(new Map([[name, id]]));
+      if (repositoryIds) {
+        (await repositoryIds).set(name, id);
+      } else {
+        repositoryIds = Promise.resolve(new Map([[name, id]]));
+      }
     },
 
     rememberConfigurationId(name, id) {
@@ -328,7 +296,9 @@ function createGovernanceContext(
       // lookup repeats on a miss because this run keeps creating configurations
       // as it goes.
       const known = configurationIds.get(name);
-      if (known !== undefined) return known;
+      if (known !== undefined) {
+        return known;
+      }
 
       for (const config of await client.listSecurityConfigurations(org)) {
         configurationIds.set(config.name, config.id);
@@ -336,9 +306,7 @@ function createGovernanceContext(
 
       const id = configurationIds.get(name);
       if (id === undefined) {
-        throw new Error(
-          `Code security configuration "${name}" was not found in the ${org} organization.`,
-        );
+        throw new Error(`Code security configuration "${name}" was not found in the ${org} organization.`);
       }
       return id;
     },
@@ -347,7 +315,9 @@ function createGovernanceContext(
 
 /** A one-line identity for a change, for the journal and the skip report. */
 export function describeChange(change: Change): string {
-  if (isDestructive(change)) return describeDelete(change);
+  if (isDestructive(change)) {
+    return describeDelete(change);
+  }
   switch (change.kind) {
     case 'create':
       return `create team ${change.team.slug}`;
@@ -441,7 +411,7 @@ function describeDelete(change: Change): string {
     case 'delete-runner-group':
       return `delete runner group "${change.live.name}"`;
     case 'remove-collaborator':
-      return `${change.live.invitationId !== undefined ? 'withdraw the invitation of' : 'remove collaborator'} ${change.live.login} from ${change.live.repository}`;
+      return `${change.live.invitationId === undefined ? 'remove collaborator' : 'withdraw the invitation of'} ${change.live.login} from ${change.live.repository}`;
     case 'delete-environment-branch-policy':
       return `remove ${change.policy.type} ${change.policy.name} from environment ${change.environment} on ${change.repository}`;
     case 'delete-variable':
@@ -474,7 +444,9 @@ async function resolveGroupId(
   org: string,
   change: Extract<Change, { kind: 'link-group' }>,
 ): Promise<number> {
-  if (change.group.id !== undefined) return change.group.id;
+  if (change.group.id !== undefined) {
+    return change.group.id;
+  }
 
   const groups = await client.listExternalGroups(org);
   const match = groups.find((g) => g.name === change.group.name);

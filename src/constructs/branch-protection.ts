@@ -1,9 +1,6 @@
 import { Construct } from 'constructs';
-import type {
-  ActorRestriction,
-  RequiredPullRequestReviews,
-  RequiredStatusChecks,
-} from '../synth/branch-protection.ts';
+
+import type { ActorRestriction, RequiredPullRequestReviews, RequiredStatusChecks } from '../synth/branch-protection.ts';
 
 export interface BranchProtectionProps {
   /** Branch name. Defaults to the construct id. One literal branch, no patterns. */

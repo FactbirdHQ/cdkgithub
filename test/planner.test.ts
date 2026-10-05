@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+
 import type { LiveTeam } from '../src/github/client.ts';
 import { apply } from '../src/reconcile/applier.ts';
 import type { LiveState } from '../src/reconcile/live.ts';
@@ -37,10 +38,7 @@ const baseTeam = {
 
 describe('plan', () => {
   test('creates a team that does not exist', () => {
-    const changes = plan(
-      desired([{ ...baseTeam, slug: 'engineering', name: 'engineering' }]),
-      live(),
-    );
+    const changes = plan(desired([{ ...baseTeam, slug: 'engineering', name: 'engineering' }]), live());
     expect(changes).toHaveLength(1);
     expect(changes[0]!.kind).toBe('create');
   });
@@ -55,17 +53,13 @@ describe('plan', () => {
           privacy: 'secret',
         },
       ]),
-      live([
-        team({ slug: 'engineering', name: 'engineering', privacy: 'closed' }),
-      ]),
+      live([team({ slug: 'engineering', name: 'engineering', privacy: 'closed' })]),
     );
     expect(changes).toHaveLength(1);
     const change = changes[0]!;
     expect(change.kind).toBe('update');
     if (change.kind === 'update') {
-      expect(change.fields).toEqual([
-        { field: 'privacy', from: 'closed', to: 'secret' },
-      ]);
+      expect(change.fields).toEqual([{ field: 'privacy', from: 'closed', to: 'secret' }]);
     }
   });
 
@@ -78,17 +72,9 @@ describe('plan', () => {
   });
 
   test('proposes deletes children-first for unmanaged teams', () => {
-    const changes = plan(
-      desired([]),
-      live([
-        team({ slug: 'parent' }),
-        team({ slug: 'child', parentSlug: 'parent' }),
-      ]),
-    );
+    const changes = plan(desired([]), live([team({ slug: 'parent' }), team({ slug: 'child', parentSlug: 'parent' })]));
     const deletes = changes.filter((c) => c.kind === 'delete');
-    expect(
-      deletes.map((d) => (d.kind === 'delete' ? d.live.slug : '')),
-    ).toEqual(['child', 'parent']);
+    expect(deletes.map((d) => (d.kind === 'delete' ? d.live.slug : ''))).toEqual(['child', 'parent']);
   });
 
   test('emits a link-group change for IdP-bound teams', () => {
@@ -178,7 +164,9 @@ describe('apply', () => {
 
 function hash(s: string): number {
   let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) | 0;
+  }
   return h;
 }
 
@@ -203,12 +191,18 @@ describe('team notification setting', () => {
     const client = new FakeClient({
       teams: [team({ slug: 'ops', name: 'ops', notificationSetting: 'notifications_enabled' })],
     });
-    const state = desired([quiet, { slug: 'ops', ...baseTeam, name: 'ops', notificationSetting: 'notifications_disabled' }]);
+    const state = desired([
+      quiet,
+      { slug: 'ops', ...baseTeam, name: 'ops', notificationSetting: 'notifications_disabled' },
+    ]);
     await apply(client, 'acme', plan(state, live(client.teams)), live(client.teams));
 
     expect(client.teams.find((t) => t.slug === 'engineering')?.notificationSetting).toBe('notifications_disabled');
     expect(client.callsTo('updateTeam')).toEqual([
-      expect.objectContaining({ slug: 'ops', params: expect.objectContaining({ notificationSetting: 'notifications_disabled' }) }),
+      expect.objectContaining({
+        slug: 'ops',
+        params: expect.objectContaining({ notificationSetting: 'notifications_disabled' }),
+      }),
     ]);
   });
 });

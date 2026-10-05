@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+
 import type { LiveState } from '../src/reconcile/live.ts';
 import { planCustomRepositoryRoles } from '../src/reconcile/plan-custom-roles.ts';
 
@@ -36,9 +37,7 @@ describe('planning custom repository roles', () => {
   test('permission order carries no meaning', () => {
     const live: LiveState = {
       teams: [],
-      customRepositoryRoles: [
-        { ...JUMPER, permissions: ['manage_webhooks', 'jump_merge_queue'] },
-      ],
+      customRepositoryRoles: [{ ...JUMPER, permissions: ['manage_webhooks', 'jump_merge_queue'] }],
     };
     const changes = planCustomRepositoryRoles(
       [

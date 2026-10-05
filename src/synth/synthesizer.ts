@@ -1,32 +1,26 @@
 import type { IConstruct } from 'constructs';
+
 import { ActionsPolicy } from '../constructs/actions-policy.ts';
 import { ActionsSecret } from '../constructs/actions-secret.ts';
 import { ActionsVariable } from '../constructs/actions-variable.ts';
-import { Collaborator } from '../constructs/collaborator.ts';
-import { Environment } from '../constructs/environment.ts';
 import { BranchProtection } from '../constructs/branch-protection.ts';
 import { CodeSecurityConfiguration } from '../constructs/code-security.ts';
+import { Collaborator } from '../constructs/collaborator.ts';
 import { CustomProperty } from '../constructs/custom-property.ts';
+import { CustomRepositoryRole } from '../constructs/custom-repository-role.ts';
+import { Environment } from '../constructs/environment.ts';
+import type { RepositoryGrant, RepositoryGrantList } from '../constructs/grants.ts';
 import { IssueField } from '../constructs/issue-field.ts';
 import { Organization } from '../constructs/organization.ts';
-import { CustomRepositoryRole } from '../constructs/custom-repository-role.ts';
 import { OrganizationRole } from '../constructs/organization-role.ts';
 import { Repository } from '../constructs/repository.ts';
 import { RepositoryRuleset } from '../constructs/repository-ruleset.ts';
-import { RunnerGroup } from '../constructs/runner-group.ts';
 import { Ruleset } from '../constructs/ruleset.ts';
+import { RunnerGroup } from '../constructs/runner-group.ts';
 import { ScimProvisioning } from '../constructs/scim-provisioning.ts';
-import type {
-  RepositoryGrant,
-  RepositoryGrantList,
-} from '../constructs/grants.ts';
 import { Team } from '../constructs/team.ts';
 import { UserAccount } from '../constructs/user-account.ts';
-import type {
-  ActionsSecretManifest,
-  ActionsVariableManifest,
-  EnvironmentManifest,
-} from './actions-admin.ts';
+import type { ActionsSecretManifest, ActionsVariableManifest, EnvironmentManifest } from './actions-admin.ts';
 import type { BranchProtectionManifest } from './branch-protection.ts';
 import type {
   ActionsPolicyManifest,
@@ -37,15 +31,15 @@ import type {
   RepositoryRulesetManifest,
   RulesetManifest,
 } from './governance.ts';
-import type { ScimProvisioningManifest } from './scim.ts';
 import type {
   DesiredState,
-  RepoPermission,
-  RepositoryAccess,
   ExternalGroupBinding,
   OwnerType,
+  RepoPermission,
+  RepositoryAccess,
   TeamManifest,
 } from './manifest.ts';
+import type { ScimProvisioningManifest } from './scim.ts';
 
 /**
  * Walk a construct tree and produce the desired-state manifest for the single
@@ -100,22 +94,10 @@ export function synthesize(root: IConstruct): DesiredState {
     name: r.roleName,
     ...r.props,
   }));
-  const codeSecurityConfigurations = collect(
-    root,
-    CodeSecurityConfiguration,
-    toCodeSecurityManifest,
-  );
-  const customProperties = collect(
-    root,
-    CustomProperty,
-    toCustomPropertyManifest,
-  );
+  const codeSecurityConfigurations = collect(root, CodeSecurityConfiguration, toCodeSecurityManifest);
+  const customProperties = collect(root, CustomProperty, toCustomPropertyManifest);
   const issueFields = collect(root, IssueField, toIssueFieldManifest);
-  const repositoryRulesets = collect(
-    root,
-    RepositoryRuleset,
-    toRepositoryRulesetManifest,
-  );
+  const repositoryRulesets = collect(root, RepositoryRuleset, toRepositoryRulesetManifest);
   const runnerGroups = collect(root, RunnerGroup, (g) => ({
     name: g.groupName,
     ...g.props,
@@ -165,7 +147,9 @@ export function synthesize(root: IConstruct): DesiredState {
     scim: singleScimProvisioning(root, owner.login, teams),
   };
 
-  if (owner.type === 'user') assertNothingOrgWide(state);
+  if (owner.type === 'user') {
+    assertNothingOrgWide(state);
+  }
 
   return state;
 }
@@ -180,10 +164,7 @@ interface ResolvedOwner {
 function resolveOwner(root: IConstruct): ResolvedOwner {
   const owners = root.node
     .findAll()
-    .filter(
-      (c): c is Organization | UserAccount =>
-        c instanceof Organization || c instanceof UserAccount,
-    );
+    .filter((c): c is Organization | UserAccount => c instanceof Organization || c instanceof UserAccount);
 
   if (owners.length === 0) {
     throw new Error(
@@ -220,20 +201,12 @@ function assertNothingOrgWide(state: DesiredState): void {
     ['RunnerGroup', state.runnerGroups],
     // The repository-scoped entries work on a personal account's repositories;
     // only the organization-scoped ones have nothing to live on.
-    [
-      'organization ActionsVariable',
-      state.actionsVariables?.some((v) => !v.repository) || undefined,
-    ],
-    [
-      'organization ActionsSecret',
-      state.actionsSecrets?.some((s) => !s.repository) || undefined,
-    ],
+    ['organization ActionsVariable', state.actionsVariables?.some((v) => !v.repository) || undefined],
+    ['organization ActionsSecret', state.actionsSecrets?.some((s) => !s.repository) || undefined],
     ['ScimProvisioning', state.scim],
   ];
 
-  const declared = orgOnly
-    .filter(([, value]) => value !== undefined)
-    .map(([name]) => name);
+  const declared = orgOnly.filter(([, value]) => value !== undefined).map(([name]) => name);
 
   if (declared.length > 0) {
     throw new Error(
@@ -243,12 +216,8 @@ function assertNothingOrgWide(state: DesiredState): void {
 }
 
 /** The repository a branch protection sits under, by nesting or by name. */
-function toBranchProtection(
-  protection: BranchProtection,
-): BranchProtectionManifest {
-  const repository =
-    protection.props.repository ??
-    nearestRepository(protection)?.repositoryName;
+function toBranchProtection(protection: BranchProtection): BranchProtectionManifest {
+  const repository = protection.props.repository ?? nearestRepository(protection)?.repositoryName;
 
   if (!repository) {
     throw new Error(
@@ -262,17 +231,16 @@ function toBranchProtection(
 
 /** The repository an environment belongs to: the one it names, or the one it sits in. */
 function repositoryOf(environment: Environment): string | undefined {
-  return (
-    environment.props.repository ??
-    nearestRepository(environment)?.repositoryName
-  );
+  return environment.props.repository ?? nearestRepository(environment)?.repositoryName;
 }
 
 /** The environment a variable or secret sits in, if any. */
 function nearestEnvironment(construct: IConstruct): Environment | undefined {
   let scope = construct.node.scope;
   while (scope) {
-    if (scope instanceof Environment) return scope;
+    if (scope instanceof Environment) {
+      return scope;
+    }
     scope = scope.node.scope;
   }
   return undefined;
@@ -295,9 +263,7 @@ function scopeOf(
     );
   }
   return {
-    repository:
-      props.repository ??
-      (around ? repositoryOf(around) : nearestRepository(construct)?.repositoryName),
+    repository: props.repository ?? (around ? repositoryOf(around) : nearestRepository(construct)?.repositoryName),
     environment: props.environment ?? around?.environmentName,
   };
 }
@@ -305,7 +271,9 @@ function scopeOf(
 function nearestRepository(construct: IConstruct): Repository | undefined {
   let scope = construct.node.scope;
   while (scope) {
-    if (scope instanceof Repository) return scope;
+    if (scope instanceof Repository) {
+      return scope;
+    }
     scope = scope.node.scope;
   }
   return undefined;
@@ -339,10 +307,10 @@ function singleScimProvisioning(
   login: string,
   teams: TeamManifest[],
 ): ScimProvisioningManifest | undefined {
-  const declarations = root.node
-    .findAll()
-    .filter((c): c is ScimProvisioning => c instanceof ScimProvisioning);
-  if (declarations.length === 0) return undefined;
+  const declarations = root.node.findAll().filter((c): c is ScimProvisioning => c instanceof ScimProvisioning);
+  if (declarations.length === 0) {
+    return undefined;
+  }
   if (declarations.length > 1) {
     throw new Error(
       `Expected at most one ScimProvisioning, found ${declarations.length}. One application provisions the organization.`,
@@ -351,14 +319,7 @@ function singleScimProvisioning(
 
   const { props } = declarations[0]!;
   const groups =
-    props.groups ??
-    [
-      ...new Set(
-        teams.flatMap((t) =>
-          t.externalGroup?.name ? [t.externalGroup.name] : [],
-        ),
-      ),
-    ].sort();
+    props.groups ?? [...new Set(teams.flatMap((t) => (t.externalGroup?.name ? [t.externalGroup.name] : [])))].sort();
   if (groups.length === 0) {
     throw new Error(
       'ScimProvisioning resolves to no groups: no team declares an externalGroup name, and no `groups` were passed.',
@@ -367,19 +328,14 @@ function singleScimProvisioning(
 
   return {
     tenantId: props.tenantId,
-    applicationDisplayName:
-      props.applicationDisplayName ?? `GitHub SCIM (${login})`,
+    applicationDisplayName: props.applicationDisplayName ?? `GitHub SCIM (${login})`,
     tokenFrom: props.tokenFrom ?? 'GITHUB_SCIM_TOKEN',
     groups,
   };
 }
 
-function singleActionsPolicy(
-  root: IConstruct,
-): ActionsPolicyManifest | undefined {
-  const policies = root.node
-    .findAll()
-    .filter((c): c is ActionsPolicy => c instanceof ActionsPolicy);
+function singleActionsPolicy(root: IConstruct): ActionsPolicyManifest | undefined {
+  const policies = root.node.findAll().filter((c): c is ActionsPolicy => c instanceof ActionsPolicy);
   if (policies.length > 1) {
     throw new Error(
       `Expected at most one ActionsPolicy, found ${policies.length}. The Actions policy is a single org-wide resource.`,
@@ -400,9 +356,7 @@ function toRulesetManifest(ruleset: Ruleset): RulesetManifest {
   };
 }
 
-function toCodeSecurityManifest(
-  config: CodeSecurityConfiguration,
-): CodeSecurityConfigurationManifest {
+function toCodeSecurityManifest(config: CodeSecurityConfiguration): CodeSecurityConfigurationManifest {
   const { props } = config;
   if (props.attach && props.attachRepositories) {
     throw new Error(
@@ -412,9 +366,7 @@ function toCodeSecurityManifest(
   return { ...props, name: config.configurationName };
 }
 
-function toCustomPropertyManifest(
-  property: CustomProperty,
-): CustomPropertyManifest {
+function toCustomPropertyManifest(property: CustomProperty): CustomPropertyManifest {
   const { props } = property;
   const selectTypes = ['single_select', 'multi_select'];
   if (selectTypes.includes(props.valueType) && !props.allowedValues?.length) {
@@ -428,21 +380,16 @@ function toCustomPropertyManifest(
 function toIssueFieldManifest(field: IssueField): IssueFieldManifest {
   const { name: _name, options, ...props } = field.props;
   const what = `Issue field "${field.fieldName}"`;
-  const isSelect =
-    props.dataType === 'single_select' || props.dataType === 'multi_select';
+  const isSelect = props.dataType === 'single_select' || props.dataType === 'multi_select';
 
   if (isSelect && !options?.length) {
     throw new Error(`${what} is a ${props.dataType} but declares no options.`);
   }
   if (!isSelect && options !== undefined) {
-    throw new Error(
-      `${what} is a ${props.dataType} field, which takes no options.`,
-    );
+    throw new Error(`${what} is a ${props.dataType} field, which takes no options.`);
   }
 
-  const normalized = options?.map((o) =>
-    typeof o === 'string' ? { name: o } : o,
-  );
+  const normalized = options?.map((o) => (typeof o === 'string' ? { name: o } : o));
   const seen = new Set<string>();
   for (const option of normalized ?? []) {
     if (seen.has(option.name)) {
@@ -459,29 +406,17 @@ function toIssueFieldManifest(field: IssueField): IssueFieldManifest {
 }
 
 /** The repository a repository-scoped construct lives on, by nesting or by name. */
-function resolveRepository(
-  construct: IConstruct,
-  declared: string | undefined,
-  what: string,
-): string {
+function resolveRepository(construct: IConstruct, declared: string | undefined, what: string): string {
   const repository = declared ?? nearestRepository(construct)?.repositoryName;
   if (!repository) {
-    throw new Error(
-      `${what} names no repository. Nest it under a Repository, or pass \`repository\`.`,
-    );
+    throw new Error(`${what} names no repository. Nest it under a Repository, or pass \`repository\`.`);
   }
   return repository;
 }
 
-function toRepositoryRulesetManifest(
-  ruleset: RepositoryRuleset,
-): RepositoryRulesetManifest {
+function toRepositoryRulesetManifest(ruleset: RepositoryRuleset): RepositoryRulesetManifest {
   const { repository: declared, ...props } = ruleset.props;
-  const repository = resolveRepository(
-    ruleset,
-    declared,
-    `RepositoryRuleset "${ruleset.rulesetName}"`,
-  );
+  const repository = resolveRepository(ruleset, declared, `RepositoryRuleset "${ruleset.rulesetName}"`);
   return {
     ...props,
     name: ruleset.rulesetName,
@@ -497,15 +432,9 @@ function toRepositoryRulesetManifest(
  * else. Both mistakes are declarations that would silently mean something
  * other than what they say, so both fail here.
  */
-function assertScopedVisibility(
-  what: string,
-  repository: string | undefined,
-  visibility: string | undefined,
-): void {
+function assertScopedVisibility(what: string, repository: string | undefined, visibility: string | undefined): void {
   if (repository === undefined && visibility === undefined) {
-    throw new Error(
-      `Organization ${what} declares no visibility. Say who reads it: "all", "private", or "selected".`,
-    );
+    throw new Error(`Organization ${what} declares no visibility. Say who reads it: "all", "private", or "selected".`);
   }
   if (repository !== undefined && visibility !== undefined) {
     throw new Error(
@@ -526,26 +455,14 @@ function assertActionsName(what: string, name: string): void {
     );
   }
   if (/^GITHUB_/i.test(name)) {
-    throw new Error(
-      `${what} "${name}" starts with GITHUB_, a prefix GitHub reserves for its own variables.`,
-    );
+    throw new Error(`${what} "${name}" starts with GITHUB_, a prefix GitHub reserves for its own variables.`);
   }
 }
 
-function toVariableManifest(
-  variable: ActionsVariable,
-): ActionsVariableManifest {
+function toVariableManifest(variable: ActionsVariable): ActionsVariableManifest {
   assertActionsName('Variable', variable.variableName);
-  const { repository, environment } = scopeOf(
-    variable,
-    variable.props,
-    `Variable "${variable.variableName}"`,
-  );
-  assertScopedVisibility(
-    `variable "${variable.variableName}"`,
-    repository,
-    variable.props.visibility,
-  );
+  const { repository, environment } = scopeOf(variable, variable.props, `Variable "${variable.variableName}"`);
+  assertScopedVisibility(`variable "${variable.variableName}"`, repository, variable.props.visibility);
   if (environment !== undefined && repository === undefined) {
     throw new Error(
       `Variable "${variable.variableName}" names environment "${environment}" but no repository. An environment belongs to one repository: netcore the variable under it or pass \`repository\`.`,
@@ -561,16 +478,8 @@ function toVariableManifest(
 
 function toSecretManifest(secret: ActionsSecret): ActionsSecretManifest {
   assertActionsName('Secret', secret.secretName);
-  const { repository, environment } = scopeOf(
-    secret,
-    secret.props,
-    `Secret "${secret.secretName}"`,
-  );
-  assertScopedVisibility(
-    `secret "${secret.secretName}"`,
-    repository,
-    secret.props.visibility,
-  );
+  const { repository, environment } = scopeOf(secret, secret.props, `Secret "${secret.secretName}"`);
+  assertScopedVisibility(`secret "${secret.secretName}"`, repository, secret.props.visibility);
   if (environment !== undefined && repository === undefined) {
     throw new Error(
       `Secret "${secret.secretName}" names environment "${environment}" but no repository. An environment belongs to one repository: netcore the secret under it or pass \`repository\`.`,
@@ -586,8 +495,7 @@ function toSecretManifest(secret: ActionsSecret): ActionsSecretManifest {
 }
 
 function toCollaboratorManifest(collaborator: Collaborator): CollaboratorManifest {
-  const repository =
-    collaborator.props.repository ?? nearestRepository(collaborator)?.repositoryName;
+  const repository = collaborator.props.repository ?? nearestRepository(collaborator)?.repositoryName;
   if (repository === undefined) {
     throw new Error(
       `Collaborator "${collaborator.login}" names no repository. Nest it under a Repository or pass \`repository\`.`,
@@ -597,22 +505,14 @@ function toCollaboratorManifest(collaborator: Collaborator): CollaboratorManifes
 }
 
 function toEnvironmentManifest(environment: Environment): EnvironmentManifest {
-  const {
-    repository: _repository,
-    name: _name,
-    variable: _variable,
-    secret: _secret,
-    ...settings
-  } = environment.props;
+  const { repository: _repository, name: _name, variable: _variable, secret: _secret, ...settings } = environment.props;
   const repository = repositoryOf(environment);
   if (repository === undefined) {
     throw new Error(
       `Environment "${environment.environmentName}" names no repository. Nest it under a Repository or pass \`repository\`.`,
     );
   }
-  const reviewers =
-    (settings.reviewers?.teams?.length ?? 0) +
-    (settings.reviewers?.users?.length ?? 0);
+  const reviewers = (settings.reviewers?.teams?.length ?? 0) + (settings.reviewers?.users?.length ?? 0);
   if (reviewers > 6) {
     throw new Error(
       `Environment "${environment.environmentName}" on "${repository}" names ${reviewers} reviewers; GitHub allows six.`,
@@ -635,9 +535,7 @@ function toEnvironmentManifest(environment: Environment): EnvironmentManifest {
  * written.
  */
 function assertUniquePerRepository(
-  items:
-    | Array<{ name: string; repository?: string; environment?: string }>
-    | undefined,
+  items: Array<{ name: string; repository?: string; environment?: string }> | undefined,
   kind: string,
   caseInsensitive = true,
 ): void {
@@ -657,10 +555,7 @@ function assertUniquePerRepository(
   }
 }
 
-function assertUniqueNames(
-  items: Array<{ name: string }> | undefined,
-  kind: string,
-): void {
+function assertUniqueNames(items: Array<{ name: string }> | undefined, kind: string): void {
   const seen = new Set<string>();
   for (const item of items ?? []) {
     if (seen.has(item.name)) {
@@ -696,12 +591,11 @@ function toManifest(team: Team): TeamManifest {
 function normalizeGrants(
   grants: RepositoryAccess | readonly RepositoryGrantList[] | undefined,
 ): RepositoryAccess | undefined {
-  if (!Array.isArray(grants)) return grants as RepositoryAccess | undefined;
+  if (!Array.isArray(grants)) {
+    return grants as RepositoryAccess | undefined;
+  }
   return Object.fromEntries(
-    flattenGrants(grants as readonly RepositoryGrantList[]).map((g) => [
-      g.repository,
-      g.permission,
-    ]),
+    flattenGrants(grants as readonly RepositoryGrantList[]).map((g) => [g.repository, g.permission]),
   );
 }
 
@@ -711,21 +605,17 @@ function normalizeGrants(
  * `push('netcore')` is a list of one and `triage(...systemII)` a list of many, so
  * the array a team declares is a list of lists. One level is all there is.
  */
-function flattenGrants(
-  grants: readonly RepositoryGrantList[],
-): RepositoryGrant[] {
-  return grants.flatMap((g) =>
-    Array.isArray(g) ? [...g] : [g as RepositoryGrant],
-  );
+function flattenGrants(grants: readonly RepositoryGrantList[]): RepositoryGrant[] {
+  return grants.flatMap((g) => (Array.isArray(g) ? [...g] : [g as RepositoryGrant]));
 }
 
 function normalizeExternalGroup(team: Team): ExternalGroupBinding | undefined {
   const eg = team.props.externalGroup;
-  if (!eg) return undefined;
+  if (!eg) {
+    return undefined;
+  }
   if (eg.id === undefined && eg.name === undefined) {
-    throw new Error(
-      `Team "${team.teamName}" has an externalGroup with neither a name nor an id.`,
-    );
+    throw new Error(`Team "${team.teamName}" has an externalGroup with neither a name nor an id.`);
   }
   return { name: eg.name, id: eg.id };
 }
@@ -734,7 +624,9 @@ function normalizeExternalGroup(team: Team): ExternalGroupBinding | undefined {
 function nearestTeamAncestor(team: Team): Team | undefined {
   let scope = team.node.scope;
   while (scope) {
-    if (isTeam(scope)) return scope;
+    if (isTeam(scope)) {
+      return scope;
+    }
     scope = scope.node.scope;
   }
   return undefined;
@@ -748,7 +640,9 @@ function depthOf(team: TeamManifest, all: TeamManifest[]): number {
   while (current?.parentSlug) {
     depth++;
     current = bySlug.get(current.parentSlug);
-    if (depth > all.length) break; // cycle guard
+    if (depth > all.length) {
+      break; // cycle guard
+    }
   }
   return depth;
 }
@@ -757,9 +651,7 @@ function assertUniqueSlugs(teams: TeamManifest[]): void {
   const seen = new Set<string>();
   for (const team of teams) {
     if (seen.has(team.slug)) {
-      throw new Error(
-        `Duplicate team slug "${team.slug}". Team names must slugify uniquely.`,
-      );
+      throw new Error(`Duplicate team slug "${team.slug}". Team names must slugify uniquely.`);
     }
     seen.add(team.slug);
   }
@@ -795,10 +687,10 @@ const OWNING_PERMISSIONS = new Set(['maintain', 'admin']);
 function assertSingleMaintainer(teams: TeamManifest[]): void {
   const owner = new Map<string, { slug: string; permission: string }>();
   for (const team of teams) {
-    for (const [repository, permission] of Object.entries(
-      team.repositories ?? {},
-    )) {
-      if (!OWNING_PERMISSIONS.has(permission)) continue;
+    for (const [repository, permission] of Object.entries(team.repositories ?? {})) {
+      if (!OWNING_PERMISSIONS.has(permission)) {
+        continue;
+      }
       const held = owner.get(repository);
       if (held !== undefined) {
         throw new Error(
@@ -828,12 +720,12 @@ function assertSingleMaintainer(teams: TeamManifest[]): void {
 function assertNoDuplicateGrants(teams: Team[]): void {
   for (const team of teams) {
     const grants = team.props.repositories;
-    if (!Array.isArray(grants)) continue;
+    if (!Array.isArray(grants)) {
+      continue;
+    }
 
     const seen = new Map<string, RepoPermission>();
-    for (const { repository, permission } of flattenGrants(
-      grants as readonly RepositoryGrantList[],
-    )) {
+    for (const { repository, permission } of flattenGrants(grants as readonly RepositoryGrantList[])) {
       const held = seen.get(repository);
       if (held !== undefined) {
         throw new Error(

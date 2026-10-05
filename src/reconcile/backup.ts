@@ -1,5 +1,6 @@
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+
 import type { DesiredState } from '../synth/manifest.ts';
 import type { ApplyRecord } from './applier.ts';
 import type { Change } from './changes.ts';
@@ -22,34 +23,20 @@ export interface Backup {
  * is the change list about to execute. `journal.jsonl` then grows one line per
  * attempted change, so an aborted run says exactly where it stopped.
  */
-export function writeBackup(
-  outdir: string,
-  desired: DesiredState,
-  live: LiveState,
-  changes: Change[],
-): Backup {
+export function writeBackup(outdir: string, desired: DesiredState, live: LiveState, changes: Change[]): Backup {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const dir = join(outdir, 'backups', stamp);
   mkdirSync(dir, { recursive: true });
 
-  writeFileSync(
-    join(dir, 'live-state.json'),
-    `${JSON.stringify(serializeLiveState(live), null, 2)}\n`,
-  );
-  writeFileSync(
-    join(dir, 'rollback-manifest.json'),
-    `${JSON.stringify(rollbackManifest(desired, live), null, 2)}\n`,
-  );
+  writeFileSync(join(dir, 'live-state.json'), `${JSON.stringify(serializeLiveState(live), null, 2)}\n`);
+  writeFileSync(join(dir, 'rollback-manifest.json'), `${JSON.stringify(rollbackManifest(desired, live), null, 2)}\n`);
   writeFileSync(join(dir, 'plan.json'), `${JSON.stringify(changes, null, 2)}\n`);
 
   const journalPath = join(dir, 'journal.jsonl');
   return {
     dir,
     journal: (record) => {
-      appendFileSync(
-        journalPath,
-        `${JSON.stringify({ at: new Date().toISOString(), ...record })}\n`,
-      );
+      appendFileSync(journalPath, `${JSON.stringify({ at: new Date().toISOString(), ...record })}\n`);
     },
   };
 }
@@ -58,11 +45,7 @@ export function writeBackup(
 function serializeLiveState(live: LiveState): Record<string, unknown> {
   return {
     ...live,
-    teamRepositories: live.teamRepositories
-      ? Object.fromEntries(live.teamRepositories)
-      : undefined,
-    teamMembers: live.teamMembers
-      ? Object.fromEntries(live.teamMembers)
-      : undefined,
+    teamRepositories: live.teamRepositories ? Object.fromEntries(live.teamRepositories) : undefined,
+    teamMembers: live.teamMembers ? Object.fromEntries(live.teamMembers) : undefined,
   };
 }

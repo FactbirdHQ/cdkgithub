@@ -1,5 +1,5 @@
-import { comparableRoleName } from '../github/client.ts';
 import type { LiveTeam } from '../github/client.ts';
+import { comparableRoleName } from '../github/client.ts';
 import type { DesiredState, TeamManifest } from '../synth/manifest.ts';
 import type { LiveState } from './live.ts';
 
@@ -13,15 +13,10 @@ import type { LiveState } from './live.ts';
  * deliberately absent, because their declarations live in git and revert by
  * reverting the definition and applying it.
  */
-export function rollbackManifest(
-  desired: DesiredState,
-  live: LiveState,
-): DesiredState {
+export function rollbackManifest(desired: DesiredState, live: LiveState): DesiredState {
   // An IdP-synced team's roster belongs to Entra; restoring it from here would
   // fight the next SCIM push, so those teams keep their shape but not a roster.
-  const idpSynced = new Set(
-    desired.teams.filter((t) => t.externalGroup).map((t) => t.slug),
-  );
+  const idpSynced = new Set(desired.teams.filter((t) => t.externalGroup).map((t) => t.slug));
   const teams = [...live.teams]
     .sort((a, b) => depthOf(a, live.teams) - depthOf(b, live.teams))
     .map((team) => toTeamManifest(team, live, idpSynced.has(team.slug)));
@@ -33,21 +28,13 @@ export function rollbackManifest(
   };
 }
 
-function toTeamManifest(
-  team: LiveTeam,
-  live: LiveState,
-  idpSynced: boolean,
-): TeamManifest {
+function toTeamManifest(team: LiveTeam, live: LiveState, idpSynced: boolean): TeamManifest {
   // Only the team's own members: an inherited one is restored with the team below.
-  const roster = idpSynced
-    ? undefined
-    : live.teamMembers?.get(team.slug)?.filter((m) => !m.inherited);
+  const roster = idpSynced ? undefined : live.teamMembers?.get(team.slug)?.filter((m) => !m.inherited);
   const grants = live.teamRepositories?.get(team.slug);
 
   const repositories = grants
-    ? Object.fromEntries(
-        grants.map((g) => [g.name, comparableRoleName(g.roleName)]),
-      )
+    ? Object.fromEntries(grants.map((g) => [g.name, comparableRoleName(g.roleName)]))
     : undefined;
 
   return {
@@ -56,9 +43,7 @@ function toTeamManifest(
     description: team.description ?? undefined,
     privacy: team.privacy,
     parentSlug: team.parentSlug ?? undefined,
-    maintainers: roster
-      ?.filter((m) => m.role === 'maintainer')
-      .map((m) => m.login),
+    maintainers: roster?.filter((m) => m.role === 'maintainer').map((m) => m.login),
     members: roster?.filter((m) => m.role === 'member').map((m) => m.login),
     repositories,
   };
@@ -72,7 +57,9 @@ function depthOf(team: LiveTeam, all: LiveTeam[]): number {
   while (current?.parentSlug) {
     depth++;
     current = bySlug.get(current.parentSlug);
-    if (depth > all.length) break;
+    if (depth > all.length) {
+      break;
+    }
   }
   return depth;
 }

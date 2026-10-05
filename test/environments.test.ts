@@ -1,13 +1,7 @@
 import { describe, expect, test } from 'bun:test';
+
 import type { LiveEnvironment } from '../src/github/client.ts';
-import {
-  ActionsSecret,
-  ActionsVariable,
-  App,
-  Environment,
-  Organization,
-  Repository,
-} from '../src/index.ts';
+import { ActionsSecret, ActionsVariable, App, Environment, Organization, Repository } from '../src/index.ts';
 import { apply } from '../src/reconcile/applier.ts';
 import { readLiveState } from '../src/reconcile/live.ts';
 import { plan } from '../src/reconcile/planner.ts';
@@ -38,9 +32,9 @@ function definition(props: ConstructorParameters<typeof Environment>[2] = {}) {
 
 describe('synthesis', () => {
   test('refuses what GitHub would refuse', () => {
-    expect(() =>
-      synthesize(definition({ reviewers: { users: ['a', 'b', 'c', 'd', 'e', 'f', 'g'] } }).app),
-    ).toThrow('GitHub allows six');
+    expect(() => synthesize(definition({ reviewers: { users: ['a', 'b', 'c', 'd', 'e', 'f', 'g'] } }).app)).toThrow(
+      'GitHub allows six',
+    );
     expect(() => synthesize(definition({ waitTimer: 43201 }).app)).toThrow('0 to 43200');
 
     const app = new App();
@@ -130,7 +124,12 @@ describe('plan and apply', () => {
 
     // A field change rewrites the rules, and the undeclared ones go back as they were.
     const retimed = synthesize(definition({ deploymentBranchPolicy: 'protected' }).app);
-    await apply(client, 'acme', plan(retimed, await readLiveState(client, retimed)), await readLiveState(client, retimed));
+    await apply(
+      client,
+      'acme',
+      plan(retimed, await readLiveState(client, retimed)),
+      await readLiveState(client, retimed),
+    );
     expect(client.callsTo('putEnvironment')).toEqual([
       {
         repo: 'flow-portal',
@@ -147,7 +146,11 @@ describe('plan and apply', () => {
 
   test('puts secrets and variables into an environment declared in the same run', async () => {
     const { app, deck } = definition({ deploymentBranchPolicy: 'protected' });
-    new ActionsSecret(deck, 'prod-TOKEN', { name: 'TOKEN', environment: 'production', valueFrom: 'ENVIRONMENTS_TEST_TOKEN' });
+    new ActionsSecret(deck, 'prod-TOKEN', {
+      name: 'TOKEN',
+      environment: 'production',
+      valueFrom: 'ENVIRONMENTS_TEST_TOKEN',
+    });
     new ActionsVariable(deck, 'prod-REGION', { name: 'REGION', environment: 'production', value: 'eu' });
     const state = synthesize(app);
     const client = new FakeClient({ environmentSecrets: { 'flow-portal': { staging: [{ name: 'OLD' }] } } });
@@ -161,7 +164,12 @@ describe('plan and apply', () => {
       'put-secret',
       'delete-secret',
     ]);
-    expect(changes.at(-1)).toEqual({ kind: 'delete-secret', name: 'OLD', repository: 'flow-portal', environment: 'staging' });
+    expect(changes.at(-1)).toEqual({
+      kind: 'delete-secret',
+      name: 'OLD',
+      repository: 'flow-portal',
+      environment: 'staging',
+    });
 
     process.env.ENVIRONMENTS_TEST_TOKEN = 'hunter2';
     await apply(client, 'acme', changes, await readLiveState(client, state), { allowDelete: true });
@@ -346,8 +354,6 @@ describe('reading the environments of owned repositories', () => {
 
   test('a repository GitHub does not find fails the read', async () => {
     const client = new FakeClient({ missingRepositories: ['typo'] });
-    await expect(readLiveState(client, owning(['typo']))).rejects.toThrow(
-      'Repository "typo" was not found',
-    );
+    await expect(readLiveState(client, owning(['typo']))).rejects.toThrow('Repository "typo" was not found');
   });
 });

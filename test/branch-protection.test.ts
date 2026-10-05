@@ -1,14 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  App,
-  BranchProtection,
-  Organization,
-  Repository,
-  Ruleset,
-  Team,
-  UserAccount,
-} from '../src/index.ts';
+
 import type { LiveBranchProtection } from '../src/github/client.ts';
+import { App, BranchProtection, Organization, Repository, Ruleset, Team, UserAccount } from '../src/index.ts';
 import { apply } from '../src/reconcile/applier.ts';
 import type { LiveState } from '../src/reconcile/live.ts';
 import { plan } from '../src/reconcile/planner.ts';
@@ -26,9 +19,7 @@ function live(overrides: Partial<LiveState> = {}): LiveState {
 }
 
 /** A branch as GitHub reports it, already flattened by the client. */
-function liveProtection(
-  overrides: Partial<LiveBranchProtection> = {},
-): LiveBranchProtection {
+function liveProtection(overrides: Partial<LiveBranchProtection> = {}): LiveBranchProtection {
   return {
     repository: 'app',
     branch: 'main',
@@ -60,9 +51,7 @@ describe('owner model', () => {
 
     expect(state.ownerType).toBe('user');
     expect(state.owner).toBe('martinjlowm');
-    expect(state.branchProtection).toEqual([
-      { repository: 'dotfiles', branch: 'main', requiredSignatures: true },
-    ]);
+    expect(state.branchProtection).toEqual([{ repository: 'dotfiles', branch: 'main', requiredSignatures: true }]);
   });
 
   test('a personal account rejects the org-only surfaces', () => {
@@ -70,9 +59,7 @@ describe('owner model', () => {
     const me = new UserAccount(app, 'martinjlowm', { login: 'martinjlowm' });
     new Team(me, 'engineering');
 
-    expect(() => synthesize(app)).toThrow(
-      /declares Team, which GitHub only offers to organizations/,
-    );
+    expect(() => synthesize(app)).toThrow(/declares Team, which GitHub only offers to organizations/);
   });
 
   test('rejects two owners in one app', () => {
@@ -92,9 +79,10 @@ describe('owner model', () => {
 
     const state = synthesize(app);
 
-    expect(
-      state.branchProtection?.map((p) => `${p.repository}#${p.branch}`).sort(),
-    ).toEqual(['flow-portal#main', 'module-infra#release']);
+    expect(state.branchProtection?.map((p) => `${p.repository}#${p.branch}`).sort()).toEqual([
+      'flow-portal#main',
+      'module-infra#release',
+    ]);
   });
 
   test('a branch protection with no repository at all is an error', () => {
@@ -110,9 +98,7 @@ describe('branch protection planning', () => {
   test('reports no change when the branch already matches', () => {
     const changes = plan(
       desired({
-        branchProtection: [
-          { repository: 'app', branch: 'main', enforceAdmins: true },
-        ],
+        branchProtection: [{ repository: 'app', branch: 'main', enforceAdmins: true }],
       }),
       live({ branchProtection: [liveProtection()] }),
     );
@@ -141,30 +127,22 @@ describe('branch protection planning', () => {
     const change = changes[0]!;
     expect(change.kind).toBe('branch-protection');
     if (change.kind === 'branch-protection') {
-      expect(change.fields.map((f) => f.field)).toEqual([
-        'requiredPullRequestReviews.requiredApprovingReviewCount',
-      ]);
+      expect(change.fields.map((f) => f.field)).toEqual(['requiredPullRequestReviews.requiredApprovingReviewCount']);
     }
   });
 
   test('an unprotected branch reads as one whole change, not a field list', () => {
     const changes = plan(
       desired({
-        branchProtection: [
-          { repository: 'app', branch: 'main', enforceAdmins: true },
-        ],
+        branchProtection: [{ repository: 'app', branch: 'main', enforceAdmins: true }],
       }),
       live({
-        branchProtection: [
-          { repository: 'app', branch: 'main', enabled: false },
-        ],
+        branchProtection: [{ repository: 'app', branch: 'main', enabled: false }],
       }),
     );
     expect(changes).toHaveLength(1);
     if (changes[0]!.kind === 'branch-protection') {
-      expect(changes[0]!.fields).toEqual([
-        { field: 'protection', from: 'none', to: 'declared' },
-      ]);
+      expect(changes[0]!.fields).toEqual([{ field: 'protection', from: 'none', to: 'declared' }]);
     }
   });
 
@@ -173,19 +151,15 @@ describe('branch protection planning', () => {
       branchProtection: [{ repository: 'app', branch: 'main', enabled: false }],
     });
 
-    expect(
-      plan(retire, live({ branchProtection: [liveProtection()] })).map(
-        (c) => c.kind,
-      ),
-    ).toEqual(['remove-branch-protection']);
+    expect(plan(retire, live({ branchProtection: [liveProtection()] })).map((c) => c.kind)).toEqual([
+      'remove-branch-protection',
+    ]);
 
     expect(
       plan(
         retire,
         live({
-          branchProtection: [
-            { repository: 'app', branch: 'main', enabled: false },
-          ],
+          branchProtection: [{ repository: 'app', branch: 'main', enabled: false }],
         }),
       ),
     ).toEqual([]);
@@ -215,9 +189,7 @@ describe('branch protection applying', () => {
     await apply(client, 'acme', changes, state, {});
 
     expect(client.callsTo('putBranchProtection')).toHaveLength(1);
-    expect(client.callsTo('setSignatureProtection')).toEqual([
-      { repo: 'app', branch: 'main', required: true },
-    ]);
+    expect(client.callsTo('setSignatureProtection')).toEqual([{ repo: 'app', branch: 'main', required: true }]);
   });
 
   test('removing protection is gated behind --allow-delete', async () => {
@@ -225,9 +197,7 @@ describe('branch protection applying', () => {
     const state = live({ branchProtection: [liveProtection()] });
     const changes = plan(
       desired({
-        branchProtection: [
-          { repository: 'app', branch: 'main', enabled: false },
-        ],
+        branchProtection: [{ repository: 'app', branch: 'main', enabled: false }],
       }),
       state,
     );
@@ -235,18 +205,14 @@ describe('branch protection applying', () => {
     // The declaration is deliberate, but tearing down an enforcement surface
     // still needs the gate: without it, nothing is deleted and the skip says so.
     const withoutGate = await apply(client, 'acme', changes, state, {});
-    expect(withoutGate.skipped).toEqual([
-      'remove branch protection from app#main (use --allow-delete)',
-    ]);
+    expect(withoutGate.skipped).toEqual(['remove branch protection from app#main (use --allow-delete)']);
     expect(client.callsTo('deleteBranchProtection')).toEqual([]);
 
     const withGate = await apply(client, 'acme', changes, state, {
       allowDelete: true,
     });
     expect(withGate.skipped).toEqual([]);
-    expect(client.callsTo('deleteBranchProtection')).toEqual([
-      { repo: 'app', branch: 'main' },
-    ]);
+    expect(client.callsTo('deleteBranchProtection')).toEqual([{ repo: 'app', branch: 'main' }]);
   });
 });
 
@@ -277,9 +243,7 @@ describe('warnings', () => {
     expect(
       collectWarnings(
         desired({
-          branchProtection: [
-            { repository: 'app', branch: 'main', enabled: false },
-          ],
+          branchProtection: [{ repository: 'app', branch: 'main', enabled: false }],
         }),
       ),
     ).toEqual([]);
@@ -356,10 +320,5 @@ test('every removal runs after every addition, so a retired control outlives its
     }),
   );
 
-  expect(changes.map((c) => c.kind)).toEqual([
-    'create',
-    'create-repo-ruleset',
-    'delete',
-    'remove-branch-protection',
-  ]);
+  expect(changes.map((c) => c.kind)).toEqual(['create', 'create-repo-ruleset', 'delete', 'remove-branch-protection']);
 });

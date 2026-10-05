@@ -3,14 +3,18 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { pathToFileURL } from 'node:url';
+
 import { MsGraphEntraClient } from './entra/graph.ts';
 import { setUpScimProvisioning } from './entra/scim-setup.ts';
 import { resolveGraphToken } from './entra/token.ts';
 import { type GitHubClient, OctokitGitHubClient } from './github/client.ts';
+import { EtagCache } from './github/etag-cache.ts';
 import type { RateWait, RequestMeter } from './github/meter.ts';
 import { resolveToken } from './github/token.ts';
 import { importOrganization } from './import/import-org.ts';
-import { apply, deleteAllowed, type ApplyRecord, type ApplyResult } from './reconcile/applier.ts';
+import { budgetNote, reportProgress, since, waitLine } from './progress.ts';
+import { diffAccessByPerson } from './reconcile/access-by-person.ts';
+import { type ApplyRecord, type ApplyResult, apply, deleteAllowed } from './reconcile/applier.ts';
 import { writeBackup } from './reconcile/backup.ts';
 import {
   type Change,
@@ -19,37 +23,20 @@ import {
   type DestructiveKind,
   isDestructive,
 } from './reconcile/changes.ts';
+import { choosePalette, type Palette } from './reconcile/color.ts';
 import { readLiveState } from './reconcile/live.ts';
-import { budgetNote, reportProgress, since, waitLine } from './progress.ts';
-import { interactive } from './ui/terminal.ts';
-import { EtagCache } from './github/etag-cache.ts';
+import { orphanRepositories, renderOrphans } from './reconcile/orphan-repositories.ts';
 import { unmanagedRoleAssignments } from './reconcile/plan-org-roles.ts';
 import { plan } from './reconcile/planner.ts';
-import { diffAccessByPerson } from './reconcile/access-by-person.ts';
-import { choosePalette, type Palette } from './reconcile/color.ts';
-import {
-  orphanRepositories,
-  renderOrphans,
-} from './reconcile/orphan-repositories.ts';
-import {
-  renderAccessByPerson,
-  renderAccessCsv,
-} from './reconcile/render-person.ts';
-import {
-  renderRedundant,
-  renderTree,
-  renderTreeDiff,
-} from './reconcile/render-tree.ts';
 import { renderPlan } from './reconcile/render.ts';
-import {
-  desiredTree,
-  readLiveTree,
-  redundantGrants,
-} from './reconcile/tree.ts';
+import { renderAccessByPerson, renderAccessCsv } from './reconcile/render-person.ts';
+import { renderRedundant, renderTree, renderTreeDiff } from './reconcile/render-tree.ts';
+import { desiredTree, readLiveTree, redundantGrants } from './reconcile/tree.ts';
 import { diffTrees } from './reconcile/tree-diff.ts';
 import type { DesiredState, ManifestProvenance } from './synth/manifest.ts';
 import { validateManifest } from './synth/validate.ts';
 import { collectWarnings } from './synth/warnings.ts';
+import { interactive } from './ui/terminal.ts';
 
 const USAGE = `cdkgithub — define GitHub org team structure as code
 
@@ -105,19 +92,14 @@ and code security configurations need the org to have those features available.
 falls back to \`az account get-access-token\`, and reads the GitHub token Entra
 will provision with from the environment variable the definition names.`;
 
-export async function main(
-  argv: string[],
-  connect: Connect = githubClient,
-): Promise<number> {
+export async function main(argv: string[], connect: Connect = githubClient): Promise<number> {
   const [command, ...rest] = argv;
 
   let flags: Flags;
   try {
     flags = parseFlags(rest, command);
   } catch (error) {
-    console.error(
-      `${error instanceof Error ? error.message : String(error)}\n\n${USAGE}`,
-    );
+    console.error(`${error instanceof Error ? error.message : String(error)}\n\n${USAGE}`);
     return 1;
   }
 
@@ -137,7 +119,7 @@ export async function main(
     case '-h':
     case '--help':
     case undefined:
-      console.log(USAGE);
+      console.info(USAGE);
       return 0;
     default:
       console.error(`Unknown command: ${command}\n\n${USAGE}`);
@@ -147,9 +129,7 @@ export async function main(
 
 async function synthCommand(configPath: string | undefined): Promise<number> {
   if (!configPath) {
-    console.error(
-      'synth requires a config file, e.g. `cdkgithub synth examples/factbird.ts`',
-    );
+    console.error('synth requires a config file, e.g. `cdkgithub synth examples/factbird.ts`');
     return 1;
   }
   // The config module constructs an App and calls app.synth() on load.
@@ -176,10 +156,7 @@ function stampProvenance(manifestPath: string, configPath: string): void {
     synthesizedAt: new Date().toISOString(),
     ...gitState(),
   };
-  writeFileSync(
-    manifestPath,
-    `${JSON.stringify({ ...manifest, provenance }, null, 2)}\n`,
-  );
+  writeFileSync(manifestPath, `${JSON.stringify({ ...manifest, provenance }, null, 2)}\n`);
 }
 
 /** The commit the working tree is on, and whether it is dirty, when in git. */
@@ -188,7 +165,9 @@ function gitState(): { commit?: string; dirty?: boolean } {
     encoding: 'utf8',
     timeout: 5_000,
   });
-  if (head.status !== 0) return {};
+  if (head.status !== 0) {
+    return {};
+  }
   const status = spawnSync('git', ['status', '--porcelain'], {
     encoding: 'utf8',
     timeout: 5_000,
@@ -206,9 +185,7 @@ function gitState(): { commit?: string; dirty?: boolean } {
 async function importCommand(flags: Flags, connect: Connect): Promise<number> {
   const org = flags.positional;
   if (!org) {
-    console.error(
-      'import requires an organization login, e.g. `cdkgithub import factbird`',
-    );
+    console.error('import requires an organization login, e.g. `cdkgithub import factbird`');
     return 1;
   }
   const github = connect(flags);
@@ -221,7 +198,7 @@ async function importCommand(flags: Flags, connect: Connect): Promise<number> {
     console.error(`Definition written to ${flags.output}`);
     return 0;
   }
-  console.log(definition);
+  console.info(definition);
   return 0;
 }
 
@@ -252,7 +229,7 @@ async function scimCommand(flags: Flags): Promise<number> {
     result = await setUpScimProvisioning(entra, desired.owner, scim, {
       yes: flags.yes,
       env: process.env,
-      log: (line) => console.log(`  ${line}`),
+      log: (line) => console.info(`  ${line}`),
     });
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
@@ -260,21 +237,23 @@ async function scimCommand(flags: Flags): Promise<number> {
   }
 
   if (result.actions.length === 0) {
-    console.log('Entra already matches the declaration.');
+    console.info('Entra already matches the declaration.');
   } else if (flags.yes) {
-    console.log(
-      `\nConfigured: ${result.actions.length} action${result.actions.length === 1 ? '' : 's'}.`,
-    );
+    console.info(`\nConfigured: ${result.actions.length} action${result.actions.length === 1 ? '' : 's'}.`);
   } else {
-    console.log(`SCIM setup for organization "${desired.owner}":\n`);
-    for (const action of result.actions) console.log(`  + ${action}`);
+    console.info(`SCIM setup for organization "${desired.owner}":\n`);
+    for (const action of result.actions) {
+      console.info(`  + ${action}`);
+    }
   }
-  for (const note of result.notes) console.log(`  note: ${note}`);
+  for (const note of result.notes) {
+    console.info(`  note: ${note}`);
+  }
 
   await reportProvisionedGroups(desired.owner, scim.groups);
 
   if (!flags.yes && result.actions.length > 0) {
-    console.log('\nDry run. Re-run with --yes to configure Entra.');
+    console.info('\nDry run. Re-run with --yes to configure Entra.');
   }
   return 0;
 }
@@ -285,26 +264,19 @@ async function scimCommand(flags: Flags): Promise<number> {
  * GitHub token degrades to a note, not a failure, because the Entra half of
  * the run is complete either way.
  */
-async function reportProvisionedGroups(
-  owner: string,
-  groups: readonly string[],
-): Promise<void> {
+async function reportProvisionedGroups(owner: string, groups: readonly string[]): Promise<void> {
   try {
     const client = new OctokitGitHubClient(resolveToken());
-    const visible = new Set(
-      (await client.listExternalGroups(owner)).map((g) => g.name),
-    );
+    const visible = new Set((await client.listExternalGroups(owner)).map((g) => g.name));
     const there = groups.filter((g) => visible.has(g));
     const pending = groups.filter((g) => !visible.has(g));
     if (there.length > 0) {
-      console.log(
-        `\nVisible in GitHub already: ${there.join(', ')}. Link with \`apply --enable-scim\`.`,
-      );
+      console.info(`\nVisible in GitHub already: ${there.join(', ')}. Link with \`apply --enable-scim\`.`);
     }
     if (pending.length > 0) {
-      console.log(
+      console.info(
         `${there.length > 0 ? '' : '\n'}Not visible in GitHub yet: ${pending.join(', ')}. ` +
-          'Provisioning runs on Entra\'s schedule (up to 40 minutes).',
+          "Provisioning runs on Entra's schedule (up to 40 minutes).",
       );
     }
   } catch (error) {
@@ -337,11 +309,7 @@ function githubClient(flags: Flags): Connection {
  * Read with a progress view on stderr and a summary of what the read cost,
  * then keep the ETags the read collected for the next run.
  */
-async function readWithProgress<T>(
-  { client, cache }: Connection,
-  flags: Flags,
-  read: () => Promise<T>,
-): Promise<T> {
+async function readWithProgress<T>({ client, cache }: Connection, flags: Flags, read: () => Promise<T>): Promise<T> {
   const label = 'Reading live state';
   const result = interactive(process.stderr)
     ? await (await import('./ui/read-progress.tsx')).readWithScreen(
@@ -369,14 +337,12 @@ async function planCommand(flags: Flags, connect: Connect): Promise<number> {
   const desired = readManifest(flags.manifest);
   const github = connect(flags);
   const { client } = github;
-  const live = await readWithProgress(github, flags, () =>
-    readLiveState(client, desired),
-  );
+  const live = await readWithProgress(github, flags, () => readLiveState(client, desired));
   const changes = plan(desired, live);
   printWarnings(desired);
   printProvenance(desired);
-  console.log(`Plan for ${describeOwner(desired)}:\n`);
-  console.log(renderPlan(changes));
+  console.info(`Plan for ${describeOwner(desired)}:\n`);
+  console.info(renderPlan(changes));
   printUnmanagedRoles(desired, live);
   return 0;
 }
@@ -388,20 +354,17 @@ async function planCommand(flags: Flags, connect: Connect): Promise<number> {
  * assignment nobody wrote down is a wider access path than any team grant, and
  * invisible until it is printed.
  */
-function printUnmanagedRoles(
-  desired: DesiredState,
-  live: Awaited<ReturnType<typeof readLiveState>>,
-): void {
+function printUnmanagedRoles(desired: DesiredState, live: Awaited<ReturnType<typeof readLiveState>>): void {
   const unmanaged = unmanagedRoleAssignments(desired.organizationRoles, live);
-  if (unmanaged.length === 0) return;
+  if (unmanaged.length === 0) {
+    return;
+  }
 
-  console.log('\nOrganization roles held outside this definition:');
+  console.info('\nOrganization roles held outside this definition:');
   for (const role of unmanaged) {
     const base = role.baseRole ? ` (${role.baseRole} on every repository)` : '';
-    const who = [...role.teams.map((t) => `team ${t}`), ...role.users].join(
-      ', ',
-    );
-    console.log(`  ${role.role}${base}: ${who}`);
+    const who = [...role.teams.map((t) => `team ${t}`), ...role.users].join(', ');
+    console.info(`  ${role.role}${base}: ${who}`);
   }
 }
 
@@ -409,30 +372,26 @@ async function applyCommand(flags: Flags, connect: Connect): Promise<number> {
   const desired = readManifest(flags.manifest);
   const github = connect(flags);
   const { client } = github;
-  const live = await readWithProgress(github, flags, () =>
-    readLiveState(client, desired),
-  );
+  const live = await readWithProgress(github, flags, () => readLiveState(client, desired));
   const changes = plan(desired, live);
 
   printWarnings(desired);
   printProvenance(desired);
-  console.log(`Plan for ${describeOwner(desired)}:\n`);
-  console.log(renderPlan(changes));
-  console.log('');
+  console.info(`Plan for ${describeOwner(desired)}:\n`);
+  console.info(renderPlan(changes));
+  console.info('');
 
   if (!flags.yes) {
-    console.log('Dry run. Re-run with --yes to apply these changes.');
+    console.info('Dry run. Re-run with --yes to apply these changes.');
     return 0;
   }
 
   const allowDelete = resolveAllowDelete(flags.allowDelete);
   const executable = changes.filter(
-    (c) =>
-      deleteAllowed(c, allowDelete) &&
-      !(c.kind === 'link-group' && !flags.enableScim),
+    (c) => deleteAllowed(c, allowDelete) && !(c.kind === 'link-group' && !flags.enableScim),
   );
   if (executable.length === 0) {
-    console.log('Nothing to apply.');
+    console.info('Nothing to apply.');
     return 0;
   }
 
@@ -453,13 +412,17 @@ async function applyCommand(flags: Flags, connect: Connect): Promise<number> {
   }
 
   const budget = budgetNote(executable.length, client.meter.snapshot());
-  if (budget) console.log(`${budget}\n`);
+  if (budget) {
+    console.info(`${budget}\n`);
+  }
 
   const palette = paletteFor(process.stdout, flags);
-  if (!(await approved(executable, flags.requireApproval, palette))) return 1;
+  if (!(await approved(executable, flags.requireApproval, palette))) {
+    return 1;
+  }
 
   const backup = writeBackup('github.out', desired, live, executable);
-  console.log(`Backup written to ${backup.dir} (rollback-manifest.json reverts the team structure).\n`);
+  console.info(`Backup written to ${backup.dir} (rollback-manifest.json reverts the team structure).\n`);
 
   const report = await applyReport(palette);
   client.meter.onWait = report.wait;
@@ -475,14 +438,14 @@ async function applyCommand(flags: Flags, connect: Connect): Promise<number> {
     });
     report.stop();
 
-    console.log(`${report.gap}${appliedLine(result)}`);
-    for (const s of result.skipped) console.log(`  skipped: ${s}`);
+    console.info(`${report.gap}${appliedLine(result)}`);
+    for (const s of result.skipped) {
+      console.info(`  skipped: ${s}`);
+    }
     return 0;
   } catch (error) {
     report.stop();
-    console.error(
-      `\napply stopped: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    console.error(`\napply stopped: ${error instanceof Error ? error.message : String(error)}`);
     console.error(
       `The organization is partially reconciled. ${backup.dir}/journal.jsonl ` +
         'says what was applied; re-running apply continues from live state, ' +
@@ -519,9 +482,9 @@ async function applyReport(palette: Palette): Promise<{
 }> {
   if (!interactive(process.stdout)) {
     return {
-      progress: (message) => console.log(`  ${message}`),
+      progress: (message) => console.info(`  ${message}`),
       record: () => {},
-      wait: (wait) => console.log(waitLine(wait)),
+      wait: (wait) => console.info(waitLine(wait)),
       stop: () => {},
       gap: '\n',
     };
@@ -540,10 +503,10 @@ async function applyReport(palette: Palette): Promise<{
 }
 
 /** Turn the flag value into what {@link apply} takes. */
-function resolveAllowDelete(
-  value: Flags['allowDelete'],
-): boolean | ReadonlySet<DestructiveKind> {
-  if (typeof value === 'boolean') return value;
+function resolveAllowDelete(value: Flags['allowDelete']): boolean | ReadonlySet<DestructiveKind> {
+  if (typeof value === 'boolean') {
+    return value;
+  }
   return new Set(value.map((scope) => DELETE_SCOPES[scope]));
 }
 
@@ -553,10 +516,7 @@ function resolveAllowDelete(
  * on the second secret mid-apply would leave the organization partially
  * reconciled over a missing export.
  */
-export function missingSecretValues(
-  executable: Change[],
-  env: Record<string, string | undefined>,
-): string[] {
+export function missingSecretValues(executable: Change[], env: Record<string, string | undefined>): string[] {
   const missing = new Set<string>();
   for (const change of executable) {
     if (change.kind === 'put-secret' && env[change.secret.valueFrom] === undefined) {
@@ -572,14 +532,14 @@ export function missingSecretValues(
  * than an intended restructuring, and it is the one mistake a gate flag passed
  * out of habit would not catch.
  */
-export function massDeleteGuard(
-  executable: Change[],
-  liveTeamCount: number,
-  force: boolean,
-): string | undefined {
-  if (force) return undefined;
+export function massDeleteGuard(executable: Change[], liveTeamCount: number, force: boolean): string | undefined {
+  if (force) {
+    return undefined;
+  }
   const teamDeletes = executable.filter((c) => c.kind === 'delete').length;
-  if (teamDeletes < 3 || teamDeletes * 2 < liveTeamCount) return undefined;
+  if (teamDeletes < 3 || teamDeletes * 2 < liveTeamCount) {
+    return undefined;
+  }
   return (
     `Refusing to delete ${teamDeletes} of ${liveTeamCount} teams in one run. ` +
     'If the manifest is current and this is intended, re-run with --force; ' +
@@ -593,27 +553,27 @@ export function massDeleteGuard(
  * "any-change" always pauses, "never" never does. Where there is no terminal
  * to ask, the run fails rather than assumes.
  */
-async function approved(
-  executable: Change[],
-  level: RequireApproval,
-  palette: Palette,
-): Promise<boolean> {
-  if (level === 'never') return true;
-  const needing =
-    level === 'any-change' ? executable : executable.filter(isDestructive);
-  if (needing.length === 0) return true;
+async function approved(executable: Change[], level: RequireApproval, palette: Palette): Promise<boolean> {
+  if (level === 'never') {
+    return true;
+  }
+  const needing = level === 'any-change' ? executable : executable.filter(isDestructive);
+  if (needing.length === 0) {
+    return true;
+  }
 
   const destructive = executable.filter(isDestructive).length;
   if (process.stdin.isTTY && interactive(process.stdout)) {
     const { confirmApply } = await import('./ui/confirm.tsx');
-    if (await confirmApply(executable.length, destructive, palette)) return true;
-    console.log('Aborted. Nothing was changed.');
+    if (await confirmApply(executable.length, destructive, palette)) {
+      return true;
+    }
+    console.info('Aborted. Nothing was changed.');
     return false;
   }
 
-  console.log(
-    `${executable.length} change${executable.length === 1 ? '' : 's'} to apply, ` +
-      `${destructive} destructive.`,
+  console.info(
+    `${executable.length} change${executable.length === 1 ? '' : 's'} to apply, ` + `${destructive} destructive.`,
   );
 
   if (!process.stdin.isTTY) {
@@ -625,14 +585,12 @@ async function approved(
   }
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  const answer = (
-    await rl.question('Do you wish to apply these changes (y/n)? ')
-  )
-    .trim()
-    .toLowerCase();
+  const answer = (await rl.question('Do you wish to apply these changes (y/n)? ')).trim().toLowerCase();
   rl.close();
-  if (answer === 'y' || answer === 'yes') return true;
-  console.log('Aborted. Nothing was changed.');
+  if (answer === 'y' || answer === 'yes') {
+    return true;
+  }
+  console.info('Aborted. Nothing was changed.');
   return false;
 }
 
@@ -651,11 +609,11 @@ function printWarnings(desired: DesiredState): void {
 /** Which definition and commit this manifest speaks for, when synth stamped it. */
 function printProvenance(desired: DesiredState): void {
   const p = desired.provenance;
-  if (!p) return;
-  const commit = p.commit
-    ? ` at ${p.commit.slice(0, 7)}${p.dirty ? ' (dirty working tree)' : ''}`
-    : '';
-  console.log(`Manifest: ${p.source}${commit}, synthesized ${since(p.synthesizedAt)}\n`);
+  if (!p) {
+    return;
+  }
+  const commit = p.commit ? ` at ${p.commit.slice(0, 7)}${p.dirty ? ' (dirty working tree)' : ''}` : '';
+  console.info(`Manifest: ${p.source}${commit}, synthesized ${since(p.synthesizedAt)}\n`);
 }
 
 function readManifest(path: string): DesiredState {
@@ -705,17 +663,12 @@ async function diffCommand(flags: Flags, connect: Connect): Promise<number> {
       ]
     : [];
   const live = await readWithProgress(github, flags, () =>
-    readLiveTree(
-      client,
-      desired.owner,
-      desired.ownerType,
-      collaboratorRepositories,
-    ),
+    readLiveTree(client, desired.owner, desired.ownerType, collaboratorRepositories),
   );
   const palette = paletteFor(process.stdout, flags);
 
   if (flags.live) {
-    console.log(renderTree(live, { palette }));
+    console.info(renderTree(live, { palette }));
     return 0;
   }
 
@@ -725,24 +678,19 @@ async function diffCommand(flags: Flags, connect: Connect): Promise<number> {
   // The live roles also say what an organization role reaches, and the live
   // repositories are the estate such a role reaches over: both sides of the
   // comparison are then measured against the same organization.
-  const wanted = desiredTree(
-    desired,
-    live.customRoles,
-    live.orgRoles,
-    live.repositories,
-  );
+  const wanted = desiredTree(desired, live.customRoles, live.orgRoles, live.repositories);
 
   // The same two trees, read down the other axis: who reaches what, rather than
   // what changes. An access review asks the first and a code review the second.
   if (flags.byPerson) {
     const people = diffAccessByPerson(live, wanted);
     if (flags.csv) {
-      console.log(renderAccessCsv(people));
+      console.info(renderAccessCsv(people));
       return 0;
     }
-    console.log(`Repository access for ${describeOwner(desired)}:
+    console.info(`Repository access for ${describeOwner(desired)}:
 `);
-    console.log(
+    console.info(
       renderAccessByPerson(people, {
         full: flags.full,
         changedOnly: flags.changedOnly,
@@ -752,23 +700,21 @@ async function diffCommand(flags: Flags, connect: Connect): Promise<number> {
     return 0;
   }
 
-  console.log(`Tree diff for ${describeOwner(desired)}:
+  console.info(`Tree diff for ${describeOwner(desired)}:
 `);
-  console.log(
+  console.info(
     renderTreeDiff(diffTrees(live, wanted), {
       full: flags.full,
       changedOnly: flags.changedOnly,
       palette,
     }),
   );
-  console.log(
-    renderRedundant(redundantGrants(wanted), { full: flags.full, palette }),
-  );
+  console.info(renderRedundant(redundantGrants(wanted), { full: flags.full, palette }));
 
   // Repositories nobody declares and no team reaches. Reported here rather than
   // planned: an undeclared repository is one to write down or archive, and
   // neither is a decision this tool should make.
-  console.log(
+  console.info(
     renderOrphans(
       orphanRepositories(
         live.repositories,
@@ -832,7 +778,9 @@ export function parseFlags(args: string[], command?: string): Flags {
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === undefined) continue;
+    if (arg === undefined) {
+      continue;
+    }
     switch (arg) {
       case '--manifest': {
         const value = args[++i];
@@ -854,14 +802,8 @@ export function parseFlags(args: string[], command?: string): Flags {
         break;
       case '--require-approval': {
         const value = args[++i];
-        if (
-          value !== 'never' &&
-          value !== 'destructive' &&
-          value !== 'any-change'
-        ) {
-          throw new Error(
-            '--require-approval takes never, destructive, or any-change.',
-          );
+        if (value !== 'never' && value !== 'destructive' && value !== 'any-change') {
+          throw new Error('--require-approval takes never, destructive, or any-change.');
         }
         flags.requireApproval = value;
         break;
@@ -910,9 +852,7 @@ export function parseFlags(args: string[], command?: string): Flags {
         break;
       default: {
         if (arg.startsWith('--allow-delete=')) {
-          flags.allowDelete = parseDeleteScopes(
-            arg.slice('--allow-delete='.length),
-          );
+          flags.allowDelete = parseDeleteScopes(arg.slice('--allow-delete='.length));
           break;
         }
         if (arg.startsWith('--repositories=')) {
@@ -921,15 +861,15 @@ export function parseFlags(args: string[], command?: string): Flags {
             .split(',')
             .filter((name) => name !== '');
           if (names.length === 0) {
-            throw new Error(
-              '--repositories= needs at least one repository name.',
-            );
+            throw new Error('--repositories= needs at least one repository name.');
           }
           flags.repositories = names;
           break;
         }
         // A misspelled flag must not silently change what an apply does.
-        if (arg.startsWith('-')) throw new Error(`Unknown option: ${arg}`);
+        if (arg.startsWith('-')) {
+          throw new Error(`Unknown option: ${arg}`);
+        }
         if (++positionals > positionalsAllowed) {
           throw new Error(`Unexpected argument: ${arg}`);
         }
@@ -944,15 +884,12 @@ export function parseFlags(args: string[], command?: string): Flags {
 function parseDeleteScopes(value: string): DeleteScope[] {
   const scopes = value.split(',').filter((s) => s !== '');
   if (scopes.length === 0) {
-    throw new Error(
-      `--allow-delete= needs at least one scope (${Object.keys(DELETE_SCOPES).join(', ')}).`,
-    );
+    throw new Error(`--allow-delete= needs at least one scope (${Object.keys(DELETE_SCOPES).join(', ')}).`);
   }
   for (const scope of scopes) {
     if (!(scope in DELETE_SCOPES)) {
       throw new Error(
-        `Unknown --allow-delete scope "${scope}". ` +
-          `Scopes: ${Object.keys(DELETE_SCOPES).join(', ')}.`,
+        `Unknown --allow-delete scope "${scope}". ` + `Scopes: ${Object.keys(DELETE_SCOPES).join(', ')}.`,
       );
     }
   }

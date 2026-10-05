@@ -18,26 +18,18 @@
  * nobody can read, so {@link synthesize} asserts it instead and names both.
  */
 
-import type {
-  BuiltInRepoPermission,
-  RepoPermission,
-} from '../synth/manifest.ts';
+import type { BuiltInRepoPermission, RepoPermission } from '../synth/manifest.ts';
 import type { VocabularyRepository } from '../vocabulary.ts';
 
 /** One repository, at one permission. */
-export interface RepositoryGrant<
-  R extends string = string,
-  P extends RepoPermission = RepoPermission,
-> {
+export interface RepositoryGrant<R extends string = string, P extends RepoPermission = RepoPermission> {
   readonly repository: R;
   readonly permission: P;
 }
 
 const at =
   <P extends BuiltInRepoPermission>(permission: P) =>
-  <R extends VocabularyRepository>(
-    ...repositories: R[]
-  ): RepositoryGrant<R, P>[] =>
+  <R extends VocabularyRepository>(...repositories: R[]): RepositoryGrant<R, P>[] =>
     repositories.map((repository) => ({ repository, permission }));
 
 /** Read the code, and nothing else. */
@@ -74,9 +66,7 @@ export const admin = at('admin');
  */
 export const role =
   <N extends string>(name: N) =>
-  <R extends VocabularyRepository>(
-    ...repositories: R[]
-  ): RepositoryGrant<R, N>[] =>
+  <R extends VocabularyRepository>(...repositories: R[]): RepositoryGrant<R, N>[] =>
     repositories.map((repository) => ({ repository, permission: name }));
 
 /**

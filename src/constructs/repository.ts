@@ -1,33 +1,18 @@
 import { Construct } from 'constructs';
+
 import type { RepoPermission, RepositoryVisibility } from '../synth/manifest.ts';
 import { ActionsSecret } from './actions-secret.ts';
 import { ActionsVariable } from './actions-variable.ts';
+import { BranchProtection, type BranchProtectionProps } from './branch-protection.ts';
 import { Collaborator } from './collaborator.ts';
-import {
-  BranchProtection,
-  type BranchProtectionProps,
-} from './branch-protection.ts';
-import {
-  Environment,
-  type EnvironmentOptions,
-  type SecretOptions,
-} from './environment.ts';
-import {
-  RepositoryRuleset,
-  type RepositoryRulesetProps,
-} from './repository-ruleset.ts';
+import { Environment, type EnvironmentOptions, type SecretOptions } from './environment.ts';
+import { RepositoryRuleset, type RepositoryRulesetProps } from './repository-ruleset.ts';
 
 /** A repository ruleset, as `Repository.addRuleset` takes it. */
-export type RepositoryRulesetOptions = Omit<
-  RepositoryRulesetProps,
-  'name' | 'repository'
->;
+export type RepositoryRulesetOptions = Omit<RepositoryRulesetProps, 'name' | 'repository'>;
 
 /** A branch's legacy protection, as `Repository.addBranchProtection` takes it. */
-export type BranchProtectionOptions = Omit<
-  BranchProtectionProps,
-  'branch' | 'repository'
->;
+export type BranchProtectionOptions = Omit<BranchProtectionProps, 'branch' | 'repository'>;
 
 export interface RepositoryProps {
   /** Repository name without the owner. Defaults to the construct id. */
@@ -171,10 +156,7 @@ export class Repository extends Construct {
   }
 
   /** Declare a branch's legacy protection, or `{ enabled: false }` to retire it. */
-  addBranchProtection(
-    branch: string,
-    options: BranchProtectionOptions = {},
-  ): BranchProtection {
+  addBranchProtection(branch: string, options: BranchProtectionOptions = {}): BranchProtection {
     return new BranchProtection(this, branch, options);
   }
 }

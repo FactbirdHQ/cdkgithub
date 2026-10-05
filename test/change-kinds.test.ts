@@ -1,11 +1,7 @@
 import { describe, expect, test } from 'bun:test';
+
 import { apply, describeChange } from '../src/reconcile/applier.ts';
-import {
-  type Change,
-  DELETE_SCOPES,
-  DESTRUCTIVE_KINDS,
-  isDestructive,
-} from '../src/reconcile/changes.ts';
+import { type Change, DELETE_SCOPES, DESTRUCTIVE_KINDS, isDestructive } from '../src/reconcile/changes.ts';
 import type { LiveState } from '../src/reconcile/live.ts';
 import { renderPlan, summarize } from '../src/reconcile/render.ts';
 import { FakeClient, type FakeClientState } from './fake-client.ts';
@@ -370,17 +366,13 @@ describe('every change kind', () => {
 
   test('is counted by exactly one summary bucket', () => {
     const counts = summarize(ALL_CHANGES);
-    expect(counts.create + counts.update + counts.delete + counts.link).toBe(
-      ALL_CHANGES.length,
-    );
+    expect(counts.create + counts.update + counts.delete + counts.link).toBe(ALL_CHANGES.length);
   });
 
   test('is marked "(requires --allow-delete)" exactly when destructive', () => {
     for (const change of ALL_CHANGES) {
       const marked = renderPlan([change]).includes('requires --allow-delete');
-      expect(`${change.kind}: ${marked}`).toBe(
-        `${change.kind}: ${isDestructive(change)}`,
-      );
+      expect(`${change.kind}: ${marked}`).toBe(`${change.kind}: ${isDestructive(change)}`);
     }
   });
 
@@ -393,9 +385,7 @@ describe('every change kind', () => {
   });
 
   test('every destructive kind has an --allow-delete scope', () => {
-    expect(new Set(Object.values(DELETE_SCOPES))).toEqual(
-      new Set(DESTRUCTIVE_KINDS),
-    );
+    expect(new Set(Object.values(DELETE_SCOPES))).toEqual(new Set(DESTRUCTIVE_KINDS));
   });
 });
 
@@ -431,15 +421,9 @@ describe('destructive arms', () => {
     expect(client.callsTo('deleteSecurityConfiguration')).toEqual([9]);
     expect(client.callsTo('deleteCustomProperty')).toEqual(['tier']);
     expect(client.callsTo('deleteIssueField')).toEqual([21]);
-    expect(client.callsTo('deleteBranchProtection')).toEqual([
-      { repo: 'app', branch: 'main' },
-    ]);
-    expect(client.callsTo('deleteCustomRepositoryRole')).toEqual([
-      { roleId: 3 },
-    ]);
-    expect(client.callsTo('removeRoleFromTeam')).toEqual([
-      { roleId: 11, team: 'auditors' },
-    ]);
+    expect(client.callsTo('deleteBranchProtection')).toEqual([{ repo: 'app', branch: 'main' }]);
+    expect(client.callsTo('deleteCustomRepositoryRole')).toEqual([{ roleId: 3 }]);
+    expect(client.callsTo('removeRoleFromTeam')).toEqual([{ roleId: 11, team: 'auditors' }]);
   });
 
   test('a scoped gate lets only its own kind through', async () => {
@@ -451,9 +435,7 @@ describe('destructive arms', () => {
 
     expect(client.teams).toEqual([]);
     expect(client.callsTo('removeMembership')).toEqual([]);
-    expect(result.skipped).toEqual([
-      'remove octocat from team (use --allow-delete)',
-    ]);
+    expect(result.skipped).toEqual(['remove octocat from team (use --allow-delete)']);
   });
 });
 
@@ -487,27 +469,19 @@ describe('non-destructive arms', () => {
       },
     ]);
     expect(client.callsTo('putBranchProtection')).toHaveLength(1);
-    expect(client.callsTo('setSignatureProtection')).toEqual([
-      { repo: 'app', branch: 'main', required: true },
-    ]);
+    expect(client.callsTo('setSignatureProtection')).toEqual([{ repo: 'app', branch: 'main', required: true }]);
     expect(client.callsTo('createRepository')).toHaveLength(1);
     expect(client.callsTo('createCustomRepositoryRole')).toHaveLength(1);
     expect(client.callsTo('updateCustomRepositoryRole')).toHaveLength(1);
-    expect(client.callsTo('assignRoleToTeam')).toEqual([
-      { roleId: 11, team: 'auditors' },
-    ]);
+    expect(client.callsTo('assignRoleToTeam')).toEqual([{ roleId: 11, team: 'auditors' }]);
   });
 
   test('journals each change as applied, skipped, or failed', async () => {
     const client = new FakeClient(stateForApply());
     const records: Array<{ kind: string; status: string }> = [];
-    await apply(
-      client,
-      'acme',
-      [SAMPLES['set-membership'], SAMPLES.delete],
-      liveFor(client),
-      { onRecord: (r) => records.push({ kind: r.kind, status: r.status }) },
-    );
+    await apply(client, 'acme', [SAMPLES['set-membership'], SAMPLES.delete], liveFor(client), {
+      onRecord: (r) => records.push({ kind: r.kind, status: r.status }),
+    });
     expect(records).toEqual([
       { kind: 'set-membership', status: 'applied' },
       { kind: 'delete', status: 'skipped' },

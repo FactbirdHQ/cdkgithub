@@ -58,24 +58,22 @@ export async function setUpScimProvisioning(
 
   const name = manifest.applicationDisplayName;
   let servicePrincipal = await entra.findServicePrincipal(name);
-  const jobs = servicePrincipal
-    ? await entra.listSynchronizationJobs(servicePrincipal.id)
-    : [];
-  const assigned = servicePrincipal
-    ? await entra.listAssignedGroups(servicePrincipal.id)
-    : [];
+  const jobs = servicePrincipal ? await entra.listSynchronizationJobs(servicePrincipal.id) : [];
+  const assigned = servicePrincipal ? await entra.listAssignedGroups(servicePrincipal.id) : [];
 
   const groupIds = new Map<string, string>();
   const missing: string[] = [];
   for (const group of manifest.groups) {
     const id = await entra.findGroupId(group);
-    if (id === undefined) missing.push(group);
-    else groupIds.set(group, id);
+    if (id === undefined) {
+      missing.push(group);
+    } else {
+      groupIds.set(group, id);
+    }
   }
   if (missing.length > 0) {
     throw new Error(
-      `No Entra security group is named ${missing.map((g) => `"${g}"`).join(', ')}. ` +
-        'Nothing was configured.',
+      `No Entra security group is named ${missing.map((g) => `"${g}"`).join(', ')}. ` + 'Nothing was configured.',
     );
   }
 
@@ -101,17 +99,11 @@ export async function setUpScimProvisioning(
   }
   if (creatingJob) {
     actions.push('create the provisioning job');
-    actions.push(
-      `write its credentials: ${scimTenantUrl(owner)}, token from $${manifest.tokenFrom}`,
-    );
-  } else if (token !== undefined) {
-    actions.push(
-      `refresh the provisioning credentials from $${manifest.tokenFrom}`,
-    );
+    actions.push(`write its credentials: ${scimTenantUrl(owner)}, token from $${manifest.tokenFrom}`);
+  } else if (token === undefined) {
+    notes.push(`credentials kept as stored; export $${manifest.tokenFrom} to rotate them`);
   } else {
-    notes.push(
-      `credentials kept as stored; export $${manifest.tokenFrom} to rotate them`,
-    );
+    actions.push(`refresh the provisioning credentials from $${manifest.tokenFrom}`);
   }
 
   const assignedIds = new Set(assigned.map((a) => a.groupId));
@@ -124,23 +116,20 @@ export async function setUpScimProvisioning(
   const unmanaged = assigned.filter((a) => !declaredIds.has(a.groupId));
   if (unmanaged.length > 0) {
     notes.push(
-      `assigned outside this definition, left alone: ${unmanaged
-        .map((a) => `"${a.displayName}"`)
-        .join(', ')}`,
+      `assigned outside this definition, left alone: ${unmanaged.map((a) => `"${a.displayName}"`).join(', ')}`,
     );
   }
 
-  const startJob =
-    creatingJob || (existingJob !== undefined && existingJob.state !== 'Active');
+  const startJob = creatingJob || (existingJob !== undefined && existingJob.state !== 'Active');
   if (startJob) {
     actions.push(
-      creatingJob
-        ? 'start provisioning'
-        : `start provisioning (job state is ${existingJob?.state ?? 'unknown'})`,
+      creatingJob ? 'start provisioning' : `start provisioning (job state is ${existingJob?.state ?? 'unknown'})`,
     );
   }
 
-  if (!options.yes) return { actions, notes };
+  if (!options.yes) {
+    return { actions, notes };
+  }
 
   if (creatingApplication) {
     log(`Creating enterprise application "${name}"`);
@@ -155,11 +144,7 @@ export async function setUpScimProvisioning(
   }
   if (token !== undefined) {
     log(`Writing provisioning credentials from $${manifest.tokenFrom}`);
-    await entra.setSynchronizationSecrets(
-      principal.id,
-      scimTenantUrl(owner),
-      token,
-    );
+    await entra.setSynchronizationSecrets(principal.id, scimTenantUrl(owner), token);
   }
   for (const [group, id] of toAssign) {
     log(`Assigning group "${group}"`);
@@ -174,13 +159,7 @@ export async function setUpScimProvisioning(
 }
 
 /** Whether the declared tenant names the one the token reaches. */
-function tenantMatches(
-  declared: string,
-  tenant: { id: string; domains: string[] },
-): boolean {
+function tenantMatches(declared: string, tenant: { id: string; domains: string[] }): boolean {
   const wanted = declared.toLowerCase();
-  return (
-    tenant.id.toLowerCase() === wanted ||
-    tenant.domains.some((domain) => domain.toLowerCase() === wanted)
-  );
+  return tenant.id.toLowerCase() === wanted || tenant.domains.some((domain) => domain.toLowerCase() === wanted);
 }

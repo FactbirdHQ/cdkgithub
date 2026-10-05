@@ -30,10 +30,7 @@ import { rankCustomRoles, rankOf } from './permission-rank.ts';
  * A team the definition creates this run is skipped: `apply` writes its grants
  * and roster as part of the create, when the team finally has an id.
  */
-export function planTeamAccess(
-  teams: TeamManifest[],
-  live: LiveState,
-): Change[] {
+export function planTeamAccess(teams: TeamManifest[], live: LiveState): Change[] {
   const liveBySlug = new Map(live.teams.map((t) => [t.slug, t] as const));
   const roles = rankCustomRoles(live.customRepositoryRoles ?? []);
   // Keyed by live slug, because that is how the tree and the live rosters are
@@ -53,16 +50,14 @@ export function planTeamAccess(
     // new slug instead: they run after the rename, and the old slug is gone by
     // then, since GitHub redirects neither the team nor its sub-resources.
     const current = resolveLive(team, liveBySlug);
-    if (!current) continue;
+    if (!current) {
+      continue;
+    }
     if (declaresAccess(team)) {
-      changes.push(
-        ...planRepoAccess(team, current.slug, live, liveBySlug, roles),
-      );
+      changes.push(...planRepoAccess(team, current.slug, live, liveBySlug, roles));
     }
     if (declaresRoster(team)) {
-      changes.push(
-        ...planRoster(team, current.slug, live, liveBySlug, declaredByLiveSlug),
-      );
+      changes.push(...planRoster(team, current.slug, live, liveBySlug, declaredByLiveSlug));
     }
   }
   return changes;
@@ -73,22 +68,21 @@ export function planTeamAccess(
  * defines. This runs before any write, which is the point: a misspelled
  * permission is a typo to fix, not a grant to make.
  */
-function assertPermissionsResolve(
-  teams: TeamManifest[],
-  customRoles: LiveCustomRepositoryRole[] | undefined,
-): void {
+function assertPermissionsResolve(teams: TeamManifest[], customRoles: LiveCustomRepositoryRole[] | undefined): void {
   const known = new Set((customRoles ?? []).map((r) => r.name));
   for (const team of teams) {
     for (const [repo, permission] of Object.entries(team.repositories ?? {})) {
-      if (isBuiltInRepoPermission(permission)) continue;
-      if (known.has(permission)) continue;
+      if (isBuiltInRepoPermission(permission)) {
+        continue;
+      }
+      if (known.has(permission)) {
+        continue;
+      }
       const available = [...known].map((n) => `"${n}"`).join(', ');
       throw new Error(
         `Team "${team.slug}" grants "${permission}" on ${repo}, which is ` +
           'neither a built-in permission (pull, triage, push, maintain, admin) ' +
-          `nor a custom repository role this organization defines${
-            available ? ` (${available})` : ''
-          }.`,
+          `nor a custom repository role this organization defines${available ? ` (${available})` : ''}.`,
       );
     }
   }
@@ -103,9 +97,7 @@ function planRepoAccess(
 ): Change[] {
   const declared = team.repositories ?? {};
   const current = new Map(
-    (live.teamRepositories?.get(liveSlug) ?? []).map(
-      (r) => [r.name, comparableRoleName(r.roleName)] as const,
-    ),
+    (live.teamRepositories?.get(liveSlug) ?? []).map((r) => [r.name, comparableRoleName(r.roleName)] as const),
   );
   const inherited = inheritedAccess(liveSlug, live, liveBySlug);
   const roleFloor = organizationRoleFloor(liveSlug, live, liveBySlug, roles);
@@ -113,7 +105,9 @@ function planRepoAccess(
   const changes: Change[] = [];
   for (const [repository, permission] of Object.entries(declared)) {
     const from = current.get(repository);
-    if (from === permission) continue;
+    if (from === permission) {
+      continue;
+    }
     changes.push({
       kind: 'set-repo-access',
       slug: team.slug,
@@ -124,7 +118,9 @@ function planRepoAccess(
   }
 
   for (const [repository, from] of current) {
-    if (repository in declared) continue;
+    if (repository in declared) {
+      continue;
+    }
     // An ancestor grants at least this much, so the grant is not the team's to
     // give up: removing it here would either fail or strip the ancestor's.
     const above = inherited.get(repository);
@@ -133,10 +129,7 @@ function planRepoAccess(
     }
     // Likewise for an organization role's base role, which grants its
     // permission on every repository and is reported on each one.
-    if (
-      roleFloor !== undefined &&
-      rankOf(roleFloor, roles) >= rankOf(from, roles)
-    ) {
+    if (roleFloor !== undefined && rankOf(roleFloor, roles) >= rankOf(from, roles)) {
       continue;
     }
     changes.push({
@@ -150,11 +143,7 @@ function planRepoAccess(
 }
 
 /** The strongest grant each ancestor of `slug` holds, keyed by repository. */
-function inheritedAccess(
-  slug: string,
-  live: LiveState,
-  liveBySlug: Map<string, LiveTeam>,
-): Map<string, string> {
+function inheritedAccess(slug: string, live: LiveState, liveBySlug: Map<string, LiveTeam>): Map<string, string> {
   const merged = new Map<string, string>();
   let parent = liveBySlug.get(slug)?.parentSlug ?? null;
   const seen = new Set<string>([slug]);
@@ -185,22 +174,17 @@ function organizationRoleFloor(
   roles: Map<string, number>,
 ): string | undefined {
   const holders = new Set<string>();
-  for (
-    let team: string | null = slug;
-    team && !holders.has(team);
-    team = liveBySlug.get(team)?.parentSlug ?? null
-  ) {
+  for (let team: string | null = slug; team && !holders.has(team); team = liveBySlug.get(team)?.parentSlug ?? null) {
     holders.add(team);
   }
 
   let floor: string | undefined;
   for (const role of live.organizationRoles ?? []) {
-    if (!role.baseRole || !role.teams.some((t) => holders.has(t))) continue;
+    if (!role.baseRole || !role.teams.some((t) => holders.has(t))) {
+      continue;
+    }
     const permission = comparableRoleName(role.baseRole);
-    if (
-      floor === undefined ||
-      rankOf(permission, roles) > rankOf(floor, roles)
-    ) {
+    if (floor === undefined || rankOf(permission, roles) > rankOf(floor, roles)) {
       floor = permission;
     }
   }
@@ -215,7 +199,9 @@ function planRoster(
   declaredByLiveSlug: Map<string, TeamManifest>,
 ): Change[] {
   const declared = new Map<string, TeamRole>();
-  for (const username of team.members ?? []) declared.set(username, 'member');
+  for (const username of team.members ?? []) {
+    declared.set(username, 'member');
+  }
   // Maintainers are applied second: someone named in both lists is a maintainer.
   for (const username of team.maintainers ?? []) {
     declared.set(username, 'maintainer');
@@ -223,17 +209,10 @@ function planRoster(
 
   const roster = live.teamMembers?.get(liveSlug) ?? [];
   const reported = new Map(roster.map((m) => [m.login, m.role] as const));
-  const direct = new Map(
-    roster.filter((m) => !m.inherited).map((m) => [m.login, m.role] as const),
-  );
+  const direct = new Map(roster.filter((m) => !m.inherited).map((m) => [m.login, m.role] as const));
   // Whoever a team below will still hold once this run has been applied. A
   // declared member held that way needs no membership of their own here.
-  const explainedAfter = membersOfDescendants(
-    liveSlug,
-    live,
-    liveBySlug,
-    declaredByLiveSlug,
-  );
+  const explainedAfter = membersOfDescendants(liveSlug, live, liveBySlug, declaredByLiveSlug);
   const owners = new Set(live.organizationOwners ?? []);
 
   const changes: Change[] = [];
@@ -246,10 +225,10 @@ function planRoster(
     const held = direct.has(username) || explainedAfter.has(username);
     // GitHub reports an organization owner as maintainer whatever role was
     // written, so for an owner any membership satisfies the declaration.
-    const roleHolds =
-      effective === role ||
-      (owners.has(username) && effective === 'maintainer');
-    if (roleHolds && held) continue;
+    const roleHolds = effective === role || (owners.has(username) && effective === 'maintainer');
+    if (roleHolds && held) {
+      continue;
+    }
     changes.push({
       kind: 'set-membership',
       slug: team.slug,
@@ -260,7 +239,9 @@ function planRoster(
   }
 
   for (const [username, from] of direct) {
-    if (declared.has(username)) continue;
+    if (declared.has(username)) {
+      continue;
+    }
     changes.push({
       kind: 'remove-membership',
       slug: team.slug,
@@ -284,7 +265,9 @@ function membersOfDescendants(
 ): Set<string> {
   const children = new Map<string, string[]>();
   for (const team of liveBySlug.values()) {
-    if (!team.parentSlug) continue;
+    if (!team.parentSlug) {
+      continue;
+    }
     const siblings = children.get(team.parentSlug) ?? [];
     siblings.push(team.slug);
     children.set(team.parentSlug, siblings);
@@ -295,7 +278,9 @@ function membersOfDescendants(
   const seen = new Set<string>([slug]);
   while (queue.length > 0) {
     const next = queue.shift();
-    if (next === undefined || seen.has(next)) continue;
+    if (next === undefined || seen.has(next)) {
+      continue;
+    }
     seen.add(next);
     for (const login of rosterOf(next, live, declaredByLiveSlug)) {
       inherited.add(login);
@@ -310,11 +295,7 @@ function membersOfDescendants(
  * declaration is supplied. A team that declares no roster, or whose roster Entra
  * owns, keeps whoever it has either way.
  */
-function rosterOf(
-  liveSlug: string,
-  live: LiveState,
-  declaredByLiveSlug: Map<string, TeamManifest>,
-): string[] {
+function rosterOf(liveSlug: string, live: LiveState, declaredByLiveSlug: Map<string, TeamManifest>): string[] {
   const declaration = declaredByLiveSlug.get(liveSlug);
   if (declaration && declaresRoster(declaration)) {
     return [...(declaration.members ?? []), ...(declaration.maintainers ?? [])];

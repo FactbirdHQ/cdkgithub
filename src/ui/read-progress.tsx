@@ -1,4 +1,5 @@
 import { Box, render, Text } from 'ink';
+
 import type { MeterSnapshot, RateBudget, RequestMeter } from '../github/meter.ts';
 import { clock, duration, requestCounts, summaryLine } from '../progress.ts';
 import type { Palette } from '../reconcile/color.ts';
@@ -33,7 +34,9 @@ export function ReadProgressView({
   return (
     <Box flexDirection="column">
       <Text>
-        {palette.changed(spinner)} {label}  {palette.muted(`${requestCounts(snapshot)} · ${duration(elapsedMs)}`)}
+        {palette.changed(spinner)} {label}
+        {'  '}
+        {palette.muted(`${requestCounts(snapshot)} · ${duration(elapsedMs)}`)}
       </Text>
       {core && (
         <Text>
@@ -91,10 +94,11 @@ export async function readWithScreen<T>(
   stream: NodeJS.WriteStream = process.stderr,
 ): Promise<T> {
   const started = Date.now();
-  const screen = render(
-    <ReadProgress label={label} meter={meter} started={started} palette={palette} />,
-    { stdout: stream, patchConsole: false, exitOnCtrlC: false },
-  );
+  const screen = render(<ReadProgress label={label} meter={meter} started={started} palette={palette} />, {
+    stdout: stream,
+    patchConsole: false,
+    exitOnCtrlC: false,
+  });
   // Ink draws the last frame once more when it unmounts and leaves it on the
   // screen, so the view is emptied first and the frame it leaves is blank.
   const close = () => {

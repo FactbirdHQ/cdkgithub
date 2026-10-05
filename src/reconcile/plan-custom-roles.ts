@@ -20,11 +20,11 @@ export function planCustomRepositoryRoles(
   desired: CustomRepositoryRoleManifest[] | undefined,
   live: LiveState,
 ): Change[] {
-  if (!desired) return [];
+  if (!desired) {
+    return [];
+  }
 
-  const liveByName = new Map(
-    (live.customRepositoryRoles ?? []).map((r) => [r.name, r]),
-  );
+  const liveByName = new Map((live.customRepositoryRoles ?? []).map((r) => [r.name, r]));
   const declared = new Set(desired.map((r) => r.name));
   const changes: Change[] = [];
 
@@ -46,17 +46,16 @@ export function planCustomRepositoryRoles(
   }
 
   for (const current of liveByName.values()) {
-    if (declared.has(current.name)) continue;
+    if (declared.has(current.name)) {
+      continue;
+    }
     changes.push({ kind: 'delete-repo-role', live: current });
   }
 
   return changes;
 }
 
-function diff(
-  desired: CustomRepositoryRoleManifest,
-  live: LiveCustomRepositoryRole,
-): FieldChange[] {
+function diff(desired: CustomRepositoryRoleManifest, live: LiveCustomRepositoryRole): FieldChange[] {
   const fields: FieldChange[] = [];
 
   // GitHub answers `write` where a grant is written `push`, the same two words

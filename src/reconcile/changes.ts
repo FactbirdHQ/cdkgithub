@@ -1,13 +1,13 @@
 import type {
   LiveCodeSecurityConfiguration,
+  LiveCollaborator,
   LiveCustomProperty,
   LiveCustomRepositoryRole,
-  LiveIssueField,
-  LiveRunnerGroup,
-  LiveRuleset,
-  LiveTeam,
-  LiveCollaborator,
   LiveEnvironment,
+  LiveIssueField,
+  LiveRuleset,
+  LiveRunnerGroup,
+  LiveTeam,
 } from '../github/client.ts';
 import type {
   ActionsPolicyManifest,
@@ -15,15 +15,15 @@ import type {
   ActionsVariableManifest,
   BranchProtectionManifest,
   CodeSecurityConfigurationManifest,
-  CustomPropertyManifest,
   CollaboratorManifest,
+  CustomPropertyManifest,
   CustomRepositoryRoleManifest,
   EnvironmentManifest,
-  IssueFieldManifest,
-  RepositoryManifest,
   ExternalGroupBinding,
+  IssueFieldManifest,
   OrgSettingsManifest,
   RepoPermission,
+  RepositoryManifest,
   ResolvedRuleset,
   RunnerGroupManifest,
   TeamManifest,
@@ -297,9 +297,7 @@ export interface DeleteSecurityConfiguration {
 export interface SetDefaultSecurityConfiguration {
   readonly kind: 'default-security-config';
   readonly configName: string;
-  readonly scope: NonNullable<
-    CodeSecurityConfigurationManifest['defaultForNewRepos']
-  >;
+  readonly scope: NonNullable<CodeSecurityConfigurationManifest['defaultForNewRepos']>;
   readonly from?: string;
 }
 

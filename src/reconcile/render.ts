@@ -11,18 +11,21 @@ export function renderPlan(changes: Change[]): string {
     switch (change.kind) {
       case 'create': {
         const t = change.team;
-        lines.push(
-          `  + team ${t.slug}${t.parentSlug ? ` (under ${t.parentSlug})` : ''}`,
-        );
+        lines.push(`  + team ${t.slug}${t.parentSlug ? ` (under ${t.parentSlug})` : ''}`);
         lines.push(`      name       = "${t.name}"`);
-        if (t.description) lines.push(`      description = "${t.description}"`);
+        if (t.description) {
+          lines.push(`      description = "${t.description}"`);
+        }
         lines.push(`      privacy    = "${t.privacy}"`);
-        if (t.notificationSetting)
+        if (t.notificationSetting) {
           lines.push(`      notifications = "${t.notificationSetting}"`);
-        if (t.maintainers?.length)
+        }
+        if (t.maintainers?.length) {
           lines.push(`      maintainers = ${JSON.stringify(t.maintainers)}`);
-        if (t.members?.length)
+        }
+        if (t.members?.length) {
           lines.push(`      members     = ${JSON.stringify(t.members)}`);
+        }
         for (const [repo, perm] of Object.entries(t.repositories ?? {})) {
           lines.push(`      repo ${repo} = "${perm}"`);
         }
@@ -39,15 +42,11 @@ export function renderPlan(changes: Change[]): string {
       }
       case 'set-repo-access': {
         const from = change.from ? `"${change.from}" -> ` : '';
-        lines.push(
-          `  ~ team ${change.slug} on ${change.repository}: ${from}"${change.permission}"`,
-        );
+        lines.push(`  ~ team ${change.slug} on ${change.repository}: ${from}"${change.permission}"`);
         break;
       }
       case 'remove-repo-access': {
-        lines.push(
-          `  - team ${change.slug} on ${change.repository} ("${change.from}")   (requires --allow-delete)`,
-        );
+        lines.push(`  - team ${change.slug} on ${change.repository} ("${change.from}")   (requires --allow-delete)`);
         break;
       }
       case 'set-membership': {
@@ -65,18 +64,14 @@ export function renderPlan(changes: Change[]): string {
         break;
       }
       case 'remove-membership': {
-        lines.push(
-          `  - ${change.username} from ${change.slug} ("${change.from}")   (requires --allow-delete)`,
-        );
+        lines.push(`  - ${change.username} from ${change.slug} ("${change.from}")   (requires --allow-delete)`);
         break;
       }
 
       case 'link-group': {
         const g = change.group;
-        const ref = g.id !== undefined ? `id ${g.id}` : `"${g.name}"`;
-        lines.push(
-          `  ⇄ link team ${change.slug} → Entra group ${ref}   (SCIM, requires --enable-scim)`,
-        );
+        const ref = g.id === undefined ? `"${g.name}"` : `id ${g.id}`;
+        lines.push(`  ⇄ link team ${change.slug} → Entra group ${ref}   (SCIM, requires --enable-scim)`);
         break;
       }
 
@@ -96,9 +91,12 @@ export function renderPlan(changes: Change[]): string {
         lines.push(`  + ruleset "${r.name}"`);
         lines.push(`      target      = "${r.target}"`);
         lines.push(`      enforcement = "${r.enforcement}"`);
-        for (const rule of r.rules) lines.push(`      rule ${rule.type}`);
-        if (r.conditions)
+        for (const rule of r.rules) {
+          lines.push(`      rule ${rule.type}`);
+        }
+        if (r.conditions) {
           lines.push(`      conditions  = ${compact(r.conditions)}`);
+        }
         break;
       }
       case 'update-ruleset': {
@@ -107,9 +105,7 @@ export function renderPlan(changes: Change[]): string {
         break;
       }
       case 'delete-ruleset': {
-        lines.push(
-          `  - ruleset "${change.live.name}"   (requires --allow-delete)`,
-        );
+        lines.push(`  - ruleset "${change.live.name}"   (requires --allow-delete)`);
         break;
       }
 
@@ -118,22 +114,21 @@ export function renderPlan(changes: Change[]): string {
         lines.push(`  + ruleset "${r.name}" on ${change.repository}`);
         lines.push(`      target      = "${r.target}"`);
         lines.push(`      enforcement = "${r.enforcement}"`);
-        for (const rule of r.rules) lines.push(`      rule ${rule.type}`);
-        if (r.conditions)
+        for (const rule of r.rules) {
+          lines.push(`      rule ${rule.type}`);
+        }
+        if (r.conditions) {
           lines.push(`      conditions  = ${compact(r.conditions)}`);
+        }
         break;
       }
       case 'update-repo-ruleset': {
-        lines.push(
-          `  ~ ruleset "${change.ruleset.name}" on ${change.repository}`,
-        );
+        lines.push(`  ~ ruleset "${change.ruleset.name}" on ${change.repository}`);
         lines.push(...renderFields(change.fields));
         break;
       }
       case 'delete-repo-ruleset': {
-        lines.push(
-          `  - ruleset "${change.live.name}" on ${change.repository}   (requires --allow-delete)`,
-        );
+        lines.push(`  - ruleset "${change.live.name}" on ${change.repository}   (requires --allow-delete)`);
         break;
       }
 
@@ -141,10 +136,12 @@ export function renderPlan(changes: Change[]): string {
         const g = change.group;
         lines.push(`  + runner group "${g.name}"`);
         lines.push(`      visibility = "${g.visibility ?? 'all'}"`);
-        if (g.selectedRepositories?.length)
+        if (g.selectedRepositories?.length) {
           lines.push(`      repos      = ${compact(g.selectedRepositories)}`);
-        if (g.restrictedToWorkflows)
+        }
+        if (g.restrictedToWorkflows) {
           lines.push(`      workflows  = ${compact(g.selectedWorkflows ?? [])}`);
+        }
         break;
       }
       case 'update-runner-group': {
@@ -153,9 +150,7 @@ export function renderPlan(changes: Change[]): string {
         break;
       }
       case 'delete-runner-group': {
-        lines.push(
-          `  - runner group "${change.live.name}"   (requires --allow-delete)`,
-        );
+        lines.push(`  - runner group "${change.live.name}"   (requires --allow-delete)`);
         break;
       }
 
@@ -174,9 +169,7 @@ export function renderPlan(changes: Change[]): string {
       }
       case 'delete-variable': {
         const scope = variableScope(change.repository, change.environment);
-        lines.push(
-          `  - ${scope}variable ${change.name}   (requires --allow-delete)`,
-        );
+        lines.push(`  - ${scope}variable ${change.name}   (requires --allow-delete)`);
         break;
       }
 
@@ -185,23 +178,19 @@ export function renderPlan(changes: Change[]): string {
         const s = change.secret;
         const scope = variableScope(s.repository, s.environment);
         const mark = change.exists ? '~' : '+';
-        lines.push(
-          `  ${mark} ${scope}secret ${s.name}   (value from $${s.valueFrom})`,
-        );
+        lines.push(`  ${mark} ${scope}secret ${s.name}   (value from $${s.valueFrom})`);
         lines.push(...renderFields(change.fields));
         break;
       }
       case 'delete-secret': {
         const scope = variableScope(change.repository, change.environment);
-        lines.push(
-          `  - ${scope}secret ${change.name}   (requires --allow-delete)`,
-        );
+        lines.push(`  - ${scope}secret ${change.name}   (requires --allow-delete)`);
         break;
       }
 
       case 'set-collaborator': {
         const { collaborator: c, current } = change;
-        const invited = current?.invitationId !== undefined ? ' (invited)' : '';
+        const invited = current?.invitationId === undefined ? '' : ' (invited)';
         lines.push(
           current
             ? `  ~ ${c.repository} collaborator ${c.login}${invited}: "${current.permission}" -> "${c.permission}"`
@@ -211,7 +200,7 @@ export function renderPlan(changes: Change[]): string {
       }
       case 'remove-collaborator': {
         const { live } = change;
-        const invited = live.invitationId !== undefined ? ' (invited)' : '';
+        const invited = live.invitationId === undefined ? '' : ' (invited)';
         lines.push(
           `  - ${live.repository} collaborator ${live.login}${invited} ("${live.permission}")   (requires --allow-delete)`,
         );
@@ -219,9 +208,7 @@ export function renderPlan(changes: Change[]): string {
       }
       case 'put-environment': {
         const e = change.environment;
-        lines.push(
-          `  ${change.current ? '~' : '+'} ${e.repository} environment ${e.name}`,
-        );
+        lines.push(`  ${change.current ? '~' : '+'} ${e.repository} environment ${e.name}`);
         lines.push(...renderFields(change.fields));
         break;
       }
@@ -243,22 +230,16 @@ export function renderPlan(changes: Change[]): string {
         break;
       }
       case 'delete-security-config': {
-        lines.push(
-          `  - code security configuration "${change.live.name}"   (requires --allow-delete)`,
-        );
+        lines.push(`  - code security configuration "${change.live.name}"   (requires --allow-delete)`);
         break;
       }
       case 'default-security-config': {
         const from = change.from ? `"${change.from}"` : 'none';
-        lines.push(
-          `  ~ default for ${change.scope} new repositories: ${from} -> "${change.configName}"`,
-        );
+        lines.push(`  ~ default for ${change.scope} new repositories: ${from} -> "${change.configName}"`);
         break;
       }
       case 'attach-security-config': {
-        const target = change.repositories
-          ? change.repositories.join(', ')
-          : `${change.scope} repositories`;
+        const target = change.repositories ? change.repositories.join(', ') : `${change.scope} repositories`;
         lines.push(`  ⇄ attach "${change.configName}" to ${target}`);
         break;
       }
@@ -267,8 +248,9 @@ export function renderPlan(changes: Change[]): string {
         const p = change.property;
         lines.push(`  + custom property "${p.name}"`);
         lines.push(`      value_type = "${p.valueType}"`);
-        if (p.allowedValues?.length)
+        if (p.allowedValues?.length) {
           lines.push(`      allowed    = ${JSON.stringify(p.allowedValues)}`);
+        }
         break;
       }
       case 'update-property': {
@@ -277,9 +259,7 @@ export function renderPlan(changes: Change[]): string {
         break;
       }
       case 'delete-property': {
-        lines.push(
-          `  - custom property "${change.live.name}"   (requires --allow-delete)`,
-        );
+        lines.push(`  - custom property "${change.live.name}"   (requires --allow-delete)`);
         break;
       }
 
@@ -287,10 +267,9 @@ export function renderPlan(changes: Change[]): string {
         const f = change.field;
         lines.push(`  + issue field "${f.name}"`);
         lines.push(`      data_type = "${f.dataType}"`);
-        if (f.options?.length)
-          lines.push(
-            `      options   = ${JSON.stringify(f.options.map((o) => o.name))}`,
-          );
+        if (f.options?.length) {
+          lines.push(`      options   = ${JSON.stringify(f.options.map((o) => o.name))}`);
+        }
         break;
       }
       case 'update-issue-field': {
@@ -299,9 +278,7 @@ export function renderPlan(changes: Change[]): string {
         break;
       }
       case 'delete-issue-field': {
-        lines.push(
-          `  - issue field "${change.live.name}"   (requires --allow-delete; clears it from every issue)`,
-        );
+        lines.push(`  - issue field "${change.live.name}"   (requires --allow-delete; clears it from every issue)`);
         break;
       }
       case 'branch-protection': {
@@ -311,9 +288,7 @@ export function renderPlan(changes: Change[]): string {
         break;
       }
       case 'remove-branch-protection': {
-        lines.push(
-          `  - branch protection ${change.repository}#${change.branch}   (requires --allow-delete)`,
-        );
+        lines.push(`  - branch protection ${change.repository}#${change.branch}   (requires --allow-delete)`);
         break;
       }
       case 'create-repository': {
@@ -324,9 +299,7 @@ export function renderPlan(changes: Change[]): string {
         // would claim a decision that has not been made yet.
         lines.push(
           `      visibility = ${
-            repo.visibility
-              ? `"${repo.visibility}"`
-              : '"internal" under an enterprise account, else "private"'
+            repo.visibility ? `"${repo.visibility}"` : '"internal" under an enterprise account, else "private"'
           }` + (repo.description ? `   "${repo.description}"` : ''),
         );
         break;
@@ -344,21 +317,16 @@ export function renderPlan(changes: Change[]): string {
         break;
       }
       case 'delete-repo-role': {
-        lines.push(
-          `  - repository role "${change.live.name}"   (requires --allow-delete)`,
-        );
+        lines.push(`  - repository role "${change.live.name}"   (requires --allow-delete)`);
         break;
       }
       case 'assign-org-role': {
-        lines.push(
-          `  + org role "${change.role}" to ${change.subject} ${change.name}`,
-        );
+        lines.push(`  + org role "${change.role}" to ${change.subject} ${change.name}`);
         break;
       }
       case 'revoke-org-role': {
         lines.push(
-          `  - org role "${change.role}" from ${change.subject} ${change.name}` +
-            `   (requires --allow-delete)`,
+          `  - org role "${change.role}" from ${change.subject} ${change.name}` + `   (requires --allow-delete)`,
         );
         break;
       }
@@ -377,17 +345,12 @@ export function renderPlan(changes: Change[]): string {
   // Only an Entra group link or a security configuration attachment links,
   // so most plans would only ever print a zero for it.
   const link = counts.link > 0 ? `${counts.link} to link, ` : '';
-  lines.push(
-    `Plan: ${counts.create} to create, ${counts.update} to update, ` +
-      `${link}${counts.delete} to delete.`,
-  );
+  lines.push(`Plan: ${counts.create} to create, ${counts.update} to update, ` + `${link}${counts.delete} to delete.`);
   return lines.join('\n');
 }
 
 function renderFields(fields: FieldChange[]): string[] {
-  return fields.map(
-    (f) => `      ${f.field}: ${compact(f.from)} -> ${compact(f.to)}`,
-  );
+  return fields.map((f) => `      ${f.field}: ${compact(f.from)} -> ${compact(f.to)}`);
 }
 
 /**
@@ -462,8 +425,7 @@ export function summarize(changes: Change[]): {
   delete: number;
   link: number;
 } {
-  const count = (kinds: ReadonlyArray<Change['kind']>) =>
-    changes.filter((c) => kinds.includes(c.kind)).length;
+  const count = (kinds: ReadonlyArray<Change['kind']>) => changes.filter((c) => kinds.includes(c.kind)).length;
 
   return {
     create: count(BUCKETS.create),
@@ -475,6 +437,8 @@ export function summarize(changes: Change[]): {
 
 /** "repo " or "repo (environment) " before a variable or secret, nothing for the organization's. */
 function variableScope(repository?: string, environment?: string): string {
-  if (!repository) return '';
+  if (!repository) {
+    return '';
+  }
   return environment ? `${repository} (${environment}) ` : `${repository} `;
 }

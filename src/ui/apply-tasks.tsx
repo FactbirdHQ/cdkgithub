@@ -1,9 +1,10 @@
 import { Box, render, Static, Text } from 'ink';
 import { useSyncExternalStore } from 'react';
+
 import type { RateWait } from '../github/meter.ts';
 import { clock } from '../progress.ts';
-import type { Palette } from '../reconcile/color.ts';
 import type { ApplyRecord } from '../reconcile/applier.ts';
+import type { Palette } from '../reconcile/color.ts';
 import { useSpinner } from './terminal.ts';
 
 export interface ApplyTask {
@@ -43,7 +44,9 @@ export class ApplyTasks {
 
   record(record: ApplyRecord): void {
     const running = this.state.running;
-    if (!running || record.status === 'skipped') return;
+    if (!running || record.status === 'skipped') {
+      return;
+    }
     this.set({
       done: [
         ...this.state.done,
@@ -71,7 +74,9 @@ export class ApplyTasks {
 
   private set(state: ApplyTasksState): void {
     this.state = state;
-    for (const listener of this.listeners) listener();
+    for (const listener of this.listeners) {
+      listener();
+    }
   }
 }
 
@@ -115,12 +120,8 @@ export function ApplyTasksView({ tasks, palette }: { tasks: ApplyTasks; palette:
   const state = useSyncExternalStore(tasks.subscribe, tasks.snapshot);
   return (
     <>
-      <Static items={[...state.done]}>
-        {(task, i) => <TaskLine key={i} task={task} palette={palette} />}
-      </Static>
-      {(state.running || state.waiting) && (
-        <Running task={state.running} waiting={state.waiting} palette={palette} />
-      )}
+      <Static items={[...state.done]}>{(task, i) => <TaskLine key={i} task={task} palette={palette} />}</Static>
+      {(state.running || state.waiting) && <Running task={state.running} waiting={state.waiting} palette={palette} />}
     </>
   );
 }
