@@ -877,7 +877,7 @@ relative path resolves to nothing; the README in the repository keeps them.
 The committed `package.json` points at the TypeScript sources, so a
 dependency on the git repository installs them untranspiled, while the npm
 package holds JavaScript only. Either package exports every module as
-`cdkgithub/<path>.js`, which is `src/<path>.ts` from git and the compiled
+`@factbird/cdkgithub/<path>.js`, which is `src/<path>.ts` from git and the compiled
 `dist/<path>.js` from npm.
 It authenticates to npm with the job's OIDC token, in the `npm` environment,
 so no npm token is stored.

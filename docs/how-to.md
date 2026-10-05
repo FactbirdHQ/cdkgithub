@@ -230,7 +230,7 @@ definition that knows its names can close them:
 export const USERS = ['ana', 'bo'] as const;
 export const REPOSITORIES = ['netcore', 'fctl'] as const;
 
-declare module 'cdkgithub' {
+declare module '@factbird/cdkgithub' {
   interface Vocabulary {
     member: (typeof USERS)[number];
     repository: (typeof REPOSITORIES)[number];
