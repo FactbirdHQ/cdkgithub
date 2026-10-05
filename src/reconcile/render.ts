@@ -426,13 +426,31 @@ export function summarize(changes: Change[]): {
   link: number;
 } {
   const count = (kinds: ReadonlyArray<Change['kind']>) => changes.filter((c) => kinds.includes(c.kind)).length;
+  const made = changes.filter(createsWhatItWrites).length;
 
   return {
-    create: count(BUCKETS.create),
-    update: count(BUCKETS.update),
+    create: count(BUCKETS.create) + made,
+    update: count(BUCKETS.update) - made,
     delete: count(BUCKETS.delete),
     link: count(BUCKETS.link),
   };
+}
+
+/**
+ * Whether a write that either creates or updates finds nothing there yet, the
+ * case its plan line marks `+`. Such a change counts as a create, though its
+ * kind sits in the update bucket.
+ */
+function createsWhatItWrites(change: Change): boolean {
+  switch (change.kind) {
+    case 'put-secret':
+      return !change.exists;
+    case 'put-environment':
+    case 'set-collaborator':
+      return change.current === undefined;
+    default:
+      return false;
+  }
 }
 
 /** "repo " or "repo (environment) " before a variable or secret, nothing for the organization's. */

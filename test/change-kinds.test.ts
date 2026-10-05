@@ -500,3 +500,39 @@ describe('the plan summary', () => {
     expect(last(links)).toBe(`Plan: 0 to create, 0 to update, ${links.length} to link, 0 to delete.`);
   });
 });
+
+describe('the plan summary bucket', () => {
+  // A create-or-update kind finds its target live, so it renders `~` and is
+  // an update, where each sample above finds nothing and renders `+`.
+  const EXISTING: Change[] = [
+    { ...SAMPLES['put-secret'], exists: true } as Change,
+    {
+      ...SAMPLES['set-collaborator'],
+      current: { repository: 'flow-portal', login: 'casey', permission: 'read' },
+    } as Change,
+    {
+      ...SAMPLES['put-environment'],
+      current: {
+        repository: 'flow-portal',
+        name: 'production',
+        deploymentBranchPolicy: 'all',
+        branchPolicies: [],
+        reviewers: { teams: [], users: [] },
+        preventSelfReview: false,
+        waitTimer: 0,
+      },
+    } as Change,
+  ];
+
+  test('matches the mark its plan line carries', () => {
+    const bucket = { '+': 'create', '~': 'update', '-': 'delete' } as const;
+    for (const change of [...ALL_CHANGES, ...EXISTING]) {
+      const mark = renderPlan([change]).trimStart()[0] as keyof typeof bucket;
+      if (!(mark in bucket) || change.kind === 'link-group' || change.kind === 'attach-security-config') {
+        continue;
+      }
+      const counts = summarize([change]);
+      expect(`${change.kind} ${mark}: ${counts[bucket[mark]]}`).toBe(`${change.kind} ${mark}: 1`);
+    }
+  });
+});
