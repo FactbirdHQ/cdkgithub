@@ -414,6 +414,8 @@ function describeDelete(change: Change): string {
       return `${change.live.invitationId === undefined ? 'remove collaborator' : 'withdraw the invitation of'} ${change.live.login} from ${change.live.repository}`;
     case 'delete-environment-branch-policy':
       return `remove ${change.policy.type} ${change.policy.name} from environment ${change.environment} on ${change.repository}`;
+    case 'delete-environment':
+      return `delete environment ${change.name} from ${change.repository}`;
     case 'delete-variable':
       return change.repository
         ? `delete variable ${change.name} from ${change.repository}${change.environment ? ` (${change.environment})` : ''}`

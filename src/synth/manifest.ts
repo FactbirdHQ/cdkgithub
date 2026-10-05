@@ -210,8 +210,9 @@ export interface DesiredState {
   readonly actionsSecrets?: ActionsSecretManifest[];
   /**
    * Deployment environments, keyed by repository and name. A declared one is
-   * created when missing and its declared settings are enforced; an
-   * environment nothing declares is never deleted.
+   * created when missing and its declared settings are enforced. Declaring one
+   * on a repository owns all of its environments, so an undeclared one there
+   * is deleted under `--allow-delete=environments`.
    */
   readonly environments?: EnvironmentManifest[];
   /**

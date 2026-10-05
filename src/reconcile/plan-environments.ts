@@ -2,14 +2,14 @@ import type { LiveEnvironment } from '../github/client.ts';
 import type { DesiredState, EnvironmentManifest } from '../synth/manifest.ts';
 import type { Change, FieldChange } from './changes.ts';
 import type { LiveState } from './live.ts';
+import { scopesOf } from './owned-scopes.ts';
 
 type Pattern = { name: string; type: 'branch' | 'tag' };
 
 /**
  * Diff each declared environment. A missing one is created; an existing one
  * has its declared fields brought in line, and nothing else about it changes.
- * No environment is ever deleted: that would take its secrets, variables and
- * deployment history with it, so an undeclared one is left where it is.
+ * An undeclared one is {@link planEnvironmentDeletes}'s.
  *
  * A `{ branches, tags }` policy is written as GitHub's custom policy plus one
  * pattern per name. Patterns to add ride on the environment write, because a
@@ -121,4 +121,45 @@ function diffEnvironment(desired: EnvironmentManifest, live: LiveEnvironment | u
 
 function reviewerList(teams: string[] = [], users: string[] = []): string[] {
   return [...teams.map((t) => `team ${t.toLowerCase()}`), ...users.map((u) => `user ${u.toLowerCase()}`)].sort();
+}
+
+/**
+ * Delete each environment the definition owns and does not declare. Declaring
+ * any environment on a repository owns all of that repository's environments;
+ * a repository with none declared keeps its environments untouched. Deleting
+ * one takes its secrets, variables and deployment history with it, so each is
+ * a gated removal that counts what goes with it. GitHub matches environment
+ * names without regard to case, and so does this.
+ */
+export function planEnvironmentDeletes(desired: DesiredState, live: LiveState): Change[] {
+  const key = (repository: string, name: string) => `${repository}/${name.toLowerCase()}`;
+  const declared = new Set((desired.environments ?? []).map((e) => key(e.repository, e.name)));
+  const owned = new Set((desired.environments ?? []).map((e) => e.repository));
+  const secretScopes = scopesOf(desired.actionsSecrets, desired).repositories;
+  const variableScopes = scopesOf(desired.actionsVariables, desired).repositories;
+  const inside = (
+    scopes: readonly string[],
+    entries: ReadonlyArray<{ repository: string; environment?: string }> = [],
+    repository: string,
+    environment: string,
+  ) =>
+    scopes.includes(repository)
+      ? entries.filter((x) => x.environment !== undefined && key(x.repository, x.environment) === environment).length
+      : undefined;
+
+  return (live.repositoryEnvironments ?? []).flatMap((e): Change[] => {
+    const environment = key(e.repository, e.name);
+    if (!owned.has(e.repository) || declared.has(environment)) {
+      return [];
+    }
+    return [
+      {
+        kind: 'delete-environment',
+        repository: e.repository,
+        name: e.name,
+        secrets: inside(secretScopes, live.repositorySecrets, e.repository, environment),
+        variables: inside(variableScopes, live.repositoryVariables, e.repository, environment),
+      },
+    ];
+  });
 }

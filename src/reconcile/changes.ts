@@ -250,6 +250,24 @@ export interface DeleteEnvironmentBranchPolicy {
 }
 
 /**
+ * An environment of a repository whose environments the definition owns, one
+ * it does not declare. Deleting it deletes its secrets, its variables and its
+ * deployment history too.
+ */
+export interface DeleteEnvironment {
+  readonly kind: 'delete-environment';
+  readonly repository: string;
+  readonly name: string;
+  /**
+   * How many secrets and variables the environment holds, which go with it.
+   * Undefined where the definition does not own the repository's secrets or
+   * variables, since those were not read.
+   */
+  readonly secrets?: number;
+  readonly variables?: number;
+}
+
+/**
  * Grant a declared collaborator, or bring their permission in line. `current`
  * is what they hold or were invited to; a pending invitation is updated in
  * place rather than sent again.
@@ -464,6 +482,7 @@ export type Change =
   | SetCollaborator
   | RemoveCollaborator
   | DeleteEnvironmentBranchPolicy
+  | DeleteEnvironment
   | CreateSecurityConfiguration
   | UpdateSecurityConfiguration
   | DeleteSecurityConfiguration
@@ -527,6 +546,7 @@ export const DESTRUCTIVE_KINDS = [
   'delete-variable',
   'delete-secret',
   'delete-environment-branch-policy',
+  'delete-environment',
   'remove-collaborator',
   'delete-security-config',
   'delete-property',
@@ -553,6 +573,7 @@ export const DELETE_SCOPES = {
   variables: 'delete-variable',
   secrets: 'delete-secret',
   'branch-policies': 'delete-environment-branch-policy',
+  environments: 'delete-environment',
   collaborators: 'remove-collaborator',
   'security-configs': 'delete-security-config',
   properties: 'delete-property',

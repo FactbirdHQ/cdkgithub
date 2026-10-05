@@ -218,6 +218,14 @@ export function renderPlan(changes: Change[]): string {
         );
         break;
       }
+      case 'delete-environment': {
+        const count = (n: number | undefined, what: string) =>
+          n === undefined ? `its ${what}s` : n > 0 ? `${n} ${what}${n === 1 ? '' : 's'}` : '';
+        const holds = [count(change.secrets, 'secret'), count(change.variables, 'variable')].filter(Boolean);
+        const contents = holds.length > 0 ? `, with ${holds.join(' and ')}` : '';
+        lines.push(`  - ${change.repository} environment ${change.name}${contents}   (requires --allow-delete)`);
+        break;
+      }
 
       case 'create-security-config': {
         lines.push(`  + code security configuration "${change.config.name}"`);
@@ -407,6 +415,7 @@ const BUCKETS = {
     'delete-variable',
     'delete-secret',
     'delete-environment-branch-policy',
+    'delete-environment',
     'remove-collaborator',
     'delete-security-config',
     'delete-property',

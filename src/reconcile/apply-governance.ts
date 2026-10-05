@@ -337,6 +337,11 @@ export async function applyGovernanceChange(change: GovernanceChange, ctx: Gover
       await client.deleteEnvironmentBranchPolicy(org, change.repository, change.environment, change.policy.id);
       return;
 
+    case 'delete-environment':
+      ctx.log(`Deleting environment ${change.name} from ${change.repository}`);
+      await client.deleteEnvironment(org, change.repository, change.name);
+      return;
+
     case 'create-security-config': {
       ctx.log(`Creating code security configuration "${change.config.name}"`);
       const id = await client.createSecurityConfiguration(org, change.config);

@@ -5,6 +5,7 @@ import { ActionsSecret, ActionsVariable, App, Environment, Organization, Reposit
 import { apply } from '../src/reconcile/applier.ts';
 import { readLiveState } from '../src/reconcile/live.ts';
 import { plan } from '../src/reconcile/planner.ts';
+import { renderPlan } from '../src/reconcile/render.ts';
 import { synthesize } from '../src/synth/synthesizer.ts';
 import { FakeClient } from './fake-client.ts';
 
@@ -163,13 +164,13 @@ describe('plan and apply', () => {
       'create-variable',
       'put-secret',
       'delete-secret',
+      'delete-environment',
     ]);
-    expect(changes.at(-1)).toEqual({
-      kind: 'delete-secret',
-      name: 'OLD',
-      repository: 'flow-portal',
-      environment: 'staging',
-    });
+    expect(changes.slice(-2)).toEqual([
+      { kind: 'delete-secret', name: 'OLD', repository: 'flow-portal', environment: 'staging' },
+      // staging is not declared, and flow-portal declares an environment.
+      { kind: 'delete-environment', repository: 'flow-portal', name: 'staging', secrets: 1, variables: 0 },
+    ]);
 
     process.env.ENVIRONMENTS_TEST_TOKEN = 'hunter2';
     await apply(client, 'acme', changes, await readLiveState(client, state), { allowDelete: true });
@@ -179,6 +180,63 @@ describe('plan and apply', () => {
     expect(client.callsTo('deleteEnvironmentSecret')).toEqual([
       { repo: 'flow-portal', environment: 'staging', name: 'OLD' },
     ]);
+    expect(client.callsTo('deleteEnvironment')).toEqual([{ repo: 'flow-portal', environment: 'staging' }]);
+  });
+});
+
+describe('undeclared environments', () => {
+  /** acme with flow-portal and fctl, where flow-portal declares only production. */
+  function owned() {
+    const { app } = definition();
+    new Repository(app.node.findChild('acme') as Organization, 'fctl');
+    const state = synthesize(app);
+    const client = new FakeClient({
+      repositories: [
+        { id: 1, name: 'flow-portal' },
+        { id: 2, name: 'fctl' },
+      ],
+      environments: {
+        'flow-portal': { production: liveEnvironment(), Staging: liveEnvironment({ name: 'Staging' }) },
+        fctl: { production: liveEnvironment({ repository: 'fctl' }) },
+      },
+      environmentVariables: { 'flow-portal': { Staging: [{ name: 'REGION', value: 'eu' }] } },
+    });
+    return { state, client };
+  }
+
+  test('are deleted from a repository that declares one, and kept on one that declares none', async () => {
+    const { state, client } = owned();
+    const deletes = plan(state, await readLiveState(client, state)).filter((c) => c.kind === 'delete-environment');
+    expect(deletes).toEqual([
+      { kind: 'delete-environment', repository: 'flow-portal', name: 'Staging', secrets: 0, variables: 1 },
+    ]);
+  });
+
+  test('match a declaration whatever the case of the name', async () => {
+    const app = new App();
+    const org = new Organization(app, 'acme', { login: 'acme' });
+    new Environment(new Repository(org, 'flow-portal'), 'STAGING');
+    const state = synthesize(app);
+    const client = new FakeClient({
+      repositories: [{ id: 1, name: 'flow-portal' }],
+      environments: { 'flow-portal': { staging: liveEnvironment({ name: 'staging' }) } },
+    });
+    const changes = plan(state, await readLiveState(client, state));
+    expect(changes.filter((c) => c.kind === 'delete-environment')).toEqual([]);
+  });
+
+  test('are deleted only under --allow-delete=environments', async () => {
+    const { state, client } = owned();
+    const changes = plan(state, await readLiveState(client, state));
+    await apply(client, 'acme', changes, await readLiveState(client, state), {
+      allowDelete: new Set(['delete-variable']),
+    });
+    expect(client.callsTo('deleteEnvironment')).toEqual([]);
+
+    await apply(client, 'acme', changes, await readLiveState(client, state), {
+      allowDelete: new Set(['delete-environment']),
+    });
+    expect(client.callsTo('deleteEnvironment')).toEqual([{ repo: 'flow-portal', environment: 'Staging' }]);
   });
 });
 
@@ -355,5 +413,25 @@ describe('reading the environments of owned repositories', () => {
   test('a repository GitHub does not find fails the read', async () => {
     const client = new FakeClient({ missingRepositories: ['typo'] });
     await expect(readLiveState(client, owning(['typo']))).rejects.toThrow('Repository "typo" was not found');
+  });
+});
+
+describe('an environment delete in the plan', () => {
+  const line = (secrets?: number, variables?: number) =>
+    renderPlan([{ kind: 'delete-environment', repository: 'flow-portal', name: 'staging', secrets, variables }]).split(
+      '\n',
+    )[0];
+
+  test('says what goes with it', () => {
+    expect(line(2, 1)).toBe(
+      '  - flow-portal environment staging, with 2 secrets and 1 variable   (requires --allow-delete)',
+    );
+    expect(line(0, 0)).toBe('  - flow-portal environment staging   (requires --allow-delete)');
+  });
+
+  test('names its secrets and variables without a count where they were not read', () => {
+    expect(line(undefined, undefined)).toBe(
+      '  - flow-portal environment staging, with its secrets and its variables   (requires --allow-delete)',
+    );
   });
 });
