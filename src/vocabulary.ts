@@ -29,7 +29,8 @@
  * hold two organizations with different vocabularies; {@link teamOf} binds a
  * vocabulary locally instead and is the answer where that matters.
  */
-export type Vocabulary = {};
+// biome-ignore lint/suspicious/noEmptyInterface: a definition augments it, and an interface is the only thing that can be augmented.
+export interface Vocabulary {}
 
 /** A person, narrowed to {@link Vocabulary.member} when a definition names one. */
 export type VocabularyMember = Vocabulary extends {
