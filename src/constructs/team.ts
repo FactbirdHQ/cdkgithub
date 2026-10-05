@@ -87,7 +87,9 @@ export class Team<Member extends string = VocabularyMember> extends Construct {
   public readonly slug: string;
   public readonly props: TeamProps<Member>;
 
-  constructor(scope: Construct, id: string, props: TeamProps<Member> = {}) {
+  // NoInfer keeps a roster from naming its own member type: unnamed, it is the
+  // declared vocabulary, or what teamOf binds.
+  constructor(scope: Construct, id: string, props: TeamProps<NoInfer<Member>> = {}) {
     super(scope, id);
     this.props = props;
     this.teamName = props.name ?? id;
