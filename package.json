@@ -51,9 +51,9 @@
     "@tsconfig/node22": "^22.0.6",
     "@types/bun": "^1.2.0",
     "@types/libsodium-wrappers": "^0.8.2",
-    "@types/node": "^24",
+    "@types/node": "^26",
     "@types/react": "^19.3.0",
     "ink-testing-library": "^4.0.0",
-    "typescript": "^5.7.0"
+    "typescript": "^7.0.2"
   }
 }
