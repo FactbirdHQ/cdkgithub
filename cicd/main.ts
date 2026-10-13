@@ -131,4 +131,52 @@ new Job(release, 'publish', {
   ],
 });
 
+/**
+ * Monthly, because devenv-nixpkgs moves its rolling branch about once a month,
+ * after devenv's own suite passes on it.
+ *
+ * The repository is public, so the organization's GitHub App secrets do not
+ * reach it and the pull request is opened with GITHUB_TOKEN. GitHub starts no
+ * workflow for events caused by GITHUB_TOKEN, so CI runs on that pull request
+ * only once someone pushes to it or closes and reopens it.
+ */
+const devenvUpdate = new Workflow(stack, 'devenv-update', {
+  name: 'devenv update',
+  on: {
+    schedule: [{ cron: '0 6 1 * *' }],
+    workflowDispatch: null,
+  },
+  permissions: { contents: 'read' },
+});
+
+new Job(devenvUpdate, 'update', {
+  runsOn: runner,
+  permissions: { contents: 'write', pullRequests: 'write' },
+  steps: [
+    checkout,
+    {
+      name: 'Install Nix',
+      uses: 'DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa', // v23
+    },
+    { name: 'Install devenv', run: 'nix profile install nixpkgs#devenv' },
+    { name: 'Update devenv.lock', run: 'devenv update' },
+    {
+      name: 'Open pull request',
+      uses: 'peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1', // v8.1.1
+      with: {
+        branch: 'chore/devenv-update',
+        'add-paths': 'devenv.lock',
+        'commit-message': 'chore: update devenv.lock',
+        title: 'chore: update devenv.lock',
+        body: [
+          'Monthly `devenv update`, opened by the devenv update workflow.',
+          '',
+          'GitHub starts no workflow for a pull request opened with GITHUB_TOKEN, so push to this branch or close and reopen the pull request to run CI.',
+        ].join('\n'),
+        'delete-branch': true,
+      },
+    },
+  ],
+});
+
 app.synth();
