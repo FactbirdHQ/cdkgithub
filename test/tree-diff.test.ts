@@ -291,12 +291,12 @@ describe('diffing the two trees', () => {
 
   test('an owner GitHub reports as maintainer satisfies a member declaration', async () => {
     const client = new FakeClient({
-      teams: [liveTeam('everyone')],
+      teams: [liveTeam('staff')],
       organizationOwners: ['owner'],
-      teamMembers: { everyone: [{ login: 'owner', role: 'maintainer', inherited: false }] },
+      teamMembers: { staff: [{ login: 'owner', role: 'maintainer', inherited: false }] },
     });
     const live = await readLiveTree(client, 'acme');
-    const diff = diffTrees(live, desiredTree(manifest([team('everyone', { members: ['owner'] })])));
+    const diff = diffTrees(live, desiredTree(manifest([team('staff', { members: ['owner'] })])));
 
     expect(diff.counts.changed).toBe(0);
   });
@@ -351,12 +351,12 @@ describe('diffing the two trees', () => {
 
   test('a grant at or below an organization role’s base permission is no change', async () => {
     const client = new FakeClient({
-      teams: [liveTeam('engineering'), liveTeam('devops', 'engineering')],
+      teams: [liveTeam('engineering'), liveTeam('ops', 'engineering')],
       organizationRoles: [{ id: 7, name: 'all_repo_maintain', baseRole: 'maintain', permissions: [] }],
-      roleAssignments: { 7: { teams: ['devops'], users: [] } },
+      roleAssignments: { 7: { teams: ['ops'], users: [] } },
       teamRepositories: {
         engineering: [{ name: 'api', roleName: 'write' }],
-        devops: [
+        ops: [
           { name: 'api', roleName: 'maintain' },
           { name: 'docs', roleName: 'maintain' },
           { name: 'infra', roleName: 'admin' },
@@ -369,7 +369,7 @@ describe('diffing the two trees', () => {
       desiredTree(
         manifest([
           team('engineering', { repositories: { api: 'push' } }),
-          team('devops', { parentSlug: 'engineering', repositories: {} }),
+          team('ops', { parentSlug: 'engineering', repositories: {} }),
         ]),
       ),
     );
