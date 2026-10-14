@@ -12,6 +12,9 @@
  */
 
 import type { RepoPermission, RepositoryAccess } from '../synth/manifest.ts';
+import type { TeamRole } from './changes.ts';
+import { rankOf } from './permission-rank.ts';
+import { organizationRoleFloor, selfAndAncestors, teamRoleHolds } from './settled-access.ts';
 import type { OrgTree, TeamNode } from './tree.ts';
 
 export type ChangeMark = 'unchanged' | 'changed' | 'added' | 'removed';
@@ -69,6 +72,7 @@ export function diffTrees(live: OrgTree, desired: OrgTree): OrgDiff {
     }
   }
   const spokenFor = new Set([...claimed.values()].map((n) => n.slug));
+  const owners = new Set(live.owners ?? []);
 
   // Teams GitHub has that no declaration claims keep their live position, so
   // they are grafted into the desired shape before the walk.
@@ -117,15 +121,16 @@ export function diffTrees(live: OrgTree, desired: OrgTree): OrgDiff {
     }
 
     const properties = diffProperties(current, node);
-    const grants = diffGrants(current.effectiveRepositories, node.effectiveRepositories);
+    const floor = organizationRoleFloor(
+      selfAndAncestors(current.slug, (slug) => live.bySlug.get(slug)?.parentSlug),
+      live.orgRoles ?? [],
+      live.ranks,
+    );
+    const grants = diffGrants(current.effectiveRepositories, node.effectiveRepositories, floor, live.ranks);
     // Entra drives an IdP-synced roster, so comparing it here would report the
     // next SCIM push as drift the definition is supposed to fix.
-    const rosters = node.idpSynced
-      ? []
-      : [
-          rosterChange('maintainer', current.maintainers, node.maintainers),
-          rosterChange('member', current.members, node.members),
-        ].filter((r): r is RosterChange => r !== undefined);
+    const rosters =
+      node.idpSynced || !node.declaresRoster ? [] : diffRosters(current, node, owners, heldBelow(node, claimed));
 
     const touched = properties.length > 0 || grants.length > 0 || rosters.length > 0;
 
@@ -165,23 +170,85 @@ function diffProperties(live: TeamNode, desired: TeamNode): PropertyChange[] {
   return changes;
 }
 
-function diffGrants(live: RepositoryAccess, desired: RepositoryAccess): GrantChange[] {
+/**
+ * GitHub reports an organization role's base permission as a grant on every
+ * repository the team lists. Two sides that both sit at or below that floor
+ * hold the same access, whichever role names they carry.
+ */
+function diffGrants(
+  live: RepositoryAccess,
+  desired: RepositoryAccess,
+  floor: string | undefined,
+  ranks: Map<string, number>,
+): GrantChange[] {
   const repositories = [...new Set([...Object.keys(live), ...Object.keys(desired)])].sort();
+  const withinFloor = (permission: RepoPermission | undefined) =>
+    floor !== undefined && (permission === undefined || rankOf(permission, ranks) <= rankOf(floor, ranks));
 
   return repositories
     .filter((repo) => live[repo] !== desired[repo])
+    .filter((repo) => !(withinFloor(live[repo]) && withinFloor(desired[repo])))
     .map((repo) => ({ repository: repo, from: live[repo], to: desired[repo] }));
 }
 
-function rosterChange(role: RosterChange['role'], live: string[], desired: string[]): RosterChange | undefined {
-  const liveSet = new Set(live);
-  const desiredSet = new Set(desired);
-  const added = desired.filter((u) => !liveSet.has(u)).sort();
-  const removed = live.filter((u) => !desiredSet.has(u)).sort();
-  if (added.length === 0 && removed.length === 0) {
-    return undefined;
+function heldBelow(node: TeamNode, claimed: ReadonlyMap<string, TeamNode>): Set<string> {
+  const held = new Set<string>();
+  const walk = (child: TeamNode) => {
+    const logins =
+      child.declaresRoster && !child.idpSynced
+        ? [...child.maintainers, ...child.members]
+        : [...(claimed.get(child.slug)?.reportedRoles?.keys() ?? [])];
+    for (const login of logins) {
+      held.add(login);
+    }
+    child.children.forEach(walk);
+  };
+  node.children.forEach(walk);
+  return held;
+}
+
+/**
+ * A declared person needs no change when their reported role holds and the
+ * team holds them directly or through a team below that keeps them, as in
+ * `plan`.
+ */
+function diffRosters(
+  live: TeamNode,
+  desired: TeamNode,
+  owners: ReadonlySet<string>,
+  heldAfter: ReadonlySet<string>,
+): RosterChange[] {
+  const declared = new Map<string, TeamRole>([
+    ...desired.members.map((login) => [login, 'member'] as const),
+    ...desired.maintainers.map((login) => [login, 'maintainer'] as const),
+  ]);
+  const direct = new Map<string, TeamRole>([
+    ...live.members.map((login) => [login, 'member'] as const),
+    ...live.maintainers.map((login) => [login, 'maintainer'] as const),
+  ]);
+
+  const added: Record<TeamRole, string[]> = { maintainer: [], member: [] };
+  const removed: Record<TeamRole, string[]> = { maintainer: [], member: [] };
+  for (const [login, role] of declared) {
+    const held = direct.has(login) || heldAfter.has(login);
+    if (held && teamRoleHolds(live.reportedRoles?.get(login), role, owners.has(login))) {
+      continue;
+    }
+    added[role].push(login);
+    const was = direct.get(login);
+    if (was !== undefined && was !== role) {
+      removed[was].push(login);
+    }
   }
-  return { role, added, removed };
+  for (const [login, role] of direct) {
+    if (!declared.has(login)) {
+      removed[role].push(login);
+    }
+  }
+
+  return (['maintainer', 'member'] as const)
+    .map((role) => ({ role, added: added[role].sort(), removed: removed[role].sort() }))
+    .filter((r) => r.added.length > 0 || r.removed.length > 0);
 }
 
 function countMarks(roots: TeamDiff[]): OrgDiff['counts'] {
