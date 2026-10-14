@@ -42,7 +42,7 @@ export interface RepositoryProps {
    */
   readonly visibility?: RepositoryVisibility;
 
-  /** Merge buttons offered on a repository created from this declaration. */
+  /** Merge buttons offered on the repository. */
   readonly allowMergeCommit?: boolean;
   readonly allowSquashMerge?: boolean;
   readonly allowRebaseMerge?: boolean;
@@ -79,13 +79,14 @@ export interface RepositoryProps {
 }
 
 /**
- * A repository: created if GitHub does not have one by this name, adopted
- * unchanged if it does.
+ * A repository: created if GitHub does not have one by this name, adopted if
+ * it does.
  *
- * Adoption is the whole of the second case. An existing repository's settings
- * are never read, diffed or written, so declaring one that already exists is
- * always a no-op and a definition can name the whole estate without proposing a
- * single change to it. The props describe what to create, not what to enforce.
+ * On an adopted repository only the merge settings are enforced, and only the
+ * ones declared: `allowMergeCommit`, `allowSquashMerge`, `allowRebaseMerge` and
+ * `deleteBranchOnMerge`. Visibility, description and feature tabs describe what
+ * to create and are never read back, so a declaration cannot open or close a
+ * repository that exists. An archived repository is read-only and left alone.
  *
  * Nothing here deletes. Removing a declaration removes the declaration: the
  * repository stays, with its code, issues and history. The edit that drops a

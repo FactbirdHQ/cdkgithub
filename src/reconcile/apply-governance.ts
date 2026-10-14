@@ -411,6 +411,11 @@ export async function applyGovernanceChange(change: GovernanceChange, ctx: Gover
       await client.deleteIssueField(org, change.live.id);
       return;
 
+    case 'repository-merge-settings':
+      ctx.log(`Updating merge settings on ${change.repository} (${fieldNames(change.fields)})`);
+      await client.updateRepositoryMergeSettings(org, change.repository, change.settings);
+      return;
+
     case 'create-repository': {
       // Unset means "the most open thing that stays inside the company", which
       // is `internal` under an enterprise account and `private` otherwise.

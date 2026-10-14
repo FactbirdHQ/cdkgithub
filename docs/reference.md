@@ -326,10 +326,13 @@ new BranchProtection(deck, "main", {
 });
 ```
 
-A declared repository the organization does not have is created; an existing
-one is adopted as it stands, and there is no update and no delete beside that
-create. Unset visibility resolves to `internal` under an enterprise account
-and to `private` otherwise; `public` is never inferred. `BranchProtection`
+A declared repository the organization does not have is created. On an
+existing one, the declared merge settings (`allowMergeCommit`,
+`allowSquashMerge`, `allowRebaseMerge`, `deleteBranchOnMerge`) are diffed and
+written, an archived repository excepted, and every other prop is ignored.
+Nothing deletes a repository. Unset visibility resolves to `internal` under an
+enterprise account and to `private` otherwise; `public` is never inferred, and
+an existing repository's visibility is never changed. `BranchProtection`
 takes `repository: "name"` instead of nesting if you prefer, and
 `enabled: false` declares the branch unprotected.
 

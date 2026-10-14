@@ -17,6 +17,7 @@ import type {
   LiveRepoEnvironment,
   LiveRepoSecret,
   LiveRepository,
+  LiveRepositoryMergeSettings,
   LiveRepositoryProperties,
   LiveRepositoryRuleset,
   LiveRepoVariable,
@@ -27,7 +28,7 @@ import type {
   LiveTeamRepository,
 } from '../github/client.ts';
 import type { DesiredState, TeamManifest } from '../synth/manifest.ts';
-import { isBuiltInRepoPermission } from '../synth/manifest.ts';
+import { isBuiltInRepoPermission, REPOSITORY_MERGE_SETTINGS } from '../synth/manifest.ts';
 import { scopesOf } from './owned-scopes.ts';
 
 /**
@@ -42,6 +43,8 @@ export interface LiveState {
   readonly teams: LiveTeam[];
   /** Every repository in the organization, read when the definition names one. */
   readonly repositories?: LiveRepository[];
+  /** Merge settings of the declared repositories that set one, and no others. */
+  readonly repositoryMergeSettings?: LiveRepositoryMergeSettings[];
   /**
    * Repository grants keyed by slug: the teams that declare an access map,
    * plus their live ancestors. The ancestors are read because GitHub reports
@@ -121,6 +124,9 @@ export async function readLiveState(client: GitHubClient, desired: DesiredState)
   // A declaration on a repository this same run creates has nothing to read
   // yet, so a 404 on one of these is an empty surface rather than a failure.
   const beingCreated = new Set((desired.repositories ?? []).map((r) => r.name));
+  const declaringMergeSettings = (desired.repositories ?? [])
+    .filter((r) => REPOSITORY_MERGE_SETTINGS.some((key) => r[key] !== undefined))
+    .map((r) => r.name);
   const variableScopes = scopesOf(desired.actionsVariables, desired);
   const secretScopes = scopesOf(desired.actionsSecrets, desired);
 
@@ -162,6 +168,7 @@ export async function readLiveState(client: GitHubClient, desired: DesiredState)
     branchProtection,
     installations,
     repositories,
+    repositoryMergeSettings,
     customRepositoryRoles,
     organizationRoles,
     repositoryRulesets,
@@ -186,6 +193,7 @@ export async function readLiveState(client: GitHubClient, desired: DesiredState)
     readBranchProtection(client, owner, desired),
     namesAnApp ? client.listAppInstallations(owner) : undefined,
     desired.repositories ? client.listRepositories(owner) : undefined,
+    declaringMergeSettings.length > 0 ? client.listRepositoryMergeSettings(owner, declaringMergeSettings) : undefined,
     namesCustomRole || desired.customRepositoryRoles ? client.listCustomRepositoryRoles(owner) : undefined,
     desired.organizationRoles ? readOrganizationRoles(client, owner) : undefined,
     readPerRepository(namedRepositories(desired.repositoryRulesets), beingCreated, async (repository) =>
@@ -270,6 +278,7 @@ export async function readLiveState(client: GitHubClient, desired: DesiredState)
     teamMembers,
     organizationOwners,
     repositories,
+    repositoryMergeSettings,
     customRepositoryRoles,
     organizationRoles,
     settings,

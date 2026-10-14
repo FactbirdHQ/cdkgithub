@@ -312,6 +312,11 @@ export function renderPlan(changes: Change[]): string {
         );
         break;
       }
+      case 'repository-merge-settings': {
+        lines.push(`  ~ merge settings on ${change.repository}`);
+        lines.push(...renderFields(change.fields));
+        break;
+      }
       case 'create-repo-role': {
         const role = change.role;
         lines.push(`  + repository role "${role.name}"`);
@@ -400,6 +405,7 @@ const BUCKETS = {
     'update-issue-field',
     'update-repo-role',
     'org-settings',
+    'repository-merge-settings',
     'actions-policy',
     'default-security-config',
     'property-values',

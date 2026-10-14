@@ -385,6 +385,8 @@ export function describeChange(change: Change): string {
       return `protect ${change.protection.repository}#${change.protection.branch}`;
     case 'create-repository':
       return `create repository "${change.repository.name}"`;
+    case 'repository-merge-settings':
+      return `update merge settings on ${change.repository}`;
     case 'create-repo-role':
       return `create repository role "${change.role.name}"`;
     case 'update-repo-role':

@@ -504,12 +504,6 @@ export interface CustomRepositoryRoleManifest {
  */
 export type RepositoryVisibility = 'public' | 'private' | 'internal';
 
-/**
- * A repository to create if the organization does not have one by this name.
- *
- * Everything but `name` describes what to create. An existing repository is
- * adopted unchanged, so none of it is compared against a live one.
- */
 /** A person granted access to one repository directly, outside any team. */
 export interface CollaboratorManifest {
   readonly repository: string;
@@ -517,14 +511,26 @@ export interface CollaboratorManifest {
   readonly permission: RepoPermission;
 }
 
-export interface RepositoryManifest {
-  readonly name: string;
-  readonly description?: string;
-  readonly visibility?: RepositoryVisibility;
+/** The merge buttons a repository offers, and whether the head branch goes once a pull request lands. */
+export interface RepositoryMergeSettings {
   readonly allowMergeCommit?: boolean;
   readonly allowSquashMerge?: boolean;
   readonly allowRebaseMerge?: boolean;
   readonly deleteBranchOnMerge?: boolean;
+}
+
+export const REPOSITORY_MERGE_SETTINGS = [
+  'allowMergeCommit',
+  'allowSquashMerge',
+  'allowRebaseMerge',
+  'deleteBranchOnMerge',
+] as const satisfies ReadonlyArray<keyof RepositoryMergeSettings>;
+
+/** A repository to create, or to hold to its declared merge settings where it exists. */
+export interface RepositoryManifest extends RepositoryMergeSettings {
+  readonly name: string;
+  readonly description?: string;
+  readonly visibility?: RepositoryVisibility;
   readonly hasIssues?: boolean;
   readonly hasProjects?: boolean;
   readonly hasWiki?: boolean;
