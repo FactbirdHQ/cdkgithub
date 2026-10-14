@@ -21,6 +21,7 @@ import type {
   OrgSettingsManifest,
   RepoPermission,
   RepositoryManifest,
+  RepositoryMergeSettings,
   ResolvedBypassActor,
   ResolvedRuleset,
   RulesetConditions,
@@ -242,6 +243,12 @@ export interface UpdateTeamParams {
 export interface LiveRepository {
   readonly id: number;
   readonly name: string;
+}
+
+/** One repository's merge settings, as read back for diffing. */
+export interface LiveRepositoryMergeSettings extends Required<RepositoryMergeSettings> {
+  readonly repository: string;
+  readonly archived: boolean;
 }
 
 /**
@@ -495,12 +502,17 @@ export interface GitHubClient {
   /** Repositories in the org, used to resolve names to ids. */
   listRepositories(org: string): Promise<LiveRepository[]>;
 
-  /**
-   * Create a repository. There is deliberately no update and no delete beside
-   * it: an existing repository is adopted as it stands, and nothing here
-   * removes one.
-   */
+  /** Create a repository. Nothing here removes one. */
   createRepository(org: string, repository: RepositoryManifest): Promise<LiveRepository>;
+
+  /**
+   * The merge settings of many repositories at once. A repository that does
+   * not exist, or that the token cannot see, is absent from the result.
+   */
+  listRepositoryMergeSettings(owner: string, repositories: readonly string[]): Promise<LiveRepositoryMergeSettings[]>;
+
+  /** Write an existing repository's merge settings and no other field of it. */
+  updateRepositoryMergeSettings(owner: string, repo: string, settings: RepositoryMergeSettings): Promise<void>;
 
   /**
    * Whether this organization can have internal repositories, which is true
@@ -865,6 +877,20 @@ function writes(options: { url: string; query?: unknown }): boolean {
 
 /** How many repositories one GraphQL query lists environments for. */
 const ENVIRONMENT_BATCH = 50;
+
+const MERGE_SETTINGS_BATCH = 100;
+
+type MergeSettingsData = Record<
+  string,
+  {
+    name: string;
+    isArchived: boolean;
+    mergeCommitAllowed: boolean;
+    squashMergeAllowed: boolean;
+    rebaseMergeAllowed: boolean;
+    deleteBranchOnMerge: boolean;
+  } | null
+>;
 
 type EnvironmentsData = Record<
   string,
@@ -1338,6 +1364,58 @@ export class OctokitGitHubClient implements GitHubClient {
       per_page: 100,
     });
     return repos.map((r) => ({ id: r.id, name: r.name }));
+  }
+
+  async listRepositoryMergeSettings(
+    owner: string,
+    repositories: readonly string[],
+  ): Promise<LiveRepositoryMergeSettings[]> {
+    const batches: string[][] = [];
+    for (let i = 0; i < repositories.length; i += MERGE_SETTINGS_BATCH) {
+      batches.push(repositories.slice(i, i + MERGE_SETTINGS_BATCH));
+    }
+    return (await Promise.all(batches.map((batch) => this.mergeSettingsBatch(owner, batch)))).flat();
+  }
+
+  /** One GraphQL query for up to {@link MERGE_SETTINGS_BATCH} repositories, each aliased by position. */
+  private async mergeSettingsBatch(owner: string, batch: readonly string[]): Promise<LiveRepositoryMergeSettings[]> {
+    const variables = Object.fromEntries(batch.map((name, i) => [`r${i}`, name]));
+    const query = `query ($owner: String!, ${batch.map((_, i) => `$r${i}: String!`).join(', ')}) {
+${batch
+  .map(
+    (_, i) =>
+      `  r${i}: repository(owner: $owner, name: $r${i}) { name isArchived mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed deleteBranchOnMerge }`,
+  )
+  .join('\n')}
+}`;
+    const data = await this.graphqlAllowingNotFound<MergeSettingsData>(query, { owner, ...variables });
+    return batch.flatMap((repository, i) => {
+      const found = data[`r${i}`];
+      if (!found) {
+        return [];
+      }
+      return [
+        {
+          repository,
+          archived: found.isArchived,
+          allowMergeCommit: found.mergeCommitAllowed,
+          allowSquashMerge: found.squashMergeAllowed,
+          allowRebaseMerge: found.rebaseMergeAllowed,
+          deleteBranchOnMerge: found.deleteBranchOnMerge,
+        },
+      ];
+    });
+  }
+
+  async updateRepositoryMergeSettings(owner: string, repo: string, settings: RepositoryMergeSettings): Promise<void> {
+    await this.octokit.request('PATCH /repos/{owner}/{repo}', {
+      owner,
+      repo,
+      allow_merge_commit: settings.allowMergeCommit,
+      allow_squash_merge: settings.allowSquashMerge,
+      allow_rebase_merge: settings.allowRebaseMerge,
+      delete_branch_on_merge: settings.deleteBranchOnMerge,
+    });
   }
 
   async listAppInstallations(org: string): Promise<LiveAppInstallation[]> {

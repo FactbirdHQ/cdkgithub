@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 
+import type { LiveRepositoryMergeSettings } from '../src/github/client.ts';
 import { apply } from '../src/reconcile/applier.ts';
-import type { LiveState } from '../src/reconcile/live.ts';
+import { type LiveState, readLiveState } from '../src/reconcile/live.ts';
 import { planRepositories } from '../src/reconcile/plan-repositories.ts';
 import { FakeClient } from './fake-client.ts';
 
@@ -18,7 +19,7 @@ describe('planning repositories', () => {
     expect(planRepositories(undefined, live)).toEqual([]);
   });
 
-  test('one GitHub already has is adopted, not changed', () => {
+  test('one GitHub already has keeps the description it has', () => {
     expect(planRepositories([{ name: 'netcore', description: 'different' }], live)).toEqual([]);
   });
 
@@ -76,5 +77,98 @@ describe('visibility', () => {
       {},
     );
     expect(client.callsTo('createRepository')).toEqual([{ name: 'the-blog', visibility: 'public' }]);
+  });
+});
+
+const squashOnly = { allowMergeCommit: false, allowSquashMerge: true, allowRebaseMerge: false };
+
+function liveWith(settings: Partial<LiveRepositoryMergeSettings> & { repository: string }): LiveState {
+  return {
+    ...live,
+    repositoryMergeSettings: [
+      {
+        archived: false,
+        allowMergeCommit: true,
+        allowSquashMerge: true,
+        allowRebaseMerge: true,
+        deleteBranchOnMerge: false,
+        ...settings,
+      },
+    ],
+  };
+}
+
+describe('merge settings on an existing repository', () => {
+  test('a declared setting that differs is planned, with only the fields that differ', () => {
+    expect(
+      planRepositories(
+        [{ name: 'netcore', ...squashOnly, deleteBranchOnMerge: true }],
+        liveWith({ repository: 'netcore' }),
+      ),
+    ).toEqual([
+      {
+        kind: 'repository-merge-settings',
+        repository: 'netcore',
+        settings: { ...squashOnly, deleteBranchOnMerge: true },
+        fields: [
+          { field: 'allowMergeCommit', from: true, to: false },
+          { field: 'allowRebaseMerge', from: true, to: false },
+          { field: 'deleteBranchOnMerge', from: false, to: true },
+        ],
+      },
+    ]);
+  });
+
+  test('a setting left undeclared is not compared', () => {
+    expect(
+      planRepositories([{ name: 'netcore', allowSquashMerge: true }], liveWith({ repository: 'netcore' })),
+    ).toEqual([]);
+  });
+
+  test('an archived repository is read-only, so nothing is planned for it', () => {
+    expect(
+      planRepositories(
+        [{ name: 'netcore', deleteBranchOnMerge: true }],
+        liveWith({ repository: 'netcore', archived: true }),
+      ),
+    ).toEqual([]);
+  });
+
+  test('the live repository is matched case-insensitively and patched by its own name', () => {
+    expect(
+      planRepositories([{ name: 'flow-portal', deleteBranchOnMerge: true }], liveWith({ repository: 'Flow-Portal' })),
+    ).toEqual([expect.objectContaining({ kind: 'repository-merge-settings', repository: 'Flow-Portal' })]);
+  });
+
+  test('only the repositories declaring a setting are read', async () => {
+    const client = new FakeClient({ repositories: live.repositories });
+    await readLiveState(client, {
+      owner: 'acme',
+      ownerType: 'organization',
+      teams: [],
+      repositories: [{ name: 'netcore', deleteBranchOnMerge: true }, { name: 'Flow-Portal' }],
+    });
+    expect(client.callsTo('listRepositoryMergeSettings')).toEqual([['netcore']]);
+  });
+
+  test('apply writes the declared settings', async () => {
+    const client = new FakeClient();
+    await apply(
+      client,
+      'acme',
+      [
+        {
+          kind: 'repository-merge-settings',
+          repository: 'netcore',
+          settings: { deleteBranchOnMerge: true },
+          fields: [{ field: 'deleteBranchOnMerge', from: false, to: true }],
+        },
+      ],
+      { teams: [] },
+      {},
+    );
+    expect(client.callsTo('updateRepositoryMergeSettings')).toEqual([
+      { repo: 'netcore', settings: { deleteBranchOnMerge: true } },
+    ]);
   });
 });

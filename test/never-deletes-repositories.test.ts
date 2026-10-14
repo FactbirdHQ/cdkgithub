@@ -2,6 +2,9 @@ import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
+import type { Octokit } from '@octokit/rest';
+
+import { OctokitGitHubClient } from '../src/github/client.ts';
 import { apply } from '../src/reconcile/applier.ts';
 import type { Change } from '../src/reconcile/changes.ts';
 import { planRepositories } from '../src/reconcile/plan-repositories.ts';
@@ -100,28 +103,47 @@ describe('a repository is never deleted', () => {
   });
 });
 
-/**
- * An existing repository's visibility is never changed.
- *
- * Creating one defaults to the most closed thing that still works, which is the
- * right instinct for a repository that does not exist yet. Applying that
- * instinct to one that does would be the opposite of safe: a declaration that
- * omits `visibility` would quietly close an open repository, and one that says
- * `public` would quietly open a closed one. Neither is a change anybody asked
- * for by writing a name in a list.
- *
- * So adoption is total. The declaration describes what to create and is ignored
- * entirely for a repository GitHub already has.
- */
-describe('an existing repository is never reconfigured', () => {
-  test('the client cannot patch a repository', () => {
+/** An existing repository's visibility is never changed: its one write is its merge settings. */
+describe('an existing repository is never opened or closed', () => {
+  test('the client patches a repository in one place', () => {
     const client = readFileSync('src/github/client.ts', 'utf8');
 
     // `updateOrgRuleset` and `updateBranchProtection` live in Octokit's
     // `repos.*` namespace and touch neither the repository nor its visibility.
     expect(client).not.toContain('repos.update(');
     expect(client).not.toContain('repos.edit(');
-    expect(client).not.toMatch(/PATCH \/repos\/\{owner\}\/\{repo\}'/);
+    expect(client.match(/PATCH \/repos\/\{owner\}\/\{repo\}'/g)).toHaveLength(1);
+  });
+
+  test('that patch carries the merge settings and nothing else', async () => {
+    const sent: Array<{ route: string; params: Record<string, unknown> }> = [];
+    const client = new OctokitGitHubClient('token', undefined, {
+      request: async (route: string, params: Record<string, unknown>) => {
+        sent.push({ route, params });
+        return { data: {} };
+      },
+    } as unknown as Octokit);
+
+    // A whole manifest passed where merge settings are expected.
+    await client.updateRepositoryMergeSettings('acme', 'app', {
+      deleteBranchOnMerge: true,
+      visibility: 'public',
+      name: 'renamed',
+    } as never);
+
+    expect(sent).toEqual([
+      {
+        route: 'PATCH /repos/{owner}/{repo}',
+        params: {
+          owner: 'acme',
+          repo: 'app',
+          allow_merge_commit: undefined,
+          allow_squash_merge: undefined,
+          allow_rebase_merge: undefined,
+          delete_branch_on_merge: true,
+        },
+      },
+    ]);
   });
 
   test('declaring public against a live private repository proposes nothing', () => {

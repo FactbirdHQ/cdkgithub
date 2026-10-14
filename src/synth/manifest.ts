@@ -181,10 +181,7 @@ export interface DesiredState {
   readonly settings?: OrgSettingsManifest;
   /** GitHub Actions permissions, allowlist, and default token scope. */
   readonly actions?: ActionsPolicyManifest;
-  /**
-   * Repositories to create when the organization does not have them. An
-   * existing one is adopted unchanged; nothing here is ever deleted.
-   */
+  /** Repositories to create, or to hold to their declared merge settings. None is ever deleted. */
   readonly repositories?: RepositoryManifest[];
   /** Repository roles this organization defines, keyed by name. */
   readonly customRepositoryRoles?: CustomRepositoryRoleManifest[];

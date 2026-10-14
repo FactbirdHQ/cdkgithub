@@ -18,6 +18,7 @@ import type {
   LiveOrgSettings,
   LiveOrgVariable,
   LiveRepository,
+  LiveRepositoryMergeSettings,
   LiveRepositoryProperties,
   LiveRuleset,
   LiveRunnerGroup,
@@ -40,6 +41,7 @@ import type {
   OrgSettingsManifest,
   RepoPermission,
   RepositoryManifest,
+  RepositoryMergeSettings,
   ResolvedRuleset,
   RunnerGroupManifest,
   SecurityAttachScope,
@@ -62,6 +64,7 @@ export interface FakeClientState {
   roleAssignments?: Record<number, { teams: string[]; users: string[] }>;
   externalGroups?: ExternalIdpGroup[];
   repositories?: LiveRepository[];
+  repositoryMergeSettings?: LiveRepositoryMergeSettings[];
   appInstallations?: LiveAppInstallation[];
   /** Repositories per installation id. An id missing here answers 403, as for a non-user token. */
   installationRepositories?: Record<number, string[]>;
@@ -114,6 +117,7 @@ export class FakeClient implements GitHubClient {
   roleAssignments: Record<number, { teams: string[]; users: string[] }>;
   externalGroups: ExternalIdpGroup[];
   repositories: LiveRepository[];
+  repositoryMergeSettings: LiveRepositoryMergeSettings[];
   appInstallations: LiveAppInstallation[];
   installationRepositories: Record<number, string[]>;
   settings: LiveOrgSettings;
@@ -155,6 +159,7 @@ export class FakeClient implements GitHubClient {
     this.roleAssignments = state.roleAssignments ?? {};
     this.externalGroups = state.externalGroups ?? [];
     this.repositories = state.repositories ?? [];
+    this.repositoryMergeSettings = state.repositoryMergeSettings ?? [];
     this.appInstallations = state.appInstallations ?? [];
     this.installationRepositories = state.installationRepositories ?? {};
     this.settings = state.settings ?? {};
@@ -331,6 +336,18 @@ export class FakeClient implements GitHubClient {
 
   async listRepositories(): Promise<LiveRepository[]> {
     return this.repositories;
+  }
+
+  async listRepositoryMergeSettings(
+    _owner: string,
+    repositories: readonly string[],
+  ): Promise<LiveRepositoryMergeSettings[]> {
+    this.record('listRepositoryMergeSettings', repositories);
+    return this.repositoryMergeSettings.filter((s) => repositories.includes(s.repository));
+  }
+
+  async updateRepositoryMergeSettings(_owner: string, repo: string, settings: RepositoryMergeSettings): Promise<void> {
+    this.record('updateRepositoryMergeSettings', { repo, settings });
   }
 
   async listAppInstallations(): Promise<LiveAppInstallation[]> {

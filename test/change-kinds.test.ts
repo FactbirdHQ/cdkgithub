@@ -294,6 +294,12 @@ const SAMPLES: Record<Change['kind'], Change> = {
     kind: 'create-repository',
     repository: { name: 'new-repo' },
   },
+  'repository-merge-settings': {
+    kind: 'repository-merge-settings',
+    repository: 'app',
+    settings: { deleteBranchOnMerge: true },
+    fields: [{ field: 'deleteBranchOnMerge', from: false, to: true }],
+  },
   'create-repo-role': {
     kind: 'create-repo-role',
     role: {

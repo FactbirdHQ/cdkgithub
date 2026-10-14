@@ -24,6 +24,7 @@ import type {
   OrgSettingsManifest,
   RepoPermission,
   RepositoryManifest,
+  RepositoryMergeSettings,
   ResolvedRuleset,
   RunnerGroupManifest,
   TeamManifest,
@@ -444,13 +445,20 @@ export interface DeleteRepositoryRole {
 /**
  * Create a repository the organization does not have.
  *
- * There is no update and no delete beside it. An existing repository is adopted
- * as it stands, and a declaration removed from the definition removes nothing
- * from GitHub.
+ * There is no delete beside it: a declaration removed from the definition
+ * removes nothing from GitHub.
  */
 export interface CreateRepository {
   readonly kind: 'create-repository';
   readonly repository: RepositoryManifest;
+}
+
+/** Bring an existing repository's merge settings in line with its declaration. */
+export interface UpdateRepositoryMergeSettings {
+  readonly kind: 'repository-merge-settings';
+  readonly repository: string;
+  readonly settings: RepositoryMergeSettings;
+  readonly fields: FieldChange[];
 }
 
 export type Change =
@@ -498,6 +506,7 @@ export type Change =
   | SetBranchProtection
   | RemoveBranchProtection
   | CreateRepository
+  | UpdateRepositoryMergeSettings
   | CreateRepositoryRole
   | UpdateRepositoryRole
   | DeleteRepositoryRole
