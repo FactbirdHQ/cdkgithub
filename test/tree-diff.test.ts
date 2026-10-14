@@ -288,6 +288,95 @@ describe('diffing the two trees', () => {
     ]);
     expect(cloud?.rosters).toEqual([{ role: 'member', added: ['joiner'], removed: ['leaver'] }]);
   });
+
+  test('an owner GitHub reports as maintainer satisfies a member declaration', async () => {
+    const client = new FakeClient({
+      teams: [liveTeam('staff')],
+      organizationOwners: ['owner'],
+      teamMembers: { staff: [{ login: 'owner', role: 'maintainer', inherited: false }] },
+    });
+    const live = await readLiveTree(client, 'acme');
+    const diff = diffTrees(live, desiredTree(manifest([team('staff', { members: ['owner'] })])));
+
+    expect(diff.counts.changed).toBe(0);
+  });
+
+  test('a maintainer held through a team below that keeps them is no change', async () => {
+    const client = new FakeClient({
+      teams: [liveTeam('engineering'), liveTeam('cloud', 'engineering')],
+      organizationOwners: ['owner'],
+      teamMembers: {
+        engineering: [{ login: 'owner', role: 'maintainer', inherited: true }],
+        cloud: [{ login: 'owner', role: 'maintainer', inherited: false }],
+      },
+    });
+    const live = await readLiveTree(client, 'acme');
+    const diff = diffTrees(
+      live,
+      desiredTree(
+        manifest([
+          team('engineering', { maintainers: ['owner'] }),
+          team('cloud', { parentSlug: 'engineering', members: ['owner'] }),
+        ]),
+      ),
+    );
+
+    expect(diff.counts.changed).toBe(0);
+  });
+
+  test('someone listed as both maintainer and member is a maintainer', async () => {
+    const client = new FakeClient({
+      teams: [liveTeam('cloud')],
+      teamMembers: { cloud: [{ login: 'lead', role: 'maintainer', inherited: false }] },
+    });
+    const live = await readLiveTree(client, 'acme');
+    const diff = diffTrees(live, desiredTree(manifest([team('cloud', { maintainers: ['lead'], members: ['lead'] })])));
+
+    expect(diff.counts.changed).toBe(0);
+  });
+
+  test('a team that declares no roster leaves the live one alone', async () => {
+    const client = new FakeClient({
+      teams: [liveTeam('cloud')],
+      teamMembers: { cloud: [{ login: 'dev', role: 'member', inherited: false }] },
+    });
+    const live = await readLiveTree(client, 'acme');
+    const diff = diffTrees(
+      live,
+      desiredTree(manifest([team('cloud', { maintainers: undefined, members: undefined })])),
+    );
+
+    expect(diff.counts.changed).toBe(0);
+  });
+
+  test('a grant at or below an organization role’s base permission is no change', async () => {
+    const client = new FakeClient({
+      teams: [liveTeam('engineering'), liveTeam('ops', 'engineering')],
+      organizationRoles: [{ id: 7, name: 'all_repo_maintain', baseRole: 'maintain', permissions: [] }],
+      roleAssignments: { 7: { teams: ['ops'], users: [] } },
+      teamRepositories: {
+        engineering: [{ name: 'api', roleName: 'write' }],
+        ops: [
+          { name: 'api', roleName: 'maintain' },
+          { name: 'docs', roleName: 'maintain' },
+          { name: 'infra', roleName: 'admin' },
+        ],
+      },
+    });
+    const live = await readLiveTree(client, 'acme');
+    const diff = diffTrees(
+      live,
+      desiredTree(
+        manifest([
+          team('engineering', { repositories: { api: 'push' } }),
+          team('ops', { parentSlug: 'engineering', repositories: {} }),
+        ]),
+      ),
+    );
+
+    // The admin grant sits above the floor, so dropping it is still a change.
+    expect(diff.roots[0]?.children[0]?.grants).toEqual([{ repository: 'infra', from: 'admin', to: undefined }]);
+  });
 });
 
 describe('rendering', () => {

@@ -23,6 +23,7 @@ import type { Change, TeamRole } from './changes.ts';
 import type { LiveState } from './live.ts';
 import { declaresAccess, declaresRoster, resolveLive } from './live.ts';
 import { rankCustomRoles, rankOf } from './permission-rank.ts';
+import { organizationRoleFloor, selfAndAncestors, teamRoleHolds } from './settled-access.ts';
 
 /**
  * Plan the repository grants and rosters of teams that already exist.
@@ -100,7 +101,11 @@ function planRepoAccess(
     (live.teamRepositories?.get(liveSlug) ?? []).map((r) => [r.name, comparableRoleName(r.roleName)] as const),
   );
   const inherited = inheritedAccess(liveSlug, live, liveBySlug);
-  const roleFloor = organizationRoleFloor(liveSlug, live, liveBySlug, roles);
+  const roleFloor = organizationRoleFloor(
+    selfAndAncestors(liveSlug, (slug) => liveBySlug.get(slug)?.parentSlug),
+    live.organizationRoles ?? [],
+    roles,
+  );
 
   const changes: Change[] = [];
   for (const [repository, permission] of Object.entries(declared)) {
@@ -162,35 +167,6 @@ function inheritedAccess(slug: string, live: LiveState, liveBySlug: Map<string, 
   return merged;
 }
 
-/**
- * The strongest base role among the organization roles `slug` or an ancestor
- * holds, as a repository permission, or `undefined` when none carries one.
- * Only read when the definition declares organization roles.
- */
-function organizationRoleFloor(
-  slug: string,
-  live: LiveState,
-  liveBySlug: Map<string, LiveTeam>,
-  roles: Map<string, number>,
-): string | undefined {
-  const holders = new Set<string>();
-  for (let team: string | null = slug; team && !holders.has(team); team = liveBySlug.get(team)?.parentSlug ?? null) {
-    holders.add(team);
-  }
-
-  let floor: string | undefined;
-  for (const role of live.organizationRoles ?? []) {
-    if (!role.baseRole || !role.teams.some((t) => holders.has(t))) {
-      continue;
-    }
-    const permission = comparableRoleName(role.baseRole);
-    if (floor === undefined || rankOf(permission, roles) > rankOf(floor, roles)) {
-      floor = permission;
-    }
-  }
-  return floor;
-}
-
 function planRoster(
   team: TeamManifest,
   liveSlug: string,
@@ -223,10 +199,7 @@ function planRoster(
     // someone up from a child fails both, which is the point: the child drops
     // them this run, so this team has to hold them itself.
     const held = direct.has(username) || explainedAfter.has(username);
-    // GitHub reports an organization owner as maintainer whatever role was
-    // written, so for an owner any membership satisfies the declaration.
-    const roleHolds = effective === role || (owners.has(username) && effective === 'maintainer');
-    if (roleHolds && held) {
+    if (teamRoleHolds(effective, role, owners.has(username)) && held) {
       continue;
     }
     changes.push({

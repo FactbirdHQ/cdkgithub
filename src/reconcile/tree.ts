@@ -23,6 +23,8 @@ import type {
 } from '../github/client.ts';
 import { comparableRoleName } from '../github/client.ts';
 import type { DesiredState, RepoPermission, RepositoryAccess, TeamPrivacy } from '../synth/manifest.ts';
+import type { TeamRole } from './changes.ts';
+import { declaresRoster } from './live.ts';
 import type { OrgRoleAssignment } from './org-role-access.ts';
 import { assignmentFromLive } from './org-role-access.ts';
 import { rankCustomRoles, rankOf, strongerPermission } from './permission-rank.ts';
@@ -44,8 +46,12 @@ export interface TeamNode {
   readonly repositories: RepositoryAccess;
   /** Own grants unioned with every ancestor's, each at the stronger permission. */
   readonly effectiveRepositories: RepositoryAccess;
+  /** Everyone GitHub lists on the live team, those held through a team below included. */
+  readonly reportedRoles?: ReadonlyMap<string, TeamRole>;
   /** Entra owns the roster when the team is IdP-synced, so the diff says so. */
   readonly idpSynced: boolean;
+  /** A definition that names neither list leaves the live roster alone. */
+  readonly declaresRoster: boolean;
   readonly children: TeamNode[];
 }
 
@@ -76,6 +82,8 @@ export interface OrgTree {
    * leaves invitations out.
    */
   readonly collaborators?: readonly DirectGrant[];
+  /** Organization owners, read on the live side only. */
+  readonly owners?: readonly string[];
 }
 
 /** A person holding one repository directly, outside any team. */
@@ -96,7 +104,9 @@ interface TeamSeed {
   readonly maintainers: string[];
   readonly members: string[];
   readonly repositories: RepositoryAccess;
+  readonly reportedRoles?: ReadonlyMap<string, TeamRole>;
   readonly idpSynced: boolean;
+  readonly declaresRoster: boolean;
 }
 
 /**
@@ -130,11 +140,12 @@ export async function readLiveTree(
     return { ...buildTree(owner, [], []), collaborators };
   }
 
-  const [teams, customRoles, repositories, orgRoles] = await Promise.all([
+  const [teams, customRoles, repositories, orgRoles, owners] = await Promise.all([
     client.listTeams(owner),
     readCustomRoles(client, owner),
     client.listRepositories(owner),
     readOrgRoles(client, owner),
+    client.listOrganizationOwners(owner),
   ]);
   const ranks = rankCustomRoles(customRoles);
 
@@ -153,6 +164,7 @@ export async function readLiveTree(
     repositories,
     orgRoles,
     collaborators,
+    owners,
   };
 }
 
@@ -233,7 +245,9 @@ function seedFromLive(team: LiveTeam, roster: LiveTeamMember[], repos: LiveTeamR
     maintainers: logins('maintainer'),
     members: logins('member'),
     repositories,
+    reportedRoles: new Map(roster.map((m) => [m.login, m.role] as const)),
     idpSynced: false,
+    declaresRoster: true,
   };
 }
 
@@ -250,22 +264,25 @@ export function desiredTree(
   liveOrgRoles: readonly OrgRoleAssignment[] = [],
   repositories: readonly LiveRepository[] = [],
 ): OrgTree {
-  const seeds = desired.teams.map(
-    (t) =>
-      ({
-        slug: t.slug,
-        name: t.name,
-        description: t.description ?? '',
-        privacy: t.privacy,
-        parentSlug: t.parentSlug ?? null,
-        previousSlug: t.previousSlug,
-        // A manifest is read off disk, so an older one may predate a field.
-        maintainers: [...(t.maintainers ?? [])].sort(),
-        members: [...(t.members ?? [])].sort(),
-        repositories: t.repositories ?? {},
-        idpSynced: t.externalGroup !== undefined,
-      }) satisfies TeamSeed,
-  );
+  const seeds = desired.teams.map((t) => {
+    // A manifest is read off disk, so an older one may predate a field.
+    const maintainers = [...(t.maintainers ?? [])].sort();
+    // Someone named in both lists is a maintainer, as `apply` writes them.
+    const members = (t.members ?? []).filter((login) => !maintainers.includes(login)).sort();
+    return {
+      slug: t.slug,
+      name: t.name,
+      description: t.description ?? '',
+      privacy: t.privacy,
+      parentSlug: t.parentSlug ?? null,
+      previousSlug: t.previousSlug,
+      maintainers,
+      members,
+      repositories: t.repositories ?? {},
+      idpSynced: t.externalGroup !== undefined,
+      declaresRoster: declaresRoster(t),
+    } satisfies TeamSeed;
+  });
   // What a role grants is GitHubs, not the definitions: the manifest says who
   // holds one, and the live role says what holding it reaches.
   const reachOf = new Map(liveOrgRoles.map((r) => [r.name, r.baseRole]));
@@ -369,7 +386,9 @@ function buildTree(owner: string, seeds: TeamSeed[], customRoles: readonly LiveC
       members: seed.members,
       repositories: seed.repositories,
       effectiveRepositories: effective,
+      reportedRoles: seed.reportedRoles,
       idpSynced: seed.idpSynced,
+      declaresRoster: seed.declaresRoster,
       children: (childrenOf.get(seed.slug) ?? [])
         .sort((a, b) => a.slug.localeCompare(b.slug))
         .map((child) => build(child, effective)),
