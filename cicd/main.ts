@@ -17,25 +17,35 @@
  *     add a manual (workflow_dispatch) job that mints a short-lived token with
  *     `createGithubAppTokenV3` and runs `plan`/`apply` against the sandbox only.
  */
-import { App, Job, RunnerLabel, Stack, setupNodeV6, Workflow } from '@factbird/cdkactions';
+import {
+  App,
+  checkoutV7,
+  createPullRequestV8,
+  DependabotActionPinSync,
+  Job,
+  nixInstallerActionV23,
+  RunnerLabel,
+  Stack,
+  setupBunV2,
+  setupNodeV6,
+  Workflow,
+} from '@factbird/cdkactions';
 
 /**
  * A third-party action runs by commit, not by tag: whoever controls the tag
  * can move it, and the release job holds a token that publishes to npm.
  */
-const setupBun = {
+const setupBun = setupBunV2.pinned(
+  '0c5077e51419868618aeaa5fe8019c62421857d6',
+  'v2.2.0',
+)({
   name: 'Setup Bun',
-  uses: 'oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6', // v2.2.0
-  with: { 'bun-version': 'latest' },
-};
+  with: { bunVersion: 'latest' },
+});
 
-/**
- * Checkout by commit too. cdkactions' `checkoutV4()` runs on Node 20, which
- * GitHub has deprecated, and it has no helper for a later major.
- */
-const checkout = {
-  uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1', // v7.0.1
-};
+const checkout = checkoutV7.pinned('3d3c42e5aac5ba805825da76410c181273ba90b1', 'v7.0.1')({});
+
+const setupNode = setupNodeV6.pinned('249970729cb0ef3589644e2896645e5dc5ba9c38', 'v6.5.0');
 
 /**
  * A named image rather than `ubuntu-latest`, so the image a job runs on changes
@@ -108,7 +118,7 @@ new Job(release, 'publish', {
     { name: 'Typecheck', run: 'bun run build' },
     { name: 'Test', run: 'bun test' },
     // Trusted publishing needs Node 22.14 and npm 11.5.1 or later.
-    setupNodeV6({
+    setupNode({
       id: 'node',
       with: { nodeVersion: '24', registryUrl: 'https://registry.npmjs.org' },
     }),
@@ -154,29 +164,40 @@ new Job(devenvUpdate, 'update', {
   permissions: { contents: 'write', pullRequests: 'write' },
   steps: [
     checkout,
-    {
+    nixInstallerActionV23.pinned(
+      '3138316df39ed29be04236d7ffc686fa525866aa',
+      'v23',
+    )({
       name: 'Install Nix',
-      uses: 'DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa', // v23
-    },
+    }),
     { name: 'Install devenv', run: 'nix profile install nixpkgs#devenv' },
     { name: 'Update devenv.lock', run: 'devenv update' },
-    {
+    createPullRequestV8.pinned(
+      '5f6978faf089d4d20b00c7766989d076bb2fc7f1',
+      'v8.1.1',
+    )({
       name: 'Open pull request',
-      uses: 'peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1', // v8.1.1
       with: {
         branch: 'chore/devenv-update',
-        'add-paths': 'devenv.lock',
-        'commit-message': 'chore: update devenv.lock',
+        addPaths: 'devenv.lock',
+        commitMessage: 'chore: update devenv.lock',
         title: 'chore: update devenv.lock',
         body: [
           'Monthly `devenv update`, opened by the devenv update workflow.',
           '',
           'GitHub starts no workflow for a pull request opened with GITHUB_TOKEN, so push to this branch or close and reopen the pull request to run CI.',
         ].join('\n'),
-        'delete-branch': true,
+        deleteBranch: true,
       },
-    },
+    }),
   ],
+});
+
+new DependabotActionPinSync(stack, 'dependabot-action-pin-sync', {
+  sources: ['cicd/main.ts'],
+  synthCommand: 'bun run synth:workflows',
+  setupSteps: [setupBun, { name: 'Install', run: 'bun install --frozen-lockfile' }],
+  runsOn: runner,
 });
 
 app.synth();

@@ -45,7 +45,8 @@
     "react": "^19.3.0"
   },
   "devDependencies": {
-    "@factbird/cdkactions": "^2.1.2",
+    "@factbird/cdkactions": "^2.2.0",
+    "@factbird/cdkactions-cli": "^2.2.0",
     "@tsconfig/bun": "^1.0.11",
     "@tsconfig/node-ts": "^23.6.4",
     "@tsconfig/node22": "^22.0.6",
