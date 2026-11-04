@@ -218,6 +218,13 @@ export async function apply(
             break;
           }
 
+          case 'set-team-sync': {
+            log(`Setting ${change.slug}'s Entra groups`);
+            await client.setTeamSyncGroups(org, slugOf(change.slug), change.groups);
+            updated++;
+            break;
+          }
+
           case 'delete': {
             log(`Deleting team ${change.live.slug}`);
             await client.deleteTeam(org, change.live.slug);
@@ -438,6 +445,10 @@ function describeDelete(change: Change): string {
       return `delete repository role "${change.live.name}"`;
     case 'remove-branch-protection':
       return `remove branch protection from ${change.repository}#${change.branch}`;
+    case 'set-team-sync':
+      return change.groups.length === 0
+        ? `unlink ${change.slug} from its Entra groups`
+        : `sync ${change.slug} from Entra groups ${change.groups.map((g) => g.name).join(', ')}`;
     default:
       return `delete ${change.kind}`;
   }

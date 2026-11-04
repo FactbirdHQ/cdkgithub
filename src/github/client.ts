@@ -34,6 +34,7 @@ import type {
   SecurityDefaultScope,
   TeamNotificationSetting,
   TeamPrivacy,
+  TeamSyncGroup,
 } from '../synth/manifest.ts';
 import { toCamelCaseKeys, toSnakeCaseKeys } from './casing.ts';
 import { CACHE_HIT_HEADER, type EtagCache } from './etag-cache.ts';
@@ -207,6 +208,11 @@ function holdsRoleDirectly(entry: RoleAssignee): boolean {
 /** Shape of `GET /orgs/{org}/external-groups` (not covered by Octokit's typed methods). */
 interface ExternalGroupsResponse {
   groups?: Array<{ group_id: number | string; group_name: string }>;
+}
+
+/** Shape of a team's `team-sync/group-mappings` (not covered by Octokit's typed methods). */
+interface TeamSyncGroupsResponse {
+  groups?: Array<{ group_id: string; group_name: string; group_description?: string | null }>;
 }
 
 /** One entry of `GET /orgs/{org}/actions/runner-groups` (not a typed Octokit method). */
@@ -490,6 +496,11 @@ export interface GitHubClient {
 
   listExternalGroups(org: string): Promise<ExternalIdpGroup[]>;
   linkExternalGroup(org: string, slug: string, groupId: number): Promise<void>;
+
+  /** A team's team-synchronization groups, `[]` for a team with none. */
+  listTeamSyncGroups(org: string, slug: string): Promise<TeamSyncGroup[]>;
+  /** Replace a team's team-synchronization groups; `[]` removes every one. */
+  setTeamSyncGroups(org: string, slug: string, groups: readonly TeamSyncGroup[]): Promise<void>;
 
   // Organization roles — /orgs/{org}/organization-roles
   listOrganizationRoles(org: string): Promise<LiveOrganizationRole[]>;
@@ -1355,6 +1366,29 @@ export class OctokitGitHubClient implements GitHubClient {
       org,
       team_slug: slug,
       group_id: groupId,
+    });
+  }
+
+  async listTeamSyncGroups(org: string, slug: string): Promise<TeamSyncGroup[]> {
+    try {
+      const { data } = await this.octokit.request('GET /orgs/{org}/teams/{team_slug}/team-sync/group-mappings', {
+        org,
+        team_slug: slug,
+      });
+      return toTeamSyncGroups(data, 'GET /orgs/{org}/teams/{team_slug}/team-sync/group-mappings');
+    } catch (error) {
+      if (isUnsyncedTeam(error)) {
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  async setTeamSyncGroups(org: string, slug: string, groups: readonly TeamSyncGroup[]): Promise<void> {
+    await this.octokit.request('PATCH /orgs/{org}/teams/{team_slug}/team-sync/group-mappings', {
+      org,
+      team_slug: slug,
+      groups: groups.map((g) => ({ group_id: g.id, group_name: g.name, group_description: g.description })),
     });
   }
 
@@ -2857,6 +2891,26 @@ function expectArray<T>(value: T[] | undefined, endpoint: string, key: string): 
     throw new Error(`Unexpected response from ${endpoint}: expected an array under "${key}".`);
   }
   return value;
+}
+
+function toTeamSyncGroups(data: unknown, endpoint: string): TeamSyncGroup[] {
+  const groups = expectArray((data as TeamSyncGroupsResponse).groups, endpoint, 'groups');
+  return groups.map((g) => ({
+    id: g.group_id.toLowerCase(),
+    name: g.group_name,
+    description: g.group_description ?? '',
+  }));
+}
+
+/**
+ * GitHub answers a team with no mapping 403 "This team is not externally
+ * managed" rather than an empty list, so that one 403 is a team with no
+ * groups. Reading any other 403 as empty would propose mappings against state
+ * nobody read.
+ */
+function isUnsyncedTeam(error: unknown): boolean {
+  const { status, message } = error as { status?: number; message?: string };
+  return status === 403 && typeof message === 'string' && message.includes('not externally managed');
 }
 
 function isNotFound(error: unknown): boolean {

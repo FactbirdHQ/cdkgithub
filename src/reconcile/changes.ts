@@ -28,6 +28,7 @@ import type {
   ResolvedRuleset,
   RunnerGroupManifest,
   TeamManifest,
+  TeamSyncGroup,
 } from '../synth/manifest.ts';
 
 /** The two roles GitHub records for a team member. */
@@ -107,6 +108,18 @@ export interface LinkExternalGroup {
   readonly kind: 'link-group';
   readonly slug: string;
   readonly group: ExternalGroupBinding;
+}
+
+/**
+ * Replace a team's team-synchronization groups. Gated by --allow-delete,
+ * because Entra then replaces the team's whole roster with the groups'
+ * members, and an emptied list leaves the last synced roster unowned.
+ */
+export interface SetTeamSyncGroups {
+  readonly kind: 'set-team-sync';
+  readonly slug: string;
+  readonly groups: readonly TeamSyncGroup[];
+  readonly from: readonly TeamSyncGroup[];
 }
 
 /** Bring the org's member privileges and defaults in line with the definition. */
@@ -470,6 +483,7 @@ export type Change =
   | SetTeamMembership
   | RemoveTeamMembership
   | LinkExternalGroup
+  | SetTeamSyncGroups
   | UpdateOrgSettings
   | UpdateActionsPolicy
   | CreateRuleset
@@ -522,7 +536,8 @@ export type TeamChange =
   | RemoveRepoAccess
   | SetTeamMembership
   | RemoveTeamMembership
-  | LinkExternalGroup;
+  | LinkExternalGroup
+  | SetTeamSyncGroups;
 
 /** Everything else: the org-wide governance surfaces. */
 export type GovernanceChange = Exclude<Change, TeamChange>;
@@ -536,6 +551,7 @@ const TEAM_KINDS: ReadonlyArray<Change['kind']> = [
   'set-membership',
   'remove-membership',
   'link-group',
+  'set-team-sync',
 ];
 
 export function isGovernanceChange(change: Change): change is GovernanceChange {
@@ -561,6 +577,7 @@ export const DESTRUCTIVE_KINDS = [
   'delete-property',
   'delete-issue-field',
   'remove-branch-protection',
+  'set-team-sync',
 ] as const satisfies ReadonlyArray<Change['kind']>;
 
 export type DestructiveKind = (typeof DESTRUCTIVE_KINDS)[number];
@@ -588,6 +605,7 @@ export const DELETE_SCOPES = {
   properties: 'delete-property',
   'issue-fields': 'delete-issue-field',
   'branch-protection': 'remove-branch-protection',
+  'team-sync': 'set-team-sync',
 } as const satisfies Record<string, DestructiveKind>;
 
 export type DeleteScope = keyof typeof DELETE_SCOPES;

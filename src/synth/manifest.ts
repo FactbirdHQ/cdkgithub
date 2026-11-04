@@ -88,6 +88,14 @@ export interface ExternalGroupBinding {
   readonly id?: number;
 }
 
+/** An Entra ID security group a team synchronizes its roster from. */
+export interface TeamSyncGroup {
+  /** The group's Entra object id. */
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+}
+
 /** A team's mapping of `repo name -> permission`. */
 export type RepositoryAccess = Record<string, RepoPermission>;
 
@@ -133,6 +141,12 @@ export interface TeamManifest {
   readonly repositories?: RepositoryAccess;
   /** Entra ID group linkage (SCIM). Absent when the team is not IdP-synced. */
   readonly externalGroup?: ExternalGroupBinding;
+  /**
+   * Team-synchronization groups, absent when the definition does not manage
+   * this team's mappings. `[]` is managed and empty: a live mapping is
+   * proposed for removal.
+   */
+  readonly teamSync?: readonly TeamSyncGroup[];
 }
 
 /**

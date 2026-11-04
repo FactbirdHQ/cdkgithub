@@ -4,6 +4,7 @@ import type { RepositoryAccess, TeamNotificationSetting, TeamPrivacy } from '../
 import type { VocabularyMember } from '../vocabulary.ts';
 import type { ExternalGroupProps } from './external-group.ts';
 import type { RepositoryGrantList } from './grants.ts';
+import type { TeamSyncGroupProps } from './team-sync-group.ts';
 
 export interface TeamProps<Member extends string = VocabularyMember> {
   /**
@@ -65,6 +66,18 @@ export interface TeamProps<Member extends string = VocabularyMember> {
    * is expected to be driven by the IdP rather than the `members` list.
    */
   readonly externalGroup?: ExternalGroupProps;
+
+  /**
+   * The Entra ID security groups this team's roster is synchronized from,
+   * through GitHub team synchronization.
+   *
+   * Declaring the list makes the definition own the team's mappings, and `[]`
+   * declares that it has none, so a mapping made in the web interface is
+   * proposed for removal. A non-empty list hands the roster to Entra, which
+   * replaces every member and maintainer with the groups' members on each sync,
+   * so it cannot be declared beside `members` or `maintainers`.
+   */
+  readonly teamSync?: readonly TeamSyncGroupProps[];
 }
 
 /**

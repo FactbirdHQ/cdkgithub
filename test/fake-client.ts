@@ -46,6 +46,7 @@ import type {
   RunnerGroupManifest,
   SecurityAttachScope,
   SecurityDefaultScope,
+  TeamSyncGroup,
 } from '../src/synth/manifest.ts';
 
 export interface FakeClientState {
@@ -63,6 +64,8 @@ export interface FakeClientState {
   /** Assignment per role id. */
   roleAssignments?: Record<number, { teams: string[]; users: string[] }>;
   externalGroups?: ExternalIdpGroup[];
+  /** Team-synchronization groups keyed by team slug. */
+  teamSyncGroups?: Record<string, TeamSyncGroup[]>;
   repositories?: LiveRepository[];
   repositoryMergeSettings?: LiveRepositoryMergeSettings[];
   appInstallations?: LiveAppInstallation[];
@@ -116,6 +119,7 @@ export class FakeClient implements GitHubClient {
   internalRepositoriesAllowed: boolean;
   roleAssignments: Record<number, { teams: string[]; users: string[] }>;
   externalGroups: ExternalIdpGroup[];
+  teamSyncGroups: Record<string, TeamSyncGroup[]>;
   repositories: LiveRepository[];
   repositoryMergeSettings: LiveRepositoryMergeSettings[];
   appInstallations: LiveAppInstallation[];
@@ -158,6 +162,7 @@ export class FakeClient implements GitHubClient {
     this.internalRepositoriesAllowed = state.internalRepositoriesAllowed ?? false;
     this.roleAssignments = state.roleAssignments ?? {};
     this.externalGroups = state.externalGroups ?? [];
+    this.teamSyncGroups = state.teamSyncGroups ?? {};
     this.repositories = state.repositories ?? [];
     this.repositoryMergeSettings = state.repositoryMergeSettings ?? [];
     this.appInstallations = state.appInstallations ?? [];
@@ -330,6 +335,15 @@ export class FakeClient implements GitHubClient {
 
   async linkExternalGroup(_org: string, slug: string, groupId: number): Promise<void> {
     this.links.push({ slug, groupId });
+  }
+
+  async listTeamSyncGroups(_org: string, slug: string): Promise<TeamSyncGroup[]> {
+    return this.teamSyncGroups[slug] ?? [];
+  }
+
+  async setTeamSyncGroups(_org: string, slug: string, groups: readonly TeamSyncGroup[]): Promise<void> {
+    this.record('setTeamSyncGroups', { slug, groups });
+    this.teamSyncGroups[slug] = [...groups];
   }
 
   // ---- repositories --------------------------------------------------------

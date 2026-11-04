@@ -1,5 +1,5 @@
 import type { LiveTeam } from '../github/client.ts';
-import type { DesiredState, TeamManifest } from '../synth/manifest.ts';
+import type { DesiredState, TeamManifest, TeamSyncGroup } from '../synth/manifest.ts';
 import type { Change, FieldChange } from './changes.ts';
 import { isDestructive } from './changes.ts';
 import type { LiveState } from './live.ts';
@@ -19,7 +19,7 @@ import { planTeamAccess } from './plan-team-access.ts';
  *
  * Order: team creates (parents before children, as the manifest is already
  * sorted) → team updates → repository creates and custom repository roles →
- * repository grants and rosters → external-group links → team deletes
+ * repository grants and rosters → Entra group links → team deletes
  * (children before parents) → governance. This lets `apply` run the list
  * top-to-bottom without violating GitHub's parent/child constraints, puts a
  * repository and a custom role before the grants that name them, and puts the
@@ -71,6 +71,13 @@ export function plan(desired: DesiredState, live: LiveState): Change[] {
         slug: team.slug,
         group: team.externalGroup,
       });
+    }
+
+    if (team.teamSync) {
+      const from = current ? (live.teamSyncGroups?.get(current.slug) ?? []) : [];
+      if (!sameGroupIds(team.teamSync, from)) {
+        links.push({ kind: 'set-team-sync', slug: team.slug, groups: team.teamSync, from });
+      }
     }
   }
 
@@ -156,6 +163,15 @@ function diffTeam(desired: TeamManifest, live: LiveTeam): FieldChange[] {
   }
 
   return fields;
+}
+
+/**
+ * The Entra object id is what identifies a group, so a name or description
+ * that differs from GitHub's copy is no reason to rewrite the mappings.
+ */
+function sameGroupIds(desired: readonly TeamSyncGroup[], live: readonly TeamSyncGroup[]): boolean {
+  const liveIds = new Set(live.map((g) => g.id));
+  return desired.length === liveIds.size && desired.every((g) => liveIds.has(g.id));
 }
 
 /** Depth of a live team in its parent chain (deeper = delete first). */
