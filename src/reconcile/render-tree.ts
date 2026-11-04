@@ -223,7 +223,7 @@ function teamDetail(team: TeamDiff, options: RenderTreeOptions): DetailLine[] {
 
   if (team.rosterOwnedByIdp) {
     lines.push({
-      text: 'roster not compared: Entra owns it through the external group',
+      text: 'roster not compared: Entra owns it',
       tone: 'muted',
     });
   }

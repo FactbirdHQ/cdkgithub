@@ -45,9 +45,9 @@ new Team(org, "security", {
 Declaring either roster list owns the whole roster, so the list you leave off
 reads as empty rather than as unmanaged. Declaring `repositories` owns the
 access map, `{}` included: a live grant missing from it becomes a removal,
-gated behind `--allow-delete`. A team with an `externalGroup` is the
-exception: Entra drives its membership, so its roster is never diffed
-whatever it declares.
+gated behind `--allow-delete`. A team with an `externalGroup` or `teamSync`
+groups is the exception: Entra drives its membership, so its roster is never
+diffed.
 
 The map form takes a permission per repository. The list form reads
 permission-first and spreads groups:
@@ -89,6 +89,39 @@ new OrganizationRole(org, 'security_manager', {
 leaving the other off owns the first and leaves the second alone. An empty
 list declares that nobody should hold the role, and revoking is gated behind
 `--allow-delete`. A role name GitHub does not define fails the plan.
+
+## Synchronize a team's roster from Entra ID groups
+
+This needs team synchronization on the organization: Entra SAML single sign-on
+with members on their own GitHub accounts. An enterprise with managed users
+uses `externalGroup` and SCIM instead, in the next section.
+
+Find the group's Entra object id among the groups GitHub can see:
+
+```bash
+gh api 'orgs/<org>/team-sync/groups?q=<name>'
+```
+
+Declare it on the team and drop the roster lists, because Entra replaces the
+roster on every sync:
+
+```ts
+new Team(org, "devops", {
+  teamSync: [{ id: "ea8d6d62-727c-44eb-bf27-eb9a753ba1e5", name: "SG_DevOps" }],
+  repositories: [maintain("yarnix")],
+});
+```
+
+Then apply with the `team-sync` scope:
+
+```bash
+bun src/bin/cdkgithub.ts apply --yes --allow-delete=team-sync
+```
+
+Anyone not in the groups leaves the team on the first sync, maintainers
+included, so a person who should keep maintaining it belongs in the Entra
+group. To keep a team on its declared roster and refuse a mapping someone adds
+in the web interface, declare `teamSync: []` beside `members`.
 
 ## Provision Entra ID groups into GitHub (SCIM)
 

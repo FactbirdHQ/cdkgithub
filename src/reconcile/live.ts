@@ -27,7 +27,7 @@ import type {
   LiveTeamMember,
   LiveTeamRepository,
 } from '../github/client.ts';
-import type { DesiredState, TeamManifest } from '../synth/manifest.ts';
+import type { DesiredState, TeamManifest, TeamSyncGroup } from '../synth/manifest.ts';
 import { isBuiltInRepoPermission, REPOSITORY_MERGE_SETTINGS } from '../synth/manifest.ts';
 import { scopesOf } from './owned-scopes.ts';
 
@@ -61,6 +61,8 @@ export interface LiveState {
    * on holding once the run has been applied.
    */
   readonly teamMembers?: Map<string, LiveTeamMember[]>;
+  /** Team-synchronization groups keyed by slug, for the teams that declare `teamSync`. */
+  readonly teamSyncGroups?: Map<string, TeamSyncGroup[]>;
   /** Logins of the organization's owners, read when a team declares a roster. */
   readonly organizationOwners?: string[];
   /**
@@ -248,7 +250,11 @@ export async function readLiveState(client: GitHubClient, desired: DesiredState)
   // alongside, declared or not.
   const accessSlugs = new Set<string>();
   const rosterSlugs = new Set<string>();
+  const teamSyncSlugs = new Set<string>();
   for (const { team, slug } of existing) {
+    if (team.teamSync !== undefined) {
+      teamSyncSlugs.add(slug);
+    }
     if (declaresAccess(team)) {
       accessSlugs.add(slug);
       for (const ancestor of ancestorSlugs(slug, liveBySlug)) {
@@ -263,10 +269,11 @@ export async function readLiveState(client: GitHubClient, desired: DesiredState)
     }
   }
 
-  const [teamRepositories, teamMembers, organizationOwners, appInstallations, securityConfigurations] =
+  const [teamRepositories, teamMembers, teamSyncGroups, organizationOwners, appInstallations, securityConfigurations] =
     await Promise.all([
       readSlugs(accessSlugs, (slug) => client.listTeamRepositories(owner, slug)),
       readSlugs(rosterSlugs, (slug) => client.listTeamMembers(owner, slug)),
+      readSlugs(teamSyncSlugs, (slug) => client.listTeamSyncGroups(owner, slug)),
       rosterSlugs.size > 0 ? client.listOrganizationOwners(owner) : undefined,
       readInstallationRepositories(client, installations, desired),
       readAttachedRepositories(client, owner, configurations, desired),
@@ -276,6 +283,7 @@ export async function readLiveState(client: GitHubClient, desired: DesiredState)
     teams,
     teamRepositories,
     teamMembers,
+    teamSyncGroups,
     organizationOwners,
     repositories,
     repositoryMergeSettings,
@@ -570,12 +578,21 @@ export function declaresAccess(team: TeamManifest): boolean {
 }
 
 /**
+ * Entra owns a team's roster when the team links an external group or
+ * synchronizes from at least one group. `teamSync: []` declares no group, so
+ * the roster stays the definition's.
+ */
+export function rosterOwnedByIdp(team: TeamManifest): boolean {
+  return team.externalGroup !== undefined || (team.teamSync?.length ?? 0) > 0;
+}
+
+/**
  * A team declares its roster when it carries either list. An IdP-synced team is
- * excluded whatever it declares: Entra owns that membership, and reconciling it
- * here would fight the next SCIM push.
+ * excluded whatever it declares: reconciling a roster Entra owns would fight
+ * the next sync.
  */
 export function declaresRoster(team: TeamManifest): boolean {
-  if (team.externalGroup) {
+  if (rosterOwnedByIdp(team)) {
     return false;
   }
   return team.members !== undefined || team.maintainers !== undefined;

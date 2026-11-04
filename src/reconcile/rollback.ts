@@ -15,8 +15,13 @@ import type { LiveState } from './live.ts';
  */
 export function rollbackManifest(desired: DesiredState, live: LiveState): DesiredState {
   // An IdP-synced team's roster belongs to Entra; restoring it from here would
-  // fight the next SCIM push, so those teams keep their shape but not a roster.
-  const idpSynced = new Set(desired.teams.filter((t) => t.externalGroup).map((t) => t.slug));
+  // fight the next sync, so those teams keep their shape but not a roster. A
+  // team whose live mappings were read is synced when it had any, whatever
+  // this run declares, because the rollback restores those mappings.
+  const idpSynced = new Set([
+    ...desired.teams.filter((t) => t.externalGroup).map((t) => t.slug),
+    ...[...(live.teamSyncGroups ?? [])].filter(([, groups]) => groups.length > 0).map(([slug]) => slug),
+  ]);
   const teams = [...live.teams]
     .sort((a, b) => depthOf(a, live.teams) - depthOf(b, live.teams))
     .map((team) => toTeamManifest(team, live, idpSynced.has(team.slug)));
@@ -46,6 +51,7 @@ function toTeamManifest(team: LiveTeam, live: LiveState, idpSynced: boolean): Te
     maintainers: roster?.filter((m) => m.role === 'maintainer').map((m) => m.login),
     members: roster?.filter((m) => m.role === 'member').map((m) => m.login),
     repositories,
+    teamSync: live.teamSyncGroups?.get(team.slug),
   };
 }
 

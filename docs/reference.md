@@ -60,6 +60,7 @@ Each scope names one destructive change kind for `--allow-delete=<scopes>`:
 | `collaborators` | A direct collaborator or pending invitation on a declared repository the definition does not declare. |
 | `branch-policies` | A branch or tag pattern a declared environment admits and its declaration no longer lists. |
 | `environments` | An environment the definition does not declare, on a repository that declares one, with every secret and variable in it and its deployment history. |
+| `team-sync` | Any change to a team's `teamSync` groups. Entra replaces the team's whole roster with the groups' members on the next sync, maintainers included, so adding a group removes people too. |
 
 Every change of these kinds is planned after every change that adds or updates something, in one run as in the plan. `apply` stops at its first failure, so an addition that fails leaves what it was replacing in place: a team's successor is created and granted before the team goes, and a ruleset is in force before the legacy protection it replaces is removed.
 
@@ -171,7 +172,9 @@ on:
 - A team with no `repositories` map keeps its grants unread and untouched;
   declaring the map, `{}` included, owns it.
 - Declaring `members` or `maintainers` owns the whole roster; a team with an
-  `externalGroup` never has its roster diffed. GitHub reports an
+  `externalGroup` or a non-empty `teamSync` never has its roster diffed.
+  Declaring `teamSync` owns the team's team-synchronization groups, `[]`
+  included, and only the teams that declare it are read. GitHub reports an
   organization owner as `maintainer` on every team they belong to, so `plan`
   takes that as satisfying a declared `member`.
 - Write no `Ruleset` and the org's rulesets are never read, reported, or
@@ -283,6 +286,21 @@ new Team(engineering, "platform", {
 Nesting is the construct tree: a `Team` scoped under another `Team` becomes a
 child team, and a team under the `Organization` is top-level. Parent teams
 require `closed` privacy.
+
+`teamSync` lists the Entra ID security groups the team synchronizes from
+through GitHub team synchronization, which needs Entra SAML single sign-on on
+the organization or its enterprise. Each group is `{ id, name, description? }`,
+where `id` is the group's Entra object id; synthesis rejects an id that is not
+a GUID and a group listed twice. A non-empty list cannot sit beside `members`,
+`maintainers` or `externalGroup`. Groups are compared by id, so a group renamed
+in Entra is no change. `GET /orgs/{org}/team-sync/groups` lists the groups
+GitHub can see with their ids.
+
+```ts
+new Team(org, "devops", {
+  teamSync: [{ id: "ea8d6d62-727c-44eb-bf27-eb9a753ba1e5", name: "SG_DevOps" }],
+});
+```
 
 `notificationSetting` is whether an `@org/team` mention notifies the team's
 members: `notifications_enabled` or `notifications_disabled`. It is compared

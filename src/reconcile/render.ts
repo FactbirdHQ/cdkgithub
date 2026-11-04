@@ -75,6 +75,14 @@ export function renderPlan(changes: Change[]): string {
         break;
       }
 
+      case 'set-team-sync': {
+        const names = (groups: readonly { name: string }[]) => `[${groups.map((g) => `"${g.name}"`).join(', ')}]`;
+        lines.push(
+          `  ~ ${change.slug} Entra groups: ${names(change.from)} -> ${names(change.groups)}   (Entra replaces the roster, requires --allow-delete)`,
+        );
+        break;
+      }
+
       case 'org-settings': {
         lines.push('  ~ organization settings');
         lines.push(...renderFields(change.fields));
@@ -393,6 +401,7 @@ const BUCKETS = {
     'update',
     'set-repo-access',
     'set-membership',
+    'set-team-sync',
     'update-ruleset',
     'update-repo-ruleset',
     'update-runner-group',

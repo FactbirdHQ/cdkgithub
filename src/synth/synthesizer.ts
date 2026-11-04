@@ -38,6 +38,7 @@ import type {
   RepoPermission,
   RepositoryAccess,
   TeamManifest,
+  TeamSyncGroup,
 } from './manifest.ts';
 import type { ScimProvisioningManifest } from './scim.ts';
 
@@ -568,6 +569,18 @@ function assertUniqueNames(items: Array<{ name: string }> | undefined, kind: str
 function toManifest(team: Team): TeamManifest {
   const parent = nearestTeamAncestor(team);
   const externalGroup = normalizeExternalGroup(team);
+  const teamSync = normalizeTeamSync(team);
+  if (teamSync !== undefined && externalGroup !== undefined) {
+    throw new Error(
+      `Team "${team.teamName}" declares both externalGroup and teamSync; GitHub links a team through one.`,
+    );
+  }
+  if (teamSync !== undefined && teamSync.length > 0 && (team.props.members ?? team.props.maintainers) !== undefined) {
+    throw new Error(
+      `Team "${team.teamName}" declares a roster beside teamSync groups. ` +
+        'Entra replaces the roster on every sync, so drop members and maintainers.',
+    );
+  }
 
   return {
     slug: team.slug,
@@ -584,6 +597,7 @@ function toManifest(team: Team): TeamManifest {
     members: team.props.members,
     repositories: normalizeGrants(team.props.repositories),
     externalGroup,
+    teamSync,
   };
 }
 
@@ -618,6 +632,28 @@ function normalizeExternalGroup(team: Team): ExternalGroupBinding | undefined {
     throw new Error(`Team "${team.teamName}" has an externalGroup with neither a name nor an id.`);
   }
   return { name: eg.name, id: eg.id };
+}
+
+const ENTRA_OBJECT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function normalizeTeamSync(team: Team): TeamSyncGroup[] | undefined {
+  const groups = team.props.teamSync;
+  if (groups === undefined) {
+    return undefined;
+  }
+  const seen = new Set<string>();
+  return groups.map((g) => {
+    if (!ENTRA_OBJECT_ID.test(g.id)) {
+      throw new Error(`Team "${team.teamName}" has teamSync group id "${g.id}", which is not an Entra object id.`);
+    }
+    // GitHub answers with lowercase ids, so the plan compares lowercase ones.
+    const id = g.id.toLowerCase();
+    if (seen.has(id)) {
+      throw new Error(`Team "${team.teamName}" lists teamSync group ${id} twice.`);
+    }
+    seen.add(id);
+    return { id, name: g.name, description: g.description ?? '' };
+  });
 }
 
 /** The nearest ancestor that is a Team, or undefined for a top-level team. */

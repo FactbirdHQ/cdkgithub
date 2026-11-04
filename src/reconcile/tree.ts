@@ -24,7 +24,7 @@ import type {
 import { comparableRoleName } from '../github/client.ts';
 import type { DesiredState, RepoPermission, RepositoryAccess, TeamPrivacy } from '../synth/manifest.ts';
 import type { TeamRole } from './changes.ts';
-import { declaresRoster } from './live.ts';
+import { declaresRoster, rosterOwnedByIdp } from './live.ts';
 import type { OrgRoleAssignment } from './org-role-access.ts';
 import { assignmentFromLive } from './org-role-access.ts';
 import { rankCustomRoles, rankOf, strongerPermission } from './permission-rank.ts';
@@ -279,7 +279,7 @@ export function desiredTree(
       maintainers,
       members,
       repositories: t.repositories ?? {},
-      idpSynced: t.externalGroup !== undefined,
+      idpSynced: rosterOwnedByIdp(t),
       declaresRoster: declaresRoster(t),
     } satisfies TeamSeed;
   });

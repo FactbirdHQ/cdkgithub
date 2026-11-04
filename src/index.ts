@@ -83,6 +83,7 @@ export {
   type ScimProvisioningProps,
 } from './constructs/scim-provisioning.ts';
 export { Team, type TeamProps, teamOf } from './constructs/team.ts';
+export type { TeamSyncGroupProps } from './constructs/team-sync-group.ts';
 export {
   UserAccount,
   type UserAccountProps,
@@ -153,6 +154,7 @@ export type {
   TeamBypass,
   TeamManifest,
   TeamPrivacy,
+  TeamSyncGroup,
   WorkflowFileReference,
 } from './synth/manifest.ts';
 export {

@@ -62,6 +62,12 @@ const SAMPLES: Record<Change['kind'], Change> = {
     slug: 'team',
     group: { id: 42, name: 'Team Group' },
   },
+  'set-team-sync': {
+    kind: 'set-team-sync',
+    slug: 'team',
+    groups: [{ id: 'ea8d6d62-727c-44eb-bf27-eb9a753ba1e5', name: 'SG_Team', description: '' }],
+    from: [],
+  },
   'org-settings': {
     kind: 'org-settings',
     settings: { membersCanCreateRepositories: false },
@@ -437,6 +443,7 @@ describe('destructive arms', () => {
     expect(client.callsTo('deleteBranchProtection')).toEqual([{ repo: 'app', branch: 'main' }]);
     expect(client.callsTo('deleteCustomRepositoryRole')).toEqual([{ roleId: 3 }]);
     expect(client.callsTo('removeRoleFromTeam')).toEqual([{ roleId: 11, team: 'auditors' }]);
+    expect(client.callsTo('setTeamSyncGroups')).toHaveLength(1);
   });
 
   test('a scoped gate lets only its own kind through', async () => {
