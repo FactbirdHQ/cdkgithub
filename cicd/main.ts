@@ -45,7 +45,7 @@ const setupBun = setupBunV2.pinned(
 
 const checkout = checkoutV7.pinned('3d3c42e5aac5ba805825da76410c181273ba90b1', 'v7.0.1')({});
 
-const setupNode = setupNodeV6.pinned('249970729cb0ef3589644e2896645e5dc5ba9c38', 'v6.5.0');
+const setupNode = setupNodeV6.pinned('949feb2413d6458794dcd2491c4babbbce0c15c1', 'v7.1.0');
 
 /**
  * A named image rather than `ubuntu-latest`, so the image a job runs on changes
